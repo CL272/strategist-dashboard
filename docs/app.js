@@ -145,7 +145,7 @@ function makeCard(parent, o) {
   c.render = () => {
     const keep = [state.from, state.to];
     if (c.range) [state.from, state.to] = resolveRange(c.range);
-    if (o.earliest && c.range && c.range.preset === 'MAX') state.from = o.earliest;
+    if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
     try { o.render(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
     finally { [state.from, state.to] = keep; }
@@ -744,9 +744,8 @@ function overviewKpis() {
   if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, state.to), b = asOf(s, a.t - 91 * DAY);
     tile('Fed net liquidity, 13w', fmtChg(s, a.v - b.v), `level ${fmtVal(s, a.v)}`, 'as of ' + nice(a.t)); }
   else tile('Fed net liquidity, 13w', '–', 'needs FRED data', '');
-  const sr = stressRows();
-  if (sr.length) { const p = sr.reduce((a, r) => a + r.p, 0) / sr.length, [st, lab, icon] = stressBand(p);
-    tile('Stress composite', `${Math.round(p)}th pct`, `${icon}${lab}`, `${sr.length} gauges vs 10 years`, '--' + st); }
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, state.to), [lab, tk] = legacyBand(a.v);
+    tile('Stress composite', `${Math.round(a.v)}th pct`, lab, 'Funding · Credit · Growth vs 10 years', tk); }
   if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, state.to); tile('Recession odds, 12m', fmtNum(a.v, 0) + '%', 'NY Fed yield-curve model', monthLab(a.t)); }
   const above = OV_EQ.filter(id => has(id)).map(id => { const s = S[id], a = asOf(s, state.to); const m = a && ma(s, a.i, 200); return m ? a.v > m : null; }).filter(x => x != null);
   if (above.length) tile('Equity breadth', `${above.filter(Boolean).length} of ${above.length}`, 'global indices above their 200-day average', 'as of ' + nice(state.to));
@@ -770,9 +769,8 @@ function talkingPoints() {
     out.push(t + '.'); }
   if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, to), gm = asOf(S.REG_GM, to), im = asOf(S.REG_IM, to);
     out.push(`Macro regime: ${QUADS[q.v].name} as of ${monthLab(q.t)} data. Growth momentum ${gm.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(gm.v)}), inflation momentum ${im.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(im.v)}).`); }
-  const sr = stressRows();
-  if (sr.length) { const p = sr.reduce((a, r) => a + r.p, 0) / sr.length, top = sr.slice().sort((a, b) => b.p - a.p)[0];
-    out.push(`Stress: composite at the ${Math.round(p)}th percentile of the last 10 years (${stressBand(p)[1].toLowerCase()}); highest gauge is ${top.label} at the ${Math.round(top.p)}th.`); }
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, to), bl = ['Funding', 'Credit', 'Growth'].filter(k => has(STRESS_IDS[k])).map(k => `${k} ${Math.round(asOf(S[STRESS_IDS[k]], to).v)}`);
+    out.push(`Stress: composite at the ${Math.round(a.v)}th percentile of the last 10 years (${legacyBand(a.v)[0].toLowerCase()}); blocks: ${bl.join(', ')}.`); }
   if (has('DXY')) { const s = S.DXY, a = asOf(s, to), b = asOf(s, addMonths(a.t, -1));
     let t = `USD: DXY ${fmtChg(s, chg(s, b.v, a.v))} over 1M`;
     if (has('USDSGD')) { const u = S.USDSGD, ua = asOf(u, to), ub = asOf(u, addMonths(ua.t, -1)); t += `; USD/SGD ${fmtNum(ua.v, 4)} (${fmtChg(u, chg(u, ub.v, ua.v))})`; }
@@ -797,7 +795,7 @@ function buildOverview() {
   makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', wide: true, render: renderHeadlinesCard });
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
-  makeCard(g, { key: 'fragile', range: false, title: 'How fragile', sub: 'Stress gauges ranked against their own last 10 years.', source: 'FRED, Yahoo Finance', render: renderFragile });
+  makeCard(g, { key: 'fragile', range: false, title: 'Market stress gauges', sub: 'Market-priced stress gauges ranked against their own last 10 years. The full composite is on the Stress & Signposts page.', source: 'FRED, Yahoo Finance', render: renderFragile });
   makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity returns as a USD or SGD investor.', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovCcy', options: [['local', 'Local'], ['USD', 'USD'], ['SGD', 'SGD']] }, render: renderWhere });
   for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
@@ -2082,52 +2080,93 @@ function buildPosVol() {
 }
 function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist'].forEach(k => cards[k].render()); }
 
-// ------------------------------------------------------------------ STRESS PANEL & PEAK SIGNPOSTS
-let SIGN = null;
+// ------------------------------------------------------------------ STRESS PANEL & PEAK SIGNPOSTS (ported from the Streamlit version)
+let SIGN = null, STR = null;
 state.stMode = 'composite';
-const STRESS_BLOCKS = ['STRESS_EQUITY_VOLATILITY', 'STRESS_RATES_VOLATILITY', 'STRESS_CREDIT', 'STRESS_FUNDING', 'STRESS_FINANCIAL_CONDITIONS', 'STRESS_DOLLAR_SQUEEZE', 'STRESS_EQUITY_DRAWDOWN'];
-const STRESS_SRC = 'Dashboard calculation: Yahoo Finance (^VIX, ^VXN, ^VVIX, ^MOVE, DX-Y.NYB, ^GSPC); FRED (BAA10Y, BAMLH0A0HYM2, BAMLC0A0CM, SOFR, EFFR, IORB, NFCI, STLFSI4)';
+const STRESS_IDS = { Composite: 'STRESS_COMPOSITE', Funding: 'STRESS_FUNDING', Credit: 'STRESS_CREDIT', Growth: 'STRESS_GROWTH' };
+const legacyBand = p => p >= 90 ? ['Acute', '--critical'] : p >= 75 ? ['Elevated', '--serious'] : p >= 50 ? ['Above normal', '--warning'] : p >= 25 ? ['Normal', '--muted'] : ['Calm', '--good'];
+const STR_SRC = 'Dashboard composite (method of the earlier Streamlit version): 23 FRED series in Funding, Credit and Growth blocks, each percentile-ranked weekly against its trailing 10 years';
 function stressKpis() {
   const box = $('#stKpis'); box.replaceChildren();
   const tile = (label, valueNode, delta, foot, tk) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
     el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', valueNode), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
-  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, state.to), b = asOf(S.STRESS_COMPOSITE, a.t - 28 * DAY), [st, lab] = stressBand(a.v);
-    tile('Stress composite', `${Math.round(a.v)}th pct`, `${lab} · 4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)} pts`, 'week of ' + nice(a.t), '--' + st);
-    const top = STRESS_BLOCKS.filter(id => has(id)).map(id => ({ id, a: asOf(S[id], state.to) })).filter(x => x.a).sort((x, y) => y.a.v - x.a.v)[0];
-    if (top) tile('Most stressed block', S[top.id].label, `${Math.round(top.a.v)}th percentile of its history`, ''); }
-  if (SIGN) { const n = SIGN.n_peaks, j = SIGN.columns.length - 1, avg = SIGN.share.slice(0, n).filter(x => x != null).reduce((a, b) => a + b, 0) / n;
-    tile(`Signposts triggered (${SIGN.columns[j]})`, `${SIGN.triggered[j]} of ${SIGN.evaluated[j]}`, `${fmtNum(SIGN.share[j], 0)}% of the rules that can be judged`, 'late-cycle checklist');
-    tile('Average at prior peaks', fmtNum(avg, 0) + '%', `now ${sign(SIGN.share[j] - avg)}${fmtNum(Math.abs(SIGN.share[j] - avg), 0)} pts vs that average`, SIGN.columns.slice(0, n).join(' · ')); }
-}
-function renderStressBlocks(c) {
-  const rows = STRESS_BLOCKS.filter(id => has(id)).map(id => { const a = asOf(S[id], state.to); return a && { name: S[id].label, v: a.v, t: a.t }; }).filter(Boolean).sort((a, b) => b.v - a.v);
-  if (!rows.length) return setEmpty(c, 'Waiting for data (next daily run).');
-  const o = baseOpt(); o.legend.show = false;
-  o.grid = { left: 8, right: 50, top: 8, bottom: 8, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${Math.round(p.value)}th percentile</b><br><span style="color:${tok('--ink-2')}">${esc(rows[p.dataIndex].name)}, week of ${esc(nice(rows[p.dataIndex].t))}</span>` };
-  o.xAxis = { type: 'value', min: 0, max: 100, axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
-  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
-  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(1), itemStyle: { color: tok('--' + stressBand(r.v)[0]), borderRadius: [0, 4, 4, 0] } })),
-    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => `${Math.round(p.value)} · ${stressBand(p.value)[1]}` } }];
-  c.chartEl.style.height = Math.max(260, rows.length * 34 + 30) + 'px';
-  const ch = inst(c); ch.resize(); ch.setOption(o, true);
-  c.csv = [['Block', 'Percentile'], ...rows.map(r => [r.name, r.v.toFixed(1)])];
-  setNote(c, 'Each block = the average of its gauges, each scored as a literal percentile of its own history up to that week (100 = most stressed reading ever). Bands: Calm < 50, Elevated 50–80, High 80–95, Extreme ≥ 95.');
+  for (const [lab, id] of Object.entries(STRESS_IDS)) if (has(id)) {
+    const a = asOf(S[id], state.to), b = asOf(S[id], a.t - 28 * DAY), [bl, tk] = legacyBand(a.v);
+    tile(lab === 'Composite' ? 'Stress composite' : `${lab} block`, `${Math.round(a.v)}`, `${bl} · 4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)}`, 'percentile · week of ' + nice(a.t), tk);
+  }
+  if (has('OFR_FSI_PCT')) { const a = asOf(S.OFR_FSI_PCT, state.to); tile('OFR FSI cross-check', `${Math.round(a.v)}`, legacyBand(a.v)[0] + ', same basis', 'not a member of the composite', legacyBand(a.v)[1]); }
+  if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.share[j] == null) j--; if (SIGN.share[j] == null) j = n - 1;
+    const avg = SIGN.share.slice(0, n).filter(x => x != null).reduce((a, b) => a + b, 0) / SIGN.share.slice(0, n).filter(x => x != null).length;
+    tile(`Signposts triggered (${cols[j]})`, `${SIGN.triggered[j]} of ${SIGN.evaluated[j]}`, `${fmtNum(SIGN.share[j], 0)}% of rules that can be judged`, 'late-cycle checklist');
+    tile('Average at prior peaks', fmtNum(avg, 0) + '%', `now ${sign(SIGN.share[j] - avg)}${fmtNum(Math.abs(SIGN.share[j] - avg), 0)} pts vs that average`, 'five S&P 500 peaks'); }
 }
 function renderStressHist(c) {
   if (!has('STRESS_COMPOSITE')) return setEmpty(c, 'Waiting for data (next daily run).');
   const list = state.stMode === 'composite' ? [{ name: 'Stress composite', data: pts(S.STRESS_COMPOSITE, state.from, state.to) }]
-    : STRESS_BLOCKS.filter(id => has(id)).map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) }));
-  drawLines(c, list, { fmt: v => fmtNum(v, 0), axisFmt: v => fmtNum(v, 0), endLabels: false, yExtra: { min: 0, max: 100, scale: false },
-    hlines: [{ y: 50, label: 'elevated' }, { y: 80, label: 'high' }, { y: 95, label: 'extreme' }], areas: recessionAreas(state.from, state.to) });
+    : ['Funding', 'Credit', 'Growth'].filter(k => has(STRESS_IDS[k])).map((k, i) => ({ name: k, data: pts(S[STRESS_IDS[k]], state.from, state.to), color: col(i) }));
+  drawLines(c, list, { fmt: v => fmtNum(v, 0), axisFmt: v => fmtNum(v, 0), endLabels: list.length > 1, yExtra: { min: 0, max: 100, scale: false },
+    hlines: [{ y: 50, label: 'above normal' }, { y: 75, label: 'elevated' }, { y: 90, label: 'acute' }], areas: recessionAreas(state.from, state.to) });
+  setNote(c, 'Weekly, 0–100. Each member is ranked against its own trailing 10 years, so a decade of calm can make modest stress look high (and vice versa). Grey = US recessions.');
+}
+function renderStressOfr(c) {
+  if (!has('STRESS_COMPOSITE', 'OFR_FSI_PCT')) return setEmpty(c, 'Waiting for data (next daily run).');
+  const a = pts(S.STRESS_COMPOSITE, state.from, state.to), b = pts(S.OFR_FSI_PCT, state.from, state.to);
+  drawLines(c, [{ name: 'Dashboard composite', data: a }, { name: 'OFR FSI, same basis', data: b }], { fmt: v => fmtNum(v, 0), axisFmt: v => fmtNum(v, 0), yExtra: { min: 0, max: 100, scale: false } });
+  const m = new Map(b.map(p => [p[0], p[1]])), pr = a.filter(p => m.has(p[0])), r = pearson(pr.map(p => p[1]), pr.map(p => m.get(p[0])));
+  setNote(c, `The Office of Financial Research's Financial Stress Index (33 market variables), percentile-ranked exactly like the composite. It is a check, not a member. Correlation over the selected range: ${r == null ? 'n/a' : fmtNum(r, 2)}. Large gaps usually mean the macro and funding blocks see something markets do not (or the reverse).`);
+}
+function renderStressHeat(c) {
+  if (!STR || !STR.heatmap || !STR.heatmap.rows.length) return setEmpty(c, 'Waiting for data (next daily run).');
+  const H = STR.heatmap, ys = H.rows.map(r => `${r.label}`), data = [];
+  H.rows.forEach((r, y) => r.v.forEach((v, x) => { if (v != null) data.push([x, y, v]); }));
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 8, top: 8, bottom: 52, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${p.value[2]}th percentile</b><br><span style="color:${tok('--ink-2')}">${esc(ys[p.value[1]])}, ${esc(nice(Date.parse(H.dates[p.value[0]])))}</span>` };
+  o.xAxis = { type: 'category', data: H.dates.map(d => d.slice(0, 7)), axisLabel: { color: tok('--muted'), fontSize: 10, interval: Math.ceil(H.dates.length / 8) }, axisTick: { show: false }, axisLine: { show: false } };
+  o.yAxis = { type: 'category', inverse: true, data: ys, axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisTick: { show: false }, axisLine: { show: false } };
+  o.visualMap = { min: 0, max: 100, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 160, itemWidth: 10, text: ['100 stressed', '0 calm'], textStyle: { color: tok('--muted'), fontSize: 11 },
+    inRange: { color: [tok('--s1'), tok('--mid'), tok('--serious'), tok('--critical')] } };
+  o.series = [{ type: 'heatmap', data, itemStyle: { borderColor: tok('--surface'), borderWidth: 1 } }];
+  c.chartEl.style.height = Math.max(360, ys.length * 20 + 90) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Indicator', ...H.dates], ...H.rows.map(r => [r.label, ...r.v])];
+  setNote(c, 'Every member over the last three years (fortnightly), sign-aligned so warmer always means more stress. Rows run Funding, Credit, Growth.');
+}
+function renderStressTable(c) {
+  const b = htmlBody(c);
+  if (!STR) { b.append(el('div', { class: 'empty', text: 'Waiting for data (next daily run).' })); return; }
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Indicator', 'Percentile', 'Band', 'Latest', 'Last changed', 'Direction', 'Source'].map(h => el('th', { text: h })))));
+  const tb = el('tbody'); let g = null;
+  for (const r of STR.snapshot) {
+    if (r.block !== g) { g = r.block; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 7, text: `${g} block · ${Math.round(STR.blocks[g] ?? 0)}` }))); }
+    const [lab, tk] = legacyBand(r.pct);
+    const val = r.unit === '$tn' ? '$' + fmtNum(r.latest, 2) + 'tn' : r.unit === 'k' ? fmtNum(r.latest / 1000, 0) + 'k' : r.unit === '%' ? fmtNum(r.latest, 2) + '%' : r.unit === 'bp' ? fmtNum(r.latest, 1) + 'bp' : fmtNum(r.latest, Math.abs(r.latest) < 10 ? 2 : 0) + (r.unit && r.unit !== 'idx' ? ' ' + r.unit : '');
+    tb.append(el('tr', { class: 'row' }, el('td', { text: r.label }),
+      el('td', {}, el('span', { class: 'pbar' }, el('span', { class: 'track' }, el('span', { class: 'fill', style: `width:${r.pct}%;background:${tok(tk)}` })), el('span', { class: 'pv', text: Math.round(r.pct) }))),
+      el('td', {}, el('span', { class: 'chip', style: `--st:${tok(tk)}` }, lab)), el('td', { text: val }), el('td', { class: 'muted', text: r.asof }),
+      el('td', { class: 'muted', text: r.direction }), el('td', { class: 'muted', text: r.source })));
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  if (STR.tripwires && STR.tripwires.length) {
+    b.append(el('h4', { text: 'Growth tripwires' }));
+    const t2 = el('table', { class: 'perf' });
+    t2.append(el('thead', {}, el('tr', {}, ...['Tripwire', 'Latest', 'Threshold', 'Status', 'Rule'].map(h => el('th', { text: h })))));
+    const tb2 = el('tbody');
+    for (const t of STR.tripwires) tb2.append(el('tr', { class: 'row' }, el('td', { text: t.label }), el('td', { text: `${fmtNum(t.value, 2)} (${t.asof})` }),
+      el('td', { text: `${t.side} ${t.threshold}` }), el('td', {}, el('span', { class: 'chip', style: `--st:${tok(t.hit ? '--critical' : '--good')}` }, t.hit ? '⚠ triggered' : 'not triggered')), el('td', { class: 'muted', text: t.rule })));
+    t2.append(tb2); b.append(el('div', { class: 'table-wrap' }, t2));
+  }
+  c.csv = [['Block', 'Indicator', 'Percentile', 'Band', 'Latest', 'Unit', 'Last changed', 'Direction', 'Source'], ...STR.snapshot.map(r => [r.block, r.label, r.pct, r.band, r.latest, r.unit, r.asof, r.direction, r.source])];
+  setNote(c, `${STR.members} members, each percentile-ranked weekly against its own trailing ${STR.window_years} years and sign-aligned (low reserves, weak growth and low net liquidity count as stress). Blocks are simple averages; the composite weights the three blocks equally so a block with more members does not outvote one with fewer. "Last changed" is when the series last moved, which shows how stale a slow monthly series is.`);
 }
 function renderSignGrid(c) {
   const b = htmlBody(c);
   if (!SIGN) { b.append(el('div', { class: 'empty', text: 'Signposts arrive with the next daily run.' })); return; }
   const n = SIGN.n_peaks, tbl = el('table', { class: 'perf sign' });
   const hr = el('tr', {}, el('th', { text: 'Signpost' }));
-  SIGN.columns.forEach((cname, j) => hr.append(el('th', { class: j === n ? 'sep' : '', text: cname })));
-  tbl.append(el('thead', {}, el('tr', {}, el('th', {}), el('th', { colspan: n, class: 'center', text: 'Prior S&P 500 peaks' }), el('th', { colspan: SIGN.columns.length - n, class: 'center sep', text: 'Latest months' })), hr));
+  SIGN.columns.forEach((cname, j) => hr.append(el('th', { class: 'center' + (j === n ? ' sep' : ''), text: cname })));
+  tbl.append(el('thead', {}, el('tr', {}, el('th', {}), el('th', { colspan: n, class: 'center', text: 'Prior S&P 500 peaks' }), el('th', { colspan: SIGN.columns.length - n, class: 'center sep', text: 'Last three months' })), hr));
   const tb = el('tbody'); let g = null;
   for (const r of SIGN.rows) {
     if (r.group !== g) { g = r.group; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: SIGN.columns.length + 1, text: g }))); }
@@ -2135,51 +2174,67 @@ function renderSignGrid(c) {
     r.cells.forEach((v, j) => tr.append(el('td', { class: 'cell ' + (v === 1 ? 'on' : v === 0 ? 'off' : 'na') + (j === n ? ' sep' : ''), text: v === 1 ? '✓' : v === 0 ? '·' : '–' })));
     tb.append(tr);
   }
-  const sr = el('tr', { class: 'grp' }, el('td', { text: '% triggered (of rules with data)' }));
+  const sr = el('tr', { class: 'grp' }, el('td', { text: '% triggered (triggered / evaluated)' }));
   SIGN.share.forEach((v, j) => sr.append(el('td', { class: 'center' + (j === n ? ' sep' : ''), text: v == null ? '–' : `${fmtNum(v, 0)}% (${SIGN.triggered[j]}/${SIGN.evaluated[j]})` })));
   tb.append(sr); tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = [['Signpost', ...SIGN.columns], ...SIGN.rows.map(r => [r.label, ...r.cells.map(v => v == null ? '' : v)]), ['% triggered', ...SIGN.share]];
-  setNote(c, '✓ triggered · “·” not triggered · “–” the rule’s inputs do not reach that month, so it is left out of that column’s denominator. Hover a row for its rule. Five peaks is a very small sample: this asks which conditions rhyme with past late cycles, not how likely a peak is.');
+  setNote(c, '✓ triggered · “·” not triggered · “–” the rule’s inputs do not reach that month, so it is excluded from that column’s denominator (a share on fewer than four rules is not shown). Hover a row for its rule. Five peaks is a very small sample: this asks which conditions rhyme with prior late cycles, not how likely a peak is.');
 }
 function renderSignShare(c) {
   if (!has('SIGN_SHARE')) return setEmpty(c, 'Signposts arrive with the next daily run.');
-  const peaks = [['1990-07-01'], ['2000-03-01'], ['2007-10-01'], ['2020-02-01'], ['2022-01-01']].map(([d]) => Date.parse(d));
-  const n = SIGN ? SIGN.n_peaks : 5, avg = SIGN ? SIGN.share.slice(0, n).filter(x => x != null).reduce((a, b) => a + b, 0) / n : null;
-  drawLines(c, [{ name: '% of signposts triggered', data: pts(S.SIGN_SHARE, state.from, state.to), extra: { areaStyle: { color: hexA(col(0), 0.12) } } }],
-    { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, hlines: avg ? [{ y: +avg.toFixed(1), label: `average at prior peaks ${fmtNum(avg, 0)}%` }] : [], areas: recessionAreas(state.from, state.to) });
+  const peaks = (SIGN ? SIGN.peak_dates : ['1990-07-16', '2000-03-24', '2007-10-09', '2020-02-19', '2022-01-03']).map(d => Date.parse(d));
+  const n = SIGN ? SIGN.n_peaks : 5, ps = SIGN ? SIGN.share.slice(0, n).filter(x => x != null) : [], avg = ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : null;
+  drawLines(c, [{ name: '% of evaluable signposts triggered', data: pts(S.SIGN_SHARE, state.from, state.to), extra: { areaStyle: { color: hexA(col(1), 0.14) }, lineStyle: { width: 2, color: col(1) } }, color: col(1) }],
+    { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, endLabels: false, hlines: avg ? [{ y: +avg.toFixed(1), label: `average at prior peaks · ${fmtNum(avg, 0)}%` }] : [], areas: recessionAreas(state.from, state.to) });
   inst(c).setOption({ series: [{}, { type: 'line', data: [], markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: tok('--critical'), type: 'dotted', width: 1.2 },
     data: peaks.filter(t => t >= state.from && t <= state.to).map(t => ({ xAxis: t })) } }] });
-  setNote(c, 'Dotted red lines mark the five S&P 500 peaks; grey = US recessions. Starts in 1985, once at least four rules can be judged.');
+  setNote(c, `Dotted red lines mark the five peaks; grey = US recessions. The line starts in ${new Date(S.SIGN_SHARE.t[0]).getUTCFullYear()}: before that fewer than four rules can be judged, and a share on a denominator of two says more about which series existed than about the cycle.`);
 }
 function renderSignRules(c) {
   const b = htmlBody(c);
   if (!SIGN) { b.append(el('div', { class: 'empty', text: 'Signposts arrive with the next daily run.' })); return; }
-  const tbl = el('table', { class: 'perf rules' }), j = SIGN.columns.length - 1;
-  tbl.append(el('thead', {}, el('tr', {}, ...['Signpost', `Now (${SIGN.columns[j]})`, 'Latest reading', 'Trigger rule', 'Source', 'Evaluable from'].map(h => el('th', { text: h })))));
+  let j = SIGN.columns.length - 1;
+  const tbl = el('table', { class: 'perf rules' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Group', 'Signpost', 'Now', 'Latest reading', 'Trigger rule', 'Source'].map(h => el('th', { text: h })))));
   const tb = el('tbody');
-  for (const r of SIGN.rows) { const v = r.cells[j];
-    tb.append(el('tr', { class: 'row' }, el('td', { text: r.label }), el('td', { text: v === 1 ? '✓ triggered' : v === 0 ? '· no' : '– no data' }),
-      el('td', { text: r.level || '–' }), el('td', { text: r.rule }), el('td', { class: 'muted', text: r.source }), el('td', { class: 'muted', text: r.first || 'not yet' }))); }
+  for (const r of SIGN.rows) { let k = j; while (k > SIGN.n_peaks && r.cells[k] == null) k--; const v = r.cells[k];
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'muted', text: r.group }), el('td', { text: r.label }),
+      el('td', { text: (v === 1 ? '✓ triggered' : v === 0 ? '·  no' : '—  no data') + (v != null && k !== j ? ` (${SIGN.columns[k]})` : '') }),
+      el('td', { text: r.level || '—' }), el('td', { class: 'rule', text: r.rule }), el('td', { class: 'muted', text: r.source }))); }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
-  b.append(el('h4', { text: 'What this deliberately does not attempt' }),
-    el('p', { class: 'muted small', text: 'Published sell-side peak checklists lean on licensed inputs: strategists’ equity allocation surveys, fund manager survey cash levels, Conference Board stock-price expectations, IBES long-term growth estimates, M&A deal counts, and banks’ own credit stress composites. There is no free equivalent, so those rows are left out rather than replaced with lookalikes that would quietly change what “% triggered” means. Every threshold here (top quartile, 1σ, 0.3pp, 40%) is a choice: move them and the picture moves.' }),
-    el('p', { class: 'muted small', text: 'These rules are this dashboard’s own, built from the design of the earlier Streamlit version (its exact rules were in a data/signposts.py file that has not been uploaded). If you upload that folder, the rows can be replaced with the original definitions.' }));
-  c.csv = [['Signpost', 'Now', 'Latest reading', 'Rule', 'Source', 'Evaluable from'], ...SIGN.rows.map(r => [r.label, r.cells[j], r.level || '', r.rule, r.source, r.first || ''])];
+  const notes = SIGN.rows.filter(r => r.note);
+  if (notes.length) { const d = el('details', { class: 'method' }, el('summary', { text: 'Notes on individual rows' }));
+    const bd = el('div', { class: 'body' }); notes.forEach(r => bd.append(el('p', {}, el('b', { text: r.label + ' — ' }), r.note))); d.append(bd); b.append(d); }
+  const short = SIGN.rows.filter(r => !r.reaches_first_peak);
+  const cov = el('details', { class: 'method' }, el('summary', { text: `Data coverage — ${short.length} row(s) cannot reach every peak` }));
+  const cb = el('div', { class: 'body' }); SIGN.rows.forEach(r => cb.append(el('p', { text: `${r.label}: first evaluable ${r.first || 'never'}${r.reaches_first_peak ? '' : ' (does not reach Jul 1990)'}` })));
+  cb.append(el('p', { class: 'muted', text: 'A short history here is a property of the source, not a failed refresh. The ICE BofA spread series are served by FRED as a rolling three-year window, which is why the decompression row reaches none of the peak columns. VIX starts in 1990 and needs five years before its 10-year rank is emitted.' }));
+  cov.append(cb); b.append(cov);
+  const nd = el('details', { class: 'method' }, el('summary', { text: 'What this deliberately does not attempt' }));
+  const nb = el('div', { class: 'body' });
+  nb.append(el('p', { text: 'Published sell-side peak checklists lean on inputs that are licensed or proprietary. Rather than substitute lookalikes and report a “% triggered” number that would silently mean something different, those rows are simply absent: sell-side strategist equity allocation (a bank’s own survey, not published free); fund manager survey cash levels (subscription only); Conference Board expectations for stock prices (licensed; UMich sentiment asks a different question, so it is not a substitute); IBES long-term growth expectations (LSEG/Refinitiv); M&A deal counts (Dealogic/Refinitiv/Bloomberg); and a bank’s own credit stress composite (undisclosed weights).' }),
+    el('p', { text: 'Two rows are related to that last one without replicating it: the Baa−10y complacency row and the CCC−BB decompression row measure credit conditions from public data, on rules stated above.' }),
+    el('p', { text: 'Five peaks is not a sample you can do statistics on. A row that ticked at four of five is a pattern worth a second look, not evidence. And every threshold here (1σ, the bottom quartile, 100bp, 0.3pp) is a choice. Move them and the picture moves.' }));
+  nd.append(nb); b.append(nd);
+  c.csv = [['Group', 'Signpost', 'Rule', 'Source', 'Latest reading', 'First evaluable'], ...SIGN.rows.map(r => [r.group, r.label, r.rule, r.source, r.level || '', r.first || ''])];
 }
 function buildStress() {
   const g = $('#stGrid');
-  g.append(el('h3', { class: 'section', text: 'Stress panel' }));
-  makeCard(g, { key: 'st_blocks', title: 'Stress by block', range: false, source: STRESS_SRC, render: renderStressBlocks });
-  makeCard(g, { key: 'st_hist', title: 'Stress history', defaultRange: 'MAX', earliest: Date.UTC(2008, 0, 1), sub: 'Weekly, 0–100 (percentile of each gauge’s own history). Grey = US recessions.',
-    seg: { key: 'stMode', options: [['composite', 'Composite'], ['blocks', 'Blocks']] }, source: STRESS_SRC, render: renderStressHist });
+  g.append(el('h3', { class: 'section', text: 'Composite stress panel' }));
+  makeCard(g, { key: 'st_hist', title: 'Stress composite', wide: true, defaultRange: '10Y', sub: 'Percentile of current stress against the trailing 10 years: Funding, Credit and Growth blocks, weighted equally.',
+    seg: { key: 'stMode', options: [['composite', 'Composite'], ['blocks', 'Blocks']] }, source: STR_SRC, render: renderStressHist });
+  makeCard(g, { key: 'st_heat', title: 'Where the stress is', range: false, source: STR_SRC, render: renderStressHeat });
+  makeCard(g, { key: 'st_ofr', title: 'Cross-check: OFR Financial Stress Index', defaultRange: '10Y', source: 'Office of Financial Research (financialresearch.gov, OFR FSI); dashboard composite', render: renderStressOfr });
+  makeCard(g, { key: 'st_table', title: 'Where everything stands', wide: true, range: false, source: STR_SRC, render: renderStressTable });
   g.append(el('h3', { class: 'section', text: 'Peak signposts: a late-cycle checklist' }));
-  makeCard(g, { key: 'sg_grid', title: 'Signposts now vs prior market peaks', wide: true, range: false,
-    sub: 'Which late-cycle conditions are in place now, against the months of the last five S&P 500 peaks.', source: 'Dashboard checklist from FRED (UNRATE, T10Y3M, FEDFUNDS, PCEPILFE, ICSA, SAHMREALTIME, BAA10Y, DRTSCILM, NFCI, WTISPLC), Shiller, Yahoo Finance (^GSPC) and the DIY leading index', render: renderSignGrid });
-  makeCard(g, { key: 'sg_share', title: 'Share of signposts triggered, month by month', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1985, 0, 1), source: 'Dashboard checklist (see rules below)', render: renderSignShare });
-  makeCard(g, { key: 'sg_rules', title: 'What each signpost tests', wide: true, range: false, source: 'Rules defined by this dashboard; data sources per row', render: renderSignRules });
-  for (const k of ['sg_grid', 'sg_rules']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard(g, { key: 'sg_grid', title: 'Peak signposts', wide: true, range: false,
+    sub: 'A late-cycle checklist built only from data that can be verified for free. Not a replication of any published bank exhibit: the rows, thresholds and denominator are this dashboard’s own, and every rule is printed below.',
+    source: 'FRED (VIXCLS, BAA10Y, T10Y3M, FEDFUNDS, DRTSCILM, UNRATE, BAMLH0A3HYC, BAMLH0A1HYBB); Shiller (ie_data.xls)', render: renderSignGrid });
+  makeCard(g, { key: 'sg_share', title: 'Share of signposts triggered, month by month', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1970, 0, 1), source: 'Peak signposts (rules below)', render: renderSignShare });
+  makeCard(g, { key: 'sg_rules', title: 'What each row actually tests', wide: true, range: false, source: 'Rules from the earlier Streamlit version (legacy/data/signposts.py)', render: renderSignRules });
+  for (const k of ['st_table', 'sg_grid', 'sg_rules']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-function renderStress() { stressKpis(); ['st_blocks', 'st_hist', 'sg_grid', 'sg_share', 'sg_rules'].forEach(k => cards[k].render()); }
+function renderStress() { stressKpis(); ['st_hist', 'st_heat', 'st_ofr', 'st_table', 'sg_grid', 'sg_share', 'sg_rules'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
@@ -2533,6 +2588,7 @@ async function init() {
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
   try { POS = await loadJSON('data/positioning.json'); } catch (e) { POS = null; }
   try { SIGN = await loadJSON('data/signposts.json'); } catch (e) { SIGN = null; }
+  try { STR = await loadJSON('data/stress.json'); } catch (e) { STR = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {

@@ -181,6 +181,19 @@ FRED = [
     ("REER_INR",    "RBINBIS",     "Indian rupee REER",           "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_AUD",    "RBAUBIS",     "Australian dollar REER",      "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_IDR",    "RBIDBIS",     "Indonesian rupiah REER",      "Valuation · FX", "level", "idx", MACRO_START),
+    # Stress panel members (legacy composite) and signpost inputs
+    ("WPC",         "WPC",         "Discount window (primary credit)", "Liquidity", "level", "USD mn"),
+    ("ANFCI",       "ANFCI",       "Adjusted NFCI",               "Credit", "level", "idx", MACRO_START),
+    ("CCC_OAS",     "BAMLH0A3HYC", "CCC & lower OAS",             "Credit", "yield", "%"),
+    ("BB_OAS",      "BAMLH0A1HYBB", "BB OAS",                     "Credit", "yield", "%"),
+    ("VIXCLS",      "VIXCLS",      "VIX (FRED, from 1990)",       "Volatility", "level", "idx", MACRO_START),
+    ("WEI",         "WEI",         "Weekly Economic Index",       "Macro · Growth", "level", "idx"),
+    ("CCSA",        "CCSA",        "Continued claims",            "Macro · Growth", "level", "persons"),
+    ("IC4WSA",      "IC4WSA",      "Initial claims, 4-week avg",  "Macro · Growth", "level", "persons"),
+    ("EMPIRE",      "GACDISA066MSFRBNY", "Empire State survey (NY)", "Macro · Growth", "level", "idx", MACRO_START),
+    ("PHILLY",      "GACDFSA066MSFRBPHI", "Philly Fed survey (PA)", "Macro · Growth", "level", "idx", MACRO_START),
+    ("DALLAS",      "BACTSAMFRBDAL", "Dallas Fed survey (TX)",    "Macro · Growth", "level", "idx", MACRO_START),
+    ("CHICAGO_SVY", "CFSBCACTIVITYMFG", "Chicago Fed survey (IL)", "Macro · Growth", "level", "idx", MACRO_START),
     # Stress panel / peak signposts
     ("FEDFUNDS",    "FEDFUNDS",    "Fed funds rate (monthly)",    "Rates · US", "yield", "%", MACRO_START),
     ("SLOOS_CI",    "DRTSCILM",    "Banks tightening C&I lending standards (net %)", "Credit", "level", "%", MACRO_START),
@@ -194,7 +207,7 @@ FRED = [
 # FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.
 # These are archived in archive/<id>.csv (committed by the daily job) so history
 # is never lost again: each run merges what FRED returns into the archive.
-ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS"}
+ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS", "CCC_OAS", "BB_OAS"}
 
 # Long daily histories from Yahoo (for regime statistics back to the 1970s), stored monthly
 LONG_YAHOO = [("LH_SPX", "^GSPC", "S&P 500 (price, since 1960)"), ("LH_USD", "DX-Y.NYB", "US Dollar Index (since 1971)"),
