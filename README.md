@@ -26,7 +26,7 @@ Every chart has **⤢ Focus** (enlarge for screenshots), **PNG** (downloads a ti
 API keys live in **GitHub → Settings → Secrets and variables → Actions**, never in the code:
 
 - `FRED_API_KEY`: required for reliable FRED downloads
-- `ESTAT_APP_ID`: Japan e-Stat (reserved for the Japan data phase)
+- `ESTAT_API_KEY` (or `ESTAT_APP_ID`): Japan e-Stat (reserved for the Japan data phase)
 
 Run locally and the pipeline reads the same names from environment variables or `.streamlit/secrets.toml` (git-ignored). It never prints them.
 

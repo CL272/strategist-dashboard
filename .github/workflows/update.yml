@@ -42,7 +42,7 @@ jobs:
       - name: Pull latest data
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+          ESTAT_APP_ID: ${{ secrets.ESTAT_API_KEY || secrets.ESTAT_APP_ID }}
         run: python pipeline/fetch.py
 
       - name: Save credit-spread archive
