@@ -185,7 +185,6 @@ def estat_cpi(app_id: str, notes: list) -> dict[str, pd.Series]:
         for k, (nm, cl) in objs.items():
             if k in (item_dim, "time"):
                 continue
-            names = [c.get("@name", "") for c in cl]
             if k == "area":
                 code = next((c.get("@code") for c in cl if "全国" in c.get("@name", "")), None)
             elif k == "tab":

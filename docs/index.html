@@ -12,29 +12,40 @@
 </script>
 </head>
 <body>
-<header class="top">
-  <div class="brand">
-    <h1>Strategist Dashboard</h1>
-    <span id="asof" class="muted">Loading data…</span>
+<div class="app">
+<aside class="side" id="side">
+  <div class="side-head">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="name">Strategist<br>Dashboard</span>
+    </div>
+    <button id="menuBtn" class="ghost menu-btn" type="button" aria-label="Show or hide the menu" aria-expanded="false">☰</button>
   </div>
-  <div class="top-actions">
+  <nav class="tabs" role="tablist" aria-orientation="vertical">
+    <div class="nav-group">Overview</div>
+    <button role="tab" data-tab="overview" aria-selected="true"><span class="ic">◎</span>Strategist View</button>
+    <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
+    <div class="nav-group">Macro</div>
+    <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
+    <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
+    <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia &amp; Singapore</button>
+    <button role="tab" data-tab="cnjp" aria-selected="false"><span class="ic">◑</span>China &amp; Japan</button>
+    <div class="nav-group">Markets</div>
+    <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
+    <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
+    <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
+    <div class="nav-group">Themes</div>
+    <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
+  </nav>
+  <div class="side-foot">
+    <span id="asof" class="muted small">Loading data…</span>
     <span id="status" class="status-pill" hidden></span>
     <button id="themeBtn" class="ghost" type="button" aria-label="Toggle dark mode">◐ Theme</button>
   </div>
-</header>
+</aside>
 
-<nav class="tabs" role="tablist">
-  <button role="tab" data-tab="overview" aria-selected="true">Strategist View</button>
-  <button role="tab" data-tab="news" aria-selected="false">News</button>
-  <button role="tab" data-tab="liquidity" aria-selected="false">Liquidity</button>
-  <button role="tab" data-tab="regime" aria-selected="false">Regime</button>
-  <button role="tab" data-tab="fixed" aria-selected="false">Fixed Income</button>
-  <button role="tab" data-tab="asia" aria-selected="false">Asia &amp; Singapore</button>
-  <button role="tab" data-tab="cnjp" aria-selected="false">China &amp; Japan</button>
-  <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
-  <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
-</nav>
-
+<div class="content">
+<div class="page-head"><h1 id="pageTitle">Strategist View</h1></div>
 <section class="filters" aria-label="Date range">
   <span class="muted small">All charts</span>
   <div class="presets" id="presets">
@@ -66,6 +77,7 @@
 
   <section id="tab-regime" class="tab-panel" hidden>
     <div class="kpis" id="regKpis"></div>
+    <details class="card method" id="regMethod"></details>
     <div class="regime-now" id="regNow"></div>
     <div class="grid" id="regGrid"></div>
   </section>
@@ -82,6 +94,11 @@
   <section id="tab-cnjp" class="tab-panel" hidden>
     <div class="kpis" id="cnjpKpis"></div>
     <div class="grid" id="cnjpGrid"></div>
+  </section>
+
+  <section id="tab-ai" class="tab-panel" hidden>
+    <div class="kpis" id="aiKpis"></div>
+    <div class="grid" id="aiGrid"></div>
   </section>
 
   <section id="tab-markets" class="tab-panel" hidden>
@@ -126,8 +143,11 @@
 </main>
 
 <footer class="muted small">
-  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, OECD, Bank of Japan, e-Stat, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
+  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, OECD, Bank of Japan, e-Stat, OpenRouter, Epoch AI, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
 </footer>
+
+</div><!-- /content -->
+</div><!-- /app -->
 
 <script src="vendor/echarts.min.js"></script>
 <script src="app.js"></script>

@@ -135,7 +135,7 @@ function makeCard(parent, o) {
   c.emptyEl = el('div', { class: 'empty', hidden: true });
   c.noteEl = el('p', { class: 'note', hidden: true });
   c.srcEl = el('p', { class: 'src' });
-  c.range = null;   // null = follow the top date bar
+  c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = follow the top date bar
   c.rangeEl = o.range === false ? null : buildCardRange(c);
   c.root = el('div', { class: 'card' + (o.wide ? ' wide' : '') + (o.tall ? ' tall' : '') },
     el('div', { class: 'card-head' }, el('div', {}, c.titleEl, c.subEl), tools),
@@ -802,7 +802,7 @@ function buildOverview() {
   for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "m2": "Federal Reserve via FRED (M2SL); YoY calculated", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
-function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread']) if (cards[k]) pairToggle(cards[k]); }
+function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
@@ -820,7 +820,7 @@ const qColor = q => tok(QUADS[q].tok);
 const monthLab = t => { const d = new Date(t); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 const zf = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 2);
 const REG_ASSETS = ['SPX', 'NDX', 'RTY', 'XLK', 'XLF', 'XLE', 'VNQ', 'SX5E', 'NKY', 'EEM', 'AAXJ', 'STI', 'TLT', 'IEF', 'LQD', 'HYG', 'EMB', 'GOLD', 'BRENT', 'COPPER', 'DXY', 'USDJPY', 'BTC'];
-state.regLag = 'lag'; state.regSpan = 'full'; state.regAsset = 'SPX';
+state.regLag = 'lag'; state.regSpan = 'long'; state.regAsset = 'SPX';
 
 function regimeRuns(from, to) {   // consecutive months in the same regime -> [start, end, quad]
   const q = S.REG_QUAD, runs = [];
@@ -855,11 +855,12 @@ function regimeKpis() {
   const tile = (label, valueNode, delta, asofTxt) => box.append(el('div', { class: 'kpi' },
     el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value' }, valueNode),
     el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: asofTxt })));
-  tile('Current regime', el('span', {}, el('span', { class: 'qdot', style: `background:${qColor(q.v)}` }), QUADS[q.v].name),
+  tile('Confirmed regime', el('span', {}, el('span', { class: 'qdot', style: `background:${qColor(q.v)}` }), QUADS[q.v].name),
     `${q.i - k + 1} month${q.i - k ? 's' : ''} in a row` + (prev ? ` · from ${QUADS[prev].name}` : ''), `data month ${monthLab(q.t)}`);
   const gm = asOf(S.REG_GM, state.to), im = asOf(S.REG_IM, state.to);
   tile('Growth momentum', el('span', { text: zf(gm.v) }), gm.v >= 0 ? 'accelerating' : 'decelerating', `z-score change · ${monthLab(gm.t)}`);
   tile('Inflation momentum', el('span', { text: zf(im.v) }), im.v >= 0 ? 'accelerating' : 'decelerating', `z-score change · ${monthLab(im.t)}`);
+  regimeSignalTiles(box);
   const simple = (id, label, fmt, desc) => {
     if (!has(id)) return;
     const a = asOf(S[id], state.to); if (!a) return;
@@ -951,7 +952,9 @@ function renderRegimeTable(c) {
   const cur = asOf(q, state.to);
   const rows = [], counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
   let counted = false;
-  for (const id of REG_ASSETS.filter(x => has(x))) {
+  const assetList = (state.regSpan === 'long' ? REG_LONG : REG_ASSETS).filter(x => has(x));
+  setSource(c, state.regSpan === 'long' ? 'Regimes: dashboard calculation from FRED; returns: Yahoo Finance (^GSPC, DX-Y.NYB, ^SPGSCI) and FRED (GS10, TB3MS, WTISPLC), monthly' : 'Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)');
+  for (const id of assetList) {
     const s = S[id], me = monthEnds(s), keys = [...me.keys()].sort((a, b) => a - b);
     const acc = { 1: [], 2: [], 3: [], 4: [] };
     for (let i = 1; i < keys.length; i++) {
@@ -959,7 +962,7 @@ function renderRegimeTable(c) {
       const rq = qMap.get(addMonths(mk, -lag)); if (!rq) continue;
       acc[rq].push(me.get(keys[i]) / me.get(keys[i - 1]) - 1);
     }
-    if (!counted && id === 'SPX') { for (const n of [1, 2, 3, 4]) counts[n] = acc[n].length; counted = true; }
+    if (!counted && id === assetList[0]) { for (const n of [1, 2, 3, 4]) counts[n] = acc[n].length; counted = true; }
     const row = { id, s };
     for (const n of [1, 2, 3, 4]) {
       const xs = acc[n];
@@ -991,30 +994,172 @@ function renderRegimeTable(c) {
     ...rows.map(r => [r.s.label, ...[1, 2, 3, 4].flatMap(n => r[n] ? [r[n].ann.toFixed(2), r[n].hit.toFixed(0), r[n].n] : ['', '', ''])])];
   setNote(c, (lag ? 'Investable: each month’s return is matched to the regime from 2 months earlier, the latest one published by then. ' :
     'Same month: each month’s return is matched to that month’s regime, which is only known with hindsight. ') +
-    'Average monthly return ×12, then the share of months it was up. ' + (state.regSpan === 'full' ? 'Uses all history since 2005, ignoring the date bar.' : `Months in ${rangeLabel()} only.`));
+    'Average monthly return ×12, then the share of months it was up. ' + (state.regSpan === 'long' ? 'Long history: assets with data back to the 1960s–80s (S&P 500 is price only; the 10Y Treasury is an approximate total return built from yields; commodities start 1984). Ignores the date bar.' : state.regSpan === 'etf' ? 'ETFs and indices since 2005, ignoring the date bar.' : `Months in ${rangeLabel()} only.`));
 }
+// ---- regime robustness, methodology and leading indicators
+const REG_METHODS = [['REG_QUAD', 'Live model: 6m momentum, all-history z, confirmed 2 months'], ['REG_Q_A', 'Same, before confirmation'],
+  ['REG_Q_B', '6m momentum, 10-year rolling z'], ['REG_Q_C', '3m momentum, all-history z'], ['REG_Q_D', '6m momentum, sign vote (no scaling)'],
+  ['REG_Q_OLD', 'Previous model: 3m momentum, 10-year rolling z']];
+const REG_LONG = ['LH_SPX', 'LH_UST10', 'LH_CASH', 'LH_GSCI', 'LH_OIL', 'LH_USD'];
+function strengthLabel(x) { return x == null ? 'n/a' : x >= 1 ? 'strong' : x >= 0.5 ? 'moderate' : 'weak'; }
+function methodStats(id, from) {
+  const s = S[id], base = S.REG_QUAD; if (!s || !base) return null;
+  const bm = new Map(base.t.map((t, i) => [t, base.v[i]]));
+  let n = 0, same = 0, changes = 0, prev = null;
+  for (let i = 0; i < s.t.length; i++) {
+    if (s.t[i] < from) continue;
+    n++; if (bm.get(s.t[i]) === s.v[i]) same++;
+    if (prev != null && s.v[i] !== prev) changes++; prev = s.v[i];
+  }
+  const cur = asOf(s, state.to);
+  return { n, agree: n ? same / n * 100 : null, changes, spell: changes ? n / (changes + 1) : n, cur: cur && cur.v };
+}
+function renderMethodPanel() {
+  const d = $('#regMethod'); d.replaceChildren();
+  d.append(el('summary', { text: 'How this regime model works, what the research says, and its limits' }));
+  const b = el('div', { class: 'body' });
+  const P = t => el('p', { text: t }), H = t => el('h4', { text: t });
+  b.append(H('What it measures'),
+    P('Two questions: is US growth speeding up or slowing down, and is inflation rising or falling? Each answer is up or down, giving four regimes: Goldilocks (growth up, inflation down), Overheat (both up), Stagflation (growth down, inflation up) and Slowdown (both down). The grid is a framework, not something discovered in the data: growth drives company earnings and inflation drives interest rates, the two main forces on asset prices.'),
+    H('How it is built'),
+    P('Growth inputs: Chicago Fed activity index, industrial production, payrolls, real retail sales and jobless claims (inverted). Inflation inputs: headline CPI, core CPI (year-on-year and 3-month annualised) and core PCE. Each input is compared with all of its own history up to that month (expanding window, so the 1970s are never forgotten), averaged into a growth and an inflation composite, and the direction is the change in the 3-month average over 6 months. A new regime is only declared after two consecutive months agree. Inputs start in 1959, so regimes run from the early 1970s.'),
+    H('Research behind it'),
+    P('Merrill Lynch “Investment Clock” (Greetham & Hartnett, 2004; US data from 1973): bonds lead when growth and inflation fall, equities in recoveries, commodities when the economy overheats, cash in stagflation. Bridgewater “All Weather”: the same four environments, measured against expectations, used to balance risk. Ilmanen, Maloney & Ross (2014, Journal of Portfolio Management; 1972–2013): equities prefer high growth and low inflation, government bonds low growth and low inflation, commodities high inflation. Neville, Harvey, Van Hemert et al. (2021, Man Group/Duke; 1926–2020): equities and bonds both struggle when inflation is high; commodities and trend-following did best. Kritzman, Page & Turkington (2012, Financial Analysts Journal) show a statistical alternative: regimes found by a regime-switching model rather than a fixed grid.'),
+    H('Robustness: does the construction change the answer?'));
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, el('th', { text: 'Construction' }), el('th', { text: 'Same regime as live, since 1972' }),
+    el('th', { text: 'Since 2005' }), el('th', { text: 'Avg regime length' }), el('th', { text: 'Reading now' }))));
+  const tb = el('tbody');
+  for (const [id, lab] of REG_METHODS) {
+    const a = methodStats(id, Date.UTC(1972, 0, 1)), r = methodStats(id, Date.UTC(2005, 0, 1)); if (!a) continue;
+    tb.append(el('tr', { class: 'row' }, el('td', { text: lab }), el('td', { text: id === 'REG_QUAD' ? '—' : fmtNum(a.agree, 0) + '%' }),
+      el('td', { text: id === 'REG_QUAD' ? '—' : fmtNum(r.agree, 0) + '%' }), el('td', { text: fmtNum(a.spell, 1) + ' months' }),
+      el('td', { text: a.cur ? QUADS[a.cur].name : '–' })));
+  }
+  tbl.append(tb); b.append(tbl);
+  b.append(H('Limits to keep in mind'),
+    P('1) Publication lag: most inputs arrive 2–6 weeks after month end, so use the “Investable” view of the returns table, which matches each month’s return to the regime known at the time. 2) Revisions: the model uses today’s revised data, not what was known then, so history looks cleaner than it was live. 3) Small samples: each regime has only a few dozen episodes since 1972, and individual cells in the returns table can flip sign with small changes in construction; treat them as tendencies. 4) Only the US: other economies can be in different regimes. 5) A label hides intensity: check “Signal strength” and how many constructions agree before leaning on it.'));
+  d.append(b);
+}
+function regimeSignalTiles(box) {
+  const tile = (label, valueNode, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
+    el('div', { class: 'k-value' }, valueNode), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (has('REG_Q_A')) {
+    const raw = asOf(S.REG_Q_A, state.to), conf = asOf(S.REG_QUAD, state.to), ag = has('REG_AGREE') ? asOf(S.REG_AGREE, state.to) : null;
+    const pending = raw && conf && raw.v !== conf.v;
+    tile('Latest signal', el('span', {}, el('span', { class: 'qdot', style: `background:${qColor(raw.v)}` }), QUADS[raw.v].name),
+      pending ? 'pending: needs a second month to confirm' : 'confirmed', ag ? `${ag.v} of 4 constructions agree` : '');
+  }
+  if (has('REG_STRENGTH')) { const s = asOf(S.REG_STRENGTH, state.to);
+    tile('Signal strength', el('span', { text: strengthLabel(s.v) }), `${fmtNum(s.v, 2)}× a typical move (weaker of the two signals)`, monthLab(s.t)); }
+  if (has('REG_G')) { const g = asOf(S.REG_G, state.to);
+    tile('Growth level', el('span', { text: g.v >= 0 ? 'above trend' : 'below trend' }), `composite ${zf(g.v)} vs its history`, monthLab(g.t)); }
+}
+function renderLEI(c) {
+  if (!has('LEI_6M', 'LEI_DIFF')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
+  const a = pts(S.LEI_6M, state.from, state.to), d = pts(S.LEI_DIFF, state.from, state.to);
+  drawPair(c, { name: 'Leading index, 6m change annualised', data: a }, { name: 'Diffusion: % of components rising', data: d },
+    { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true });
+  const la = asOf(S.LEI_6M, state.to), ld = asOf(S.LEI_DIFF, state.to);
+  const warn = la && ld && la.v <= -4.3 && ld.v <= 50;
+  setNote(c, `Built like the Conference Board's Leading Economic Index, using free stand-ins for its components. Recession warning (the Conference Board's "3Ds" rule): 6-month change below −4.3% annualised and half or fewer components rising. Now: ${la ? sign(la.v) + fmtNum(Math.abs(la.v), 1) + '%' : 'n/a'}, ${ld ? fmtNum(ld.v, 0) + '% rising' : ''} → ${warn ? '⚠ warning ON' : 'no warning'}.`);
+  setSource(c, S.LEI_6M.source || 'Dashboard calculation from FRED');
+}
+function renderLEIDrivers(c) {
+  const ids = Object.keys(S).filter(k => k.startsWith('LEIC_'));
+  if (!ids.length) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
+  const rows = ids.map(id => { const a = asOf(S[id], state.to); return a && { id, v: a.v, t: a.t }; }).filter(Boolean).sort((x, y) => x.v - y.v);
+  c.subEl.textContent = `Contribution of each component to the index over the 6 months to ${rows.length ? monthLab(rows[0].t) : ''} (weighted, points). Positive = pointing to stronger growth.`;
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 50, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${sign(p.value)}${fmtNum(Math.abs(p.value), 2)}</b> <span style="color:${tok('--ink-2')}">${esc(S[rows[p.dataIndex].id].label)}</span>` };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', data: rows.map(r => S[r.id].label), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(3), itemStyle: { color: r.v >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => sign(p.value) + fmtNum(Math.abs(p.value), 2) } }];
+  inst(c).setOption(o, true);
+  c.csv = [['Component', '6m contribution'], ...rows.map(r => [S[r.id].label, r.v.toFixed(3)])];
+  setSource(c, S[ids[0]].source || '');
+}
+function laggedCorr(lead, follow, maxLag = 12) {   // monthly: corr(lead_t, follow_{t+k}) for k = 0..maxLag
+  const fm = new Map(follow.t.map((t, i) => [t, follow.v[i]]));
+  const res = [];
+  for (let k = 0; k <= maxLag; k++) {
+    const a = [], b = [];
+    for (let i = 0; i < lead.t.length; i++) { const t2 = addMonths(lead.t[i], k); if (fm.has(t2)) { a.push(lead.v[i]); b.push(fm.get(t2)); } }
+    res.push([k, pearson(a, b)]);
+  }
+  return res;
+}
+function renderLeadLag(c) {
+  if (!has('LEI_6M', 'REG_GM')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
+  drawPair(c, { name: 'Leading index, 6m annualised', data: pts(S.LEI_6M, state.from, state.to) }, { name: 'Growth momentum (regime model)', data: pts(S.REG_GM, state.from, state.to) },
+    { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => zf(v), axisA: v => fmtNum(v, 0) + '%', axisB: v => v.toFixed(1), zeroA: true, zeroB: true });
+  const cc = laggedCorr(S.LEI_6M, S.REG_GM).filter(x => x[1] != null), best = cc.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]);
+  setNote(c, `Does the leading index turn before the regime's growth signal? Correlation of the leading index with growth momentum k months later: ${cc.filter(x => [0, 3, 6, 9, 12].includes(x[0])).map(x => `${x[0]}m ${fmtNum(x[1], 2)}`).join(' · ')}. Strongest at ${best[0]} months. Caution: scanning many lags always finds a best one; treat the lead as a tendency, not a forecast.`);
+  setSource(c, 'Dashboard calculations from FRED and Yahoo Finance');
+}
+function ratioSeries(numIds, denIds) {   // equal-weight ratio of baskets, daily
+  if (![...numIds, ...denIds].every(id => has(id))) return null;
+  const base = S[numIds[0]], t = [], v = [];
+  const b0 = Object.fromEntries([...numIds, ...denIds].map(id => [id, null]));
+  for (let i = 0; i < base.t.length; i++) {
+    const x = base.t[i]; const vals = {};
+    let ok = true; for (const id of [...numIds, ...denIds]) { const a = asOf(S[id], x); if (!a || x - a.t > 5 * DAY) { ok = false; break; } vals[id] = a.v; }
+    if (!ok) continue;
+    for (const id in vals) if (b0[id] == null) b0[id] = vals[id];
+    const num = numIds.reduce((m, id) => m + vals[id] / b0[id], 0) / numIds.length, den = denIds.reduce((m, id) => m + vals[id] / b0[id], 0) / denIds.length;
+    t.push(x); v.push(num / den);
+  }
+  return { t, v, kind: 'price' };
+}
+function renderCopperGold(c) {
+  if (!has('COPPER', 'GOLD', 'UST10Y')) return setEmpty(c, 'Waiting for data.');
+  const r = combine(S.COPPER, S.GOLD, (a, b) => a / b * 1000, {}, 5 * DAY);
+  drawPair(c, { name: 'Copper / gold ratio (×1000)', data: pts(r, state.from, state.to) }, { name: 'UST 10Y yield', data: pts(S.UST10Y, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 3), fmtB: v => fmtNum(v, 2) + '%', axisA: v => fmtNum(v, 2), axisB: v => fmtNum(v, 1) + '%' });
+  setNote(c, 'Copper (industrial demand) relative to gold (safety) is a market-based read on growth; it has historically tracked the 10Y yield. A rising ratio with flat yields hints yields may follow, and vice versa.');
+  setSource(c, srcOf(['COPPER', 'GOLD', 'UST10Y']) + '; ratio calculated');
+}
+function renderCycDef(c) {
+  const r = ratioSeries(['XLY', 'XLI'], ['XLP', 'XLU']);
+  if (!r || !has('SPX')) return setEmpty(c, 'Waiting for sector data (next daily run).');
+  const p = pts(r, state.from, state.to); const b = p.length ? p[0][1] : 1;
+  drawPair(c, { name: 'Cyclicals / defensives (= 100 at start)', data: p.map(([t, v]) => [t, v / b * 100]) }, { name: 'S&P 500', data: pts(S.SPX, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1), fmtB: v => fmtNum(v, 0), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  setNote(c, 'Equal-weight consumer discretionary and industrials versus consumer staples and utilities. Investors rotate into cyclicals when they expect growth to improve, so this ratio often turns before the economic data.');
+  setSource(c, srcOf(['XLY', 'XLI', 'XLP', 'XLU', 'SPX']) + '; ratio calculated');
+}
+
 function buildRegime() {
   const g = $('#regGrid');
   makeCard(g, { key: 'quad', title: 'Growth × inflation quadrant', tall: true, source: 'FRED; growth and inflation composites', render: renderQuadPath });
-  makeCard(g, { key: 'comp_gi', title: 'Growth and inflation composites', sub: 'Average z-score of the inputs below, each against its own last 10 years. 0 = normal.', source: 'FRED',
+  makeCard(g, { key: 'comp_gi', title: 'Growth and inflation composites', sub: 'Average z-score of the inputs below, each against all of its own history up to that month. 0 = normal.', source: 'FRED',
     render: c => { if (!has('REG_G', 'REG_I')) return setEmpty(c, NO_FRED);
       drawLines(c, [{ name: 'Growth', data: pts(S.REG_G, state.from, state.to), color: col(0) }, { name: 'Inflation', data: pts(S.REG_I, state.from, state.to), color: col(1) }],
         { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, areas: recessionAreas(state.from, state.to) }); } });
-  makeCard(g, { key: 'cli', title: 'Global leading indicators', wide: true, sub: 'OECD composite leading indicators: they turn 6–9 months before activity. 100 = long-term trend.', render: renderCLI });
   const hist = makeCard(g, { key: 'reghist', title: 'Regime history', wide: true, tall: true, source: 'FRED, Yahoo Finance',
     seg: { key: 'regAsset', options: [['SPX', 'S&P 500'], ['NDX', 'Nasdaq'], ['TLT', 'Long UST'], ['GOLD', 'Gold'], ['COPPER', 'Copper'], ['DXY', 'USD']] }, render: renderRegimeHistory });
   makeCard(g, { key: 'regtable', range: false, title: 'What worked in each regime', wide: true, source: 'FRED, Yahoo Finance',
     sub: 'Annualised average monthly return by regime (local currency; ETFs include dividends). Hover a cell for details.',
     seg: { key: 'regLag', options: [['lag', 'Investable'], ['same', 'Same month']] }, render: renderRegimeTable });
   const t = cards.regtable, seg2 = el('div', { class: 'seg', role: 'group' });
-  for (const [val, lab] of [['full', 'Since 2005'], ['range', 'Date bar']]) {
+  for (const [val, lab] of [['long', 'Since 1970s'], ['etf', 'Since 2005'], ['range', 'Date bar']]) {
     const b = el('button', { type: 'button', text: lab, class: state.regSpan === val ? 'on' : '' });
     b.addEventListener('click', () => { state.regSpan = val; seg2.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); t.render(); });
     seg2.append(b);
   }
   t.root.querySelector('.card-tools').prepend(seg2);
   t.root.querySelector('[title^="Focus"]').hidden = true; t.root.querySelector('[title^="Download chart as"]').hidden = true;
-  const zcard = (key, title, prefix) => makeCard(g, { key, title, source: 'FRED', sub: 'z-scores against each input’s own last 10 years (capped at ±3). Grey = US recession.',
+  g.append(el('h3', { class: 'section', text: 'Leading indicators: where growth is heading' }));
+  makeCard(g, { key: 'lei', title: 'DIY leading index', wide: true, sub: 'US leading index built with the Conference Board method from free data: 6-month change and the share of components rising.', render: renderLEI });
+  makeCard(g, { key: 'leidrv', title: 'What is driving the leading index', range: false, render: renderLEIDrivers });
+  makeCard(g, { key: 'leadlag', title: 'Leading index vs regime growth signal', render: renderLeadLag });
+  makeCard(g, { key: 'cli', title: 'OECD leading indicators', wide: true, sub: 'Composite leading indicators for six economies: they tend to turn 6–9 months before activity. 100 = long-term trend.', render: renderCLI });
+  makeCard(g, { key: 'cugold', title: 'Copper / gold ratio vs UST 10Y', render: renderCopperGold });
+  makeCard(g, { key: 'cycdef', title: 'Cyclicals vs defensives', render: renderCycDef });
+  g.append(el('h3', { class: 'section', text: 'Regime inputs and recession watch' }));
+  const zcard = (key, title, prefix) => makeCard(g, { key, title, source: 'FRED', sub: 'z-scores against each input’s full history up to that month (capped at ±3). Grey = US recession.',
     render: c => { const ids = Object.keys(S).filter(k => k.startsWith(prefix)); if (!ids.length) return setEmpty(c, NO_FRED);
       drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
         { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, endLabels: false, areas: recessionAreas(state.from, state.to) }); } });
@@ -1042,7 +1187,8 @@ function buildRegime() {
 }
 function renderRegime() {
   regimeKpis();
-  ['quad', 'comp_gi', 'cli', 'reghist', 'regtable', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
+  renderMethodPanel();
+  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ FIXED INCOME
@@ -1460,9 +1606,150 @@ function renderCLI(c) {
   setNote(c, `Above 100 = growth above trend; the direction matters more than the level (rising = expanding momentum). Rising over the last 3 months: ${rising.length ? rising.map(id => S[id].label.replace(' leading indicator', '')).join(', ') : 'none'}.`);
 }
 
+// ------------------------------------------------------------------ AI
+let AI = null;
+const AI_BASKET = ['NVDA', 'AVGO', 'TSM', 'AMD', 'MSFT', 'GOOGL', 'AMZN', 'META'];
+const fmtTok = v => v >= 1e12 ? fmtNum(v / 1e12, 1) + 'T' : v >= 1e9 ? fmtNum(v / 1e9, 1) + 'B' : fmtNum(v / 1e6, 1) + 'M';
+const usd = v => v >= 1e9 ? '$' + fmtNum(v / 1e9, v >= 1e10 ? 0 : 1) + 'bn' : '$' + fmtNum(v / 1e6, 0) + 'm';
+const OR_SRC = 'OpenRouter rankings (openrouter.ai/rankings) and models API; benchmark scores from Artificial Analysis as shown on OpenRouter';
+const EPOCH_SRC = 'Epoch AI data (epoch.ai/data, CC BY 4.0)';
+function hbar(c, rows, { valFmt, label, color }) {
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 70, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${esc(valFmt(r.v))}</b> <span style="color:${tok('--ink-2')}">${esc(r.name)}</span>` + (r.tip ? `<br><span style="color:${tok('--ink-2')}">${esc(r.tip)}</span>` : ''); } };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => valFmt(v) }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11, width: 190, overflow: 'truncate' }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '62%', data: rows.map(r => ({ value: r.v, itemStyle: { color: color || tok('--s1'), borderRadius: [0, 4, 4, 0] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => valFmt(p.value) } }];
+  c.chartEl.style.height = Math.max(260, rows.length * 24 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [[label, 'Value'], ...rows.map(r => [r.name, r.v])];
+}
+function aiKpis() {
+  const box = $('#aiKpis'); box.replaceChildren();
+  const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  const o = AI && AI.openrouter, h = o && o.history;
+  if (o && o.week && o.week.length) {
+    const tot = o.week.reduce((a, r) => a + r.tokens, 0);
+    const n = h ? h.top20_weekly_tokens.length : 0, prev = n > 7 ? h.top20_weekly_tokens[n - 8] : null;
+    tile('OpenRouter weekly tokens', fmtTok(tot), prev ? `vs a week earlier ${sign(tot / prev - 1)}${fmtNum(Math.abs(tot / prev - 1) * 100, 0)}%` : 'top 20 models; history builds daily', 'week to ' + o.week_date);
+    const wp = h && h.usage_weighted_input_price[n - 1]; if (wp != null) tile('Avg price paid, input', '$' + fmtNum(wp, 3) + '/M tokens', 'usage-weighted, top 20 models', 'OpenRouter');
+    const cp = h && h.request_weighted_cost_per_request_cents[n - 1]; if (cp != null) tile('Avg cost per request', fmtNum(cp, 2) + '¢', 'request-weighted, top 20 models', 'OpenRouter');
+    const fr = (o.scatter || []).slice().sort((a, b) => b.intel - a.intel)[0];
+    if (fr) tile('Frontier model (intelligence)', fmtNum(fr.intel, 1), fr.name, 'Artificial Analysis index');
+    const near = h && h.cheapest_near_frontier_price[n - 1]; if (near != null) tile('Cheapest near-frontier', '$' + fmtNum(near, 2) + '/M', 'input price, within 5 pts of the top score', 'OpenRouter');
+  }
+  const ids = AI_BASKET.filter(id => has(id));
+  if (ids.length && has('SPX')) {
+    const ytd = id => { const s = S[id], a = asOf(s, state.to), b = asOf(s, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)); return b ? a.v / b.v - 1 : null; };
+    const avg = ids.map(ytd).filter(x => x != null); const bk = avg.reduce((a, b) => a + b, 0) / avg.length, sp = ytd('SPX');
+    tile('AI equity basket, YTD', sign(bk) + fmtNum(Math.abs(bk) * 100, 1) + '%', `S&P 500 ${sign(sp)}${fmtNum(Math.abs(sp) * 100, 1)}%`, 'equal-weight, 8 stocks');
+  }
+}
+function renderAiUsage(c) {
+  const o = AI && AI.openrouter; if (!o || !o.week || !o.week.length) return setEmpty(c, 'Waiting for OpenRouter data (next daily run).');
+  c.subEl.textContent = `Tokens processed through OpenRouter in the week to ${o.week_date}, top 20 models. OpenRouter is one marketplace (mostly developers and apps), not the whole AI market.`;
+  hbar(c, o.week.map(r => ({ name: r.name, v: r.tokens, tip: `${r.org} · input $${r.price_in != null ? fmtNum(r.price_in, 3) : '–'}/M · ${r.cpr_cents != null ? fmtNum(r.cpr_cents, 2) + '¢ per request' : ''}` })), { valFmt: fmtTok, label: 'Model' });
+  setSource(c, OR_SRC);
+}
+function renderAiShare(c) {
+  const o = AI && AI.openrouter; if (!o || !o.week || !o.week.length) return setEmpty(c, 'Waiting for OpenRouter data.');
+  const by = {}; let tot = 0; for (const r of o.week) { by[r.org] = (by[r.org] || 0) + r.tokens; tot += r.tokens; }
+  const rows = Object.entries(by).map(([k, v]) => ({ name: k, v: v / tot * 100 })).sort((a, b) => b.v - a.v);
+  c.subEl.textContent = `Share of top-20 model tokens by model maker, week to ${o.week_date}.`;
+  hbar(c, rows, { valFmt: v => fmtNum(v, 1) + '%', label: 'Model maker', color: tok('--s2') });
+  setSource(c, OR_SRC);
+}
+function renderAiHistory(c) {
+  const h = AI && AI.openrouter && AI.openrouter.history;
+  if (!h || !h.date || h.date.length < 2) return setEmpty(c, `OpenRouter only publishes the current week, so this dashboard archives a snapshot every day. The history line starts ${h && h.date ? h.date[0] : 'with the first run'} and fills in over the coming weeks.`);
+  const t = h.date.map(d => Date.parse(d));
+  drawPair(c, { name: 'Weekly tokens, top 20 models', data: t.map((x, i) => [x, h.top20_weekly_tokens[i]]) }, { name: 'Usage-weighted input price ($/M)', data: t.map((x, i) => [x, h.usage_weighted_input_price[i]]) },
+    { fmtA: fmtTok, fmtB: v => '$' + fmtNum(v, 3), axisA: fmtTok, axisB: v => '$' + fmtNum(v, 2) });
+  setSource(c, OR_SRC + '; archived daily by this dashboard');
+}
+function renderAiFrontier(c) {
+  const o = AI && AI.openrouter; if (!o || !o.scatter || !o.scatter.length) return setEmpty(c, 'Waiting for OpenRouter data.');
+  const pts_ = o.scatter.filter(x => x.wprice > 0);
+  // Pareto frontier: best score at or below each price
+  const sorted = pts_.slice().sort((a, b) => a.wprice - b.wprice); let best = -1; const pareto = new Set();
+  for (const p of sorted) if (p.intel > best) { best = p.intel; pareto.add(p.slug); }
+  const o2 = baseOpt(); o2.legend.show = false;
+  o2.grid = { left: 8, right: 24, top: 14, bottom: 30, containLabel: true };
+  o2.tooltip = { ...o2.tooltip, trigger: 'item', formatter: p => { const d = pts_[p.dataIndex]; return `<b>${esc(d.name)}</b><br>Intelligence ${fmtNum(d.intel, 1)} · $${fmtNum(d.wprice, 3)}/M input` + (d.cpr_cents != null ? ` · ${fmtNum(d.cpr_cents, 2)}¢/request` : ''); } };
+  o2.xAxis = { type: 'log', name: 'usage-weighted input price, $ per million tokens (log scale)', nameLocation: 'middle', nameGap: 28, nameTextStyle: { color: tok('--muted'), fontSize: 11 },
+    axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => '$' + v }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o2.yAxis = valAxis(v => fmtNum(v, 0), { name: 'intelligence index', nameTextStyle: { color: tok('--muted'), fontSize: 11 } });
+  o2.series = [{ type: 'scatter', data: pts_.map(d => ({ value: [d.wprice, d.intel], symbolSize: pareto.has(d.slug) ? 11 : 8,
+      itemStyle: { color: pareto.has(d.slug) ? tok('--s1') : hexA(tok('--s1'), 0.35), borderColor: tok('--surface'), borderWidth: 1.5 },
+      label: { show: pareto.has(d.slug), formatter: d.name.split(': ').pop().slice(0, 22), position: 'right', fontSize: 10, color: tok('--ink-2') } })) },
+    { type: 'line', step: 'end', data: sorted.filter(p => pareto.has(p.slug)).map(p => [p.wprice, p.intel]), showSymbol: false, lineStyle: { color: tok('--s1'), width: 1, type: 'dashed' }, silent: true }];
+  c.chartEl.style.height = '420px';
+  const ch = inst(c); ch.resize(); ch.setOption(o2, true);
+  c.csv = [['Model', 'Intelligence', 'Input $/M (usage-weighted)', 'Cost per request (¢)'], ...pts_.map(d => [d.name, d.intel, d.wprice, d.cpr_cents ?? ''])];
+  setNote(c, 'Each dot is a model. Highlighted dots form the price/performance frontier: the most capable model at or below each price. Moving down and right over time = AI getting cheaper for the same capability.');
+  setSource(c, OR_SRC);
+}
+function renderAiCost(c) {
+  const o = AI && AI.openrouter; if (!o || !o.week) return setEmpty(c, 'Waiting for OpenRouter data.');
+  const rows = o.week.filter(r => r.cpr_cents != null).slice(0, 15).map(r => ({ name: r.name, v: r.cpr_cents, tip: `${fmtTok(r.tokens)} tokens this week` })).sort((a, b) => b.v - a.v);
+  c.subEl.textContent = 'Average cost of one request (a "task" sent to the model) for the most-used models, US cents. Reflects both price per token and how much each request uses.';
+  hbar(c, rows, { valFmt: v => fmtNum(v, 2) + '¢', label: 'Model', color: tok('--s3') });
+  setNote(c, 'OpenRouter publishes this figure without a unit; it is consistent with US cents (e.g. GPT-4, with an 8k-token limit, shows 1.38, i.e. about 460 tokens at $30/M).');
+  setSource(c, OR_SRC);
+}
+function epochLines(c, obj, { fmt, axisFmt, log = false, dashed = {} }) {
+  const names = Object.keys(obj || {}); if (!names.length) return setEmpty(c, 'Waiting for Epoch AI data.');
+  const list = names.map((n, i) => ({ name: n, data: obj[n].map(([d, v]) => [Date.parse(d), v]).filter(p => p[0] >= state.from && p[0] <= state.to), color: col(i),
+    extra: dashed[n] ? { lineStyle: { width: 2, type: 'dashed', color: col(i) } } : { showSymbol: true, symbolSize: 5 } })).filter(l => l.data.length);
+  drawLines(c, list, { fmt, axisFmt, endLabels: list.length <= 4, yExtra: log ? { type: 'log' } : {} });
+}
+function buildAI() {
+  const g = $('#aiGrid');
+  g.append(el('h3', { class: 'section', text: 'Adoption: who is using what (OpenRouter)' }));
+  makeCard(g, { key: 'ai_usage', title: 'Most-used models this week', range: false, render: renderAiUsage });
+  makeCard(g, { key: 'ai_share', title: 'Share by model maker', range: false, render: renderAiShare });
+  makeCard(g, { key: 'ai_hist', title: 'Token volume and price paid over time', wide: true, render: renderAiHistory });
+  g.append(el('h3', { class: 'section', text: 'Prices and cost per task' }));
+  makeCard(g, { key: 'ai_frontier', title: 'Price vs capability', range: false, render: renderAiFrontier });
+  makeCard(g, { key: 'ai_cpr', title: 'Cost per request', range: false, render: renderAiCost });
+  g.append(el('h3', { class: 'section', text: 'Capability, revenue and build-out (Epoch AI)' }));
+  makeCard(g, { key: 'ai_bench', title: 'Frontier capability over time', defaultRange: '5Y', sub: 'Best score to date on two hard benchmarks: GPQA Diamond (PhD-level science questions) and SWE-bench Verified (real software engineering tasks), %.',
+    render: c => { const e = AI && AI.epoch; if (!e) return setEmpty(c, 'Waiting for Epoch AI data.');
+      const step = a => (a || []).map(([d, v]) => [Date.parse(d), v]).filter(p => p[0] >= state.from && p[0] <= state.to);
+      drawLines(c, [{ name: 'GPQA Diamond', data: step(e.gpqa), extra: { step: 'end' } }, { name: 'SWE-bench Verified', data: step(e.swe), extra: { step: 'end' } }],
+        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => v + '%', yExtra: { max: 100 } });
+      const lg = (e.gpqa || []).slice(-1)[0]; setNote(c, lg ? `Latest GPQA record: ${lg[1]}% by ${lg[2]} (${lg[3]}, ${lg[0]}).` : ''); setSource(c, EPOCH_SRC + ': benchmark_data'); } });
+  makeCard(g, { key: 'ai_rev', title: 'AI lab revenue (annualised run rate)', defaultRange: '5Y', sub: 'Reported annualised revenue, USD, log scale. Points are individual reports collected by Epoch AI.',
+    render: c => { epochLines(c, AI && AI.epoch && AI.epoch.revenue, { fmt: usd, axisFmt: usd, log: true }); setSource(c, EPOCH_SRC + ': ai_companies (revenue reports)'); } });
+  makeCard(g, { key: 'ai_dc', title: 'AI data-centre power capacity', defaultRange: '5Y', sub: 'Total power of the large AI data centres Epoch AI tracks, gigawatts. Dashed = announced / projected.',
+    render: c => { const e = AI && AI.epoch; if (!e || !e.dc_power) return setEmpty(c, 'Waiting for Epoch AI data.');
+      const lim = p => p.map(([d, v]) => [Date.parse(d), v / 1000]).filter(p => p[0] >= state.from);
+      drawLines(c, [{ name: 'Built', data: lim(e.dc_power) }, { name: 'Planned', data: lim([e.dc_power[e.dc_power.length - 1], ...(e.dc_planned || [])]), extra: { lineStyle: { width: 2, type: 'dashed', color: col(1) } } }],
+        { fmt: v => fmtNum(v, 1) + ' GW', axisFmt: v => fmtNum(v, 0) + ' GW' });
+      inst(c).setOption({ xAxis: { max: null } });
+      setNote(c, `${e.dc_count} data centres tracked. For scale, 1 GW is roughly the output of a large nuclear reactor.`); setSource(c, EPOCH_SRC + ': data_centers (timelines)'); } });
+  makeCard(g, { key: 'ai_chips', title: 'AI chips shipped (cumulative compute)', defaultRange: '5Y', sub: 'Cumulative AI accelerator compute shipped since 2022 by chip designer, in millions of Nvidia H100-equivalents.',
+    render: c => { const e = AI && AI.epoch; const ch = e && e.chips ? Object.fromEntries(Object.entries(e.chips).map(([k, v]) => [k, v.map(([d, x]) => [d, x / 1e6])])) : null;
+      epochLines(c, ch, { fmt: v => fmtNum(v, 2) + 'm H100e', axisFmt: v => fmtNum(v, 0) + 'm' }); setSource(c, EPOCH_SRC + ': ai_chip_sales (cumulative by designer)'); } });
+  g.append(el('h3', { class: 'section', text: 'Markets' }));
+  makeCard(g, { key: 'ai_eq', title: 'AI equity basket vs S&P 500', wide: true, sub: 'Equal-weight Nvidia, Broadcom, TSMC, AMD, Microsoft, Alphabet, Amazon and Meta (= 100 at range start), against the S&P 500 and the semiconductor ETF.',
+    render: c => { const ids = AI_BASKET.filter(id => has(id)); if (!ids.length || !has('SPX')) return setEmpty(c, 'Waiting for data (next daily run).');
+      const base = {}; ids.forEach(id => { const a = asOf(S[id], state.from) || { v: S[id].v[0] }; base[id] = a.v; });
+      const b = []; for (const [t] of pts(S.SPX, state.from, state.to)) { let x = 0, n = 0; for (const id of ids) { const a = asOf(S[id], t); if (a) { x += a.v / base[id]; n++; } } if (n === ids.length) b.push([t, x / n * 100]); }
+      const reb = id => { const p = pts(S[id], state.from, state.to), b0 = asOf(S[id], state.from) || (p[0] && { v: p[0][1] }); return b0 ? p.map(([t, v]) => [t, v / b0.v * 100]) : []; };
+      drawLines(c, [{ name: 'AI basket', data: b }, { name: 'S&P 500', data: reb('SPX') }, ...(has('SMH') ? [{ name: 'Semiconductors (SMH)', data: reb('SMH') }] : [])], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+      setSource(c, srcOf([...ids, 'SPX', 'SMH']) + '; basket calculated'); } });
+}
+function renderAI() {
+  aiKpis();
+  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq'].forEach(k => cards[k].render());
+}
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
-  'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · US sectors',
+  'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors',
   'Rates · US', 'Rates · Japan', 'Rates · Euro area', 'Rates · Singapore', 'Rates · Malaysia', 'Rates · China', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
 const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y', 'SORA3M', 'SGS2Y', 'SGS10Y', 'MY_OPR', 'CN_10Y', 'JP_CALL'];
 const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
@@ -1768,10 +2055,14 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia & Singapore',
+  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex' };
 function setTab(t) {
   state.tab = t;
+  $('#pageTitle').textContent = TAB_TITLES[t] || '';
+  $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
   $('.filters').hidden = t === 'news';
@@ -1789,7 +2080,8 @@ function wire() {
     state.preset = 'custom'; state.from = f; state.to = Math.min(t, state.latest); renderTab();
   };
   $('#fromDate').addEventListener('change', onDate); $('#toDate').addEventListener('change', onDate);
-  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { setTab(b.dataset.tab); scrollTo({ top: 0 }); }));
+  $('#menuBtn').addEventListener('click', () => { const o = $('#side').classList.toggle('open'); $('#menuBtn').setAttribute('aria-expanded', String(o)); });
   $('#themeBtn').addEventListener('click', () => {
     const next = isDark() ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
@@ -1803,6 +2095,7 @@ async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if
 async function init() {
   const [meta, y, f, d, cv, as] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json'].map(loadJSON));
   await loadNews();
+  try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -1833,7 +2126,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
