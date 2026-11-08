@@ -134,7 +134,11 @@ def _as_list(x):
 
 
 def estat_cpi(app_id: str, notes: list) -> dict[str, pd.Series]:
-    """Find the national monthly CPI tables (newest base years) and return YoY for headline/core/core-core."""
+    """Japan CPI from the e-Stat CPI databases (newest two base years), national, YoY.
+
+    e-Stat lists the CPI as one database per base year, e.g. 消費者物価指数（2025年基準）.
+    For each: read its metadata to find the codes for all items / core / core-core and
+    the nationwide area, then request just those series."""
     lst = _estat("getStatsList", {"statsCode": "00200573", "limit": 3000}, app_id)
     if not lst:
         notes.append("e-Stat: table search failed")
@@ -144,68 +148,78 @@ def estat_cpi(app_id: str, notes: list) -> dict[str, pd.Series]:
     if str(st.get("STATUS")) not in ("0", "1", "2"):
         notes.append(f"e-Stat: {st.get('ERROR_MSG', 'error')}")
         return {}
-    tables = _as_list(res.get("DATALIST_INF", {}).get("TABLE_INF"))
 
     def txt(x):
         return x.get("$", "") if isinstance(x, dict) else str(x or "")
 
-    cands = []
-    for t in tables:
-        title, stat, cycle = txt(t.get("TITLE")), txt(t.get("STATISTICS_NAME")), txt(t.get("CYCLE"))
-        full = f"{stat} {title}"
-        monthly = "月" in cycle or "月次" in full
-        if monthly and "全国" in full and ("品目別" in full or "中分類" in full or "総合" in full) and "年平均" not in full:
-            score = 2 if "品目別" in full else 1
-            cands.append((score, str(t.get("OPEN_DATE", "")), str(t.get("@id")), full.strip()))
-    cands.sort(reverse=True)
-    if not cands:
-        sample = "; ".join(f"{txt(t.get('TITLE'))[:40]} [{txt(t.get('CYCLE'))}]" for t in tables[:6])
-        notes.append(f"e-Stat: no national monthly CPI table among {len(tables)} results. Sample: {sample}")
+    dbs = []
+    for t in _as_list(res.get("DATALIST_INF", {}).get("TABLE_INF")):
+        title = txt(t.get("TITLE")) or txt(t.get("STATISTICS_NAME"))
+        m = re.search(r"(20\d{2})年基準", title)
+        if m:
+            dbs.append((int(m.group(1)), str(t.get("@id")), title))
+    dbs.sort(reverse=True)
+    if not dbs:
+        notes.append("e-Stat: no CPI base-year database found")
         return {}
-    cands = [(o, i, f) for _, o, i, f in cands]
-    want = {"JP_CPI_YOY": ["総合"], "JP_CORE_YOY": ["生鮮食品を除く総合"], "JP_CORECORE_YOY": ["生鮮食品及びエネルギーを除く総合"]}
+    want = {"JP_CPI_YOY": "総合", "JP_CORE_YOY": "生鮮食品を除く総合", "JP_CORECORE_YOY": "生鮮食品及びエネルギーを除く総合"}
     found: dict[str, list[pd.Series]] = {k: [] for k in want}
-    for _, sid, title in cands[:3]:
-        d = _estat("getStatsData", {"statsDataId": sid, "metaGetFlg": "Y", "cntGetFlg": "N", "limit": 100000}, app_id)
+    for base, sid, title in dbs[:2]:
+        meta = _estat("getMetaInfo", {"statsDataId": sid}, app_id)
+        if not meta:
+            continue
+        objs = {o.get("@id"): (o.get("@name", ""), _as_list(o.get("CLASS")))
+                for o in _as_list(meta.get("GET_META_INFO", {}).get("METADATA_INF", {}).get("CLASS_INF", {}).get("CLASS_OBJ"))}
+        item_dim = next((k for k, (nm, cl) in objs.items() if any(c.get("@name", "").split(" ")[-1] == "総合" for c in cl)), None)
+        if not item_dim:
+            notes.append(f"e-Stat {base}: item dimension not found ({', '.join(f'{k}={nm}' for k, (nm, _) in objs.items())})")
+            continue
+        codes = {}
+        for k, nm in want.items():
+            for c in objs[item_dim][1]:
+                if c.get("@name", "").strip().split(" ")[-1] == nm:
+                    codes[k] = c.get("@code")
+                    break
+        params = {"statsDataId": sid, "metaGetFlg": "N", "cntGetFlg": "N", "limit": 100000,
+                  "cd" + item_dim[0].upper() + item_dim[1:]: ",".join(codes.values())}
+        for k, (nm, cl) in objs.items():
+            if k in (item_dim, "time"):
+                continue
+            names = [c.get("@name", "") for c in cl]
+            if k == "area":
+                code = next((c.get("@code") for c in cl if "全国" in c.get("@name", "")), None)
+            elif k == "tab":
+                code = next((c.get("@code") for c in cl if "前年同月比" in c.get("@name", "")), None) or \
+                       next((c.get("@code") for c in cl if c.get("@name", "") in ("指数", "指数値")), None)
+            else:   # other dimensions (e.g. monthly vs annual series): prefer a 'monthly' member, else the first
+                code = next((c.get("@code") for c in cl if "月" in c.get("@name", "") and "年" not in c.get("@name", "")), None)
+            if code:
+                params["cd" + k[0].upper() + k[1:]] = code
+        yoy = "cdTab" in params and any("前年同月比" in c.get("@name", "") and c.get("@code") == params["cdTab"] for c in objs.get("tab", ("", []))[1])
+        d = _estat("getStatsData", params, app_id)
         if not d:
             continue
-        sd = d.get("GET_STATS_DATA", {}).get("STATISTICAL_DATA", {})
-        objs = {o.get("@id"): _as_list(o.get("CLASS")) for o in _as_list(sd.get("CLASS_INF", {}).get("CLASS_OBJ"))}
-        cat = objs.get("cat01", [])
-        code_for = {}
-        for k, names in want.items():
-            for c in cat:
-                if c.get("@name", "").strip().split(" ")[-1] in names or c.get("@name", "").strip() in names:
-                    code_for[k] = c.get("@code")
-                    break
-        tabs = objs.get("tab", [])
-        yoy_tab = next((c.get("@code") for c in tabs if "前年同月比" in c.get("@name", "")), None)
-        idx_tab = next((c.get("@code") for c in tabs if c.get("@name", "") in ("指数", "指数値")), tabs[0].get("@code") if tabs else None)
-        area = next((c.get("@code") for c in objs.get("area", []) if "全国" in c.get("@name", "")), None)
-        notes.append(f"e-Stat table {sid}: {title[:60]} | cats {sorted(code_for)} | tab {'YoY' if yoy_tab else 'index'}")
-        rows = _as_list(sd.get("DATA_INF", {}).get("VALUE"))
-        for k, code in code_for.items():
+        sd = d.get("GET_STATS_DATA", {})
+        rows = _as_list(sd.get("STATISTICAL_DATA", {}).get("DATA_INF", {}).get("VALUE"))
+        notes.append(f"e-Stat {base}-base ({sid}): {len(rows)} values, items {sorted(codes)}, {'YoY' if yoy else 'index'}")
+        for k, code in codes.items():
             pts = {}
             for v in rows:
-                if v.get("@cat01") != code or (area and v.get("@area", area) != area):
+                if v.get("@" + item_dim) != code:
                     continue
-                tab = v.get("@tab")
-                if (yoy_tab and tab != yoy_tab) or (not yoy_tab and idx_tab and tab != idx_tab):
-                    continue
-                tc = str(v.get("@time", ""))
-                m = re.fullmatch(r"(\d{4})00(\d{2})\d{2}", tc)
-                if not m or int(m.group(2)) == 0:
+                m = re.fullmatch(r"(\d{4})00(\d{2})\d{2}", str(v.get("@time", "")))
+                if not m or not 1 <= int(m.group(2)) <= 12:
                     continue
                 try:
                     pts[pd.Timestamp(int(m.group(1)), int(m.group(2)), 1)] = float(v.get("$"))
                 except (TypeError, ValueError):
                     continue
             s = pd.Series(pts).sort_index()
-            if len(s) > 24:
-                found[k].append(s if yoy_tab else (s / s.shift(12) - 1) * 100)
+            if len(s) > 12:
+                found[k].append(s if yoy else (s / s.shift(12) - 1) * 100)
     out = {}
     for k, parts in found.items():
-        if parts:   # newest base first; older base fills earlier history
+        if parts:   # newest base first; the older base fills earlier history
             s = parts[0]
             for p in parts[1:]:
                 s = s.combine_first(p)
