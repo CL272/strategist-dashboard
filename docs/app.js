@@ -448,7 +448,7 @@ function buildLiquidity() {
     sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets. When these ratios fall, reserves move from abundant towards scarce, and repo spreads (above) tend to react.',
     render: renderScarcity });
   makeCard(g, { key: 'nfci', title: 'Chicago Fed financial conditions (NFCI)', sub: 'Weekly. Below zero = looser than the long-run average.', source: 'FRED (NFCI)',
-    render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 1), { zero: true }) });
+    render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 2), { zero: true }) });
   makeCard(g, { key: 'm2', title: 'US M2 money supply growth', sub: 'Year-on-year %, monthly.', source: 'FRED (M2SL)',
     render: simple(['M2_YOY'], v => fmtNum(v, 1) + '%', v => fmtNum(v, 1) + '%', { zero: true }) });
   makeCard(g, { key: 'rates', title: 'US Treasury yields', source: 'FRED',
@@ -929,7 +929,7 @@ function buildRegime() {
   makeCard(g, { key: 'infl', title: 'US inflation', source: 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)', sub: 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.',
     render: c => { const ids = ['CPI_YOY', 'CORE_CPI_YOY', 'CORE_PCE_YOY', 'CORE_CPI_3M'].filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
       drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
-        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => v.toFixed(0) + '%', hlines: [{ y: 2, label: '2% target' }] }); } });
+        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 1) + '%', hlines: [{ y: 2, label: '2% target' }] }); } });
   makeCard(g, { key: 'claims', title: 'Initial jobless claims', source: 'FRED (ICSA)', sub: '4-week average, thousands. Weekly, the timeliest labour-market signal.',
     render: c => { if (!has('CLAIMS_4WK')) return setEmpty(c, NO_FRED);
       drawLines(c, [{ name: 'Initial claims, 4-week avg', data: pts(S.CLAIMS_4WK, state.from, state.to) }],
@@ -1443,7 +1443,8 @@ async function init() {
     for (const [k, c] of Object.entries(cv.value)) CURVES[k] = { ...c, t: c.d.map(x => x * DAY) };
     registerCurveSeries();
   }
-  const lasts = Object.values(S).filter(s => (s.group || '').startsWith('Equities') || s.id === 'NET_LIQ').map(s => s.t[s.t.length - 1]).filter(Boolean);
+  // latest trading day = most recent close among the major indices (ignores stray weekend bars)
+  const lasts = ['SPX', 'SX5E', 'NKY', 'HSI', 'STI'].filter(id => has(id)).map(id => S[id].t[S[id].t.length - 1]);
   state.latest = lasts.length ? Math.max(...lasts) : Date.now();
   $('#asof').textContent = `Data to ${nice(state.latest)}` + (META.updated_utc ? ` · refreshed ${META.updated_utc}` : '');
   const fredOk = has('NET_LIQ');
