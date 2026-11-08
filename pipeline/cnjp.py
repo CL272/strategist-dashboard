@@ -262,9 +262,10 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
                               source="Statistics Bureau of Japan via e-Stat (Consumer Price Index, national, monthly)"))
     else:
         notes.append("e-Stat: no ESTAT_APP_ID / ESTAT_API_KEY secret")
+    cpi_missing = not all(k in out for k in ("JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"))
     for n in notes:
         print("      " + n)
-        if len(DIAG) < 12:
+        if cpi_missing and len(DIAG) < 12:   # only surface e-Stat notes when something failed
             DIAG.append(n)
     for sid in [k[0] for k in KEI] + [f"CLI_{a}" for a in CLI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
         status[sid] = "ok" if sid in out else "missing"
