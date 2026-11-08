@@ -1013,7 +1013,10 @@ async function init() {
   if (META.total) {
     pill.hidden = false;
     pill.textContent = fredOk ? `${META.ok}/${META.total} series live` : `${META.ok}/${META.total} series · FRED pending`;
-    pill.title = Object.entries(META.status || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`).join('\n') || 'All series refreshed';
+    const bad = Object.entries(META.status || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`);
+    pill.title = (bad.length ? bad.join('\n') : 'All series refreshed') +
+      ('fred_key_found' in META ? `\n\nFRED API key on GitHub: ${META.fred_key_found ? 'found' : 'NOT found'}` : '') +
+      ((META.errors || []).length ? '\nErrors:\n' + META.errors.join('\n') : '');
   }
   // restore view from URL
   const h = new URLSearchParams(location.hash.slice(1));
