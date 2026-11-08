@@ -25,14 +25,17 @@
 
 <nav class="tabs" role="tablist">
   <button role="tab" data-tab="overview" aria-selected="true">Strategist View</button>
+  <button role="tab" data-tab="news" aria-selected="false">News</button>
   <button role="tab" data-tab="liquidity" aria-selected="false">Liquidity</button>
   <button role="tab" data-tab="regime" aria-selected="false">Regime</button>
   <button role="tab" data-tab="fixed" aria-selected="false">Fixed Income</button>
+  <button role="tab" data-tab="asia" aria-selected="false">Asia &amp; Singapore</button>
   <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
   <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
 </nav>
 
 <section class="filters" aria-label="Date range">
+  <span class="muted small">All charts</span>
   <div class="presets" id="presets">
     <button data-p="1M">1M</button><button data-p="3M">3M</button><button data-p="6M">6M</button>
     <button data-p="YTD">YTD</button><button data-p="1Y">1Y</button><button data-p="3Y">3Y</button>
@@ -48,6 +51,10 @@
   <section id="tab-overview" class="tab-panel">
     <div class="kpis" id="ovKpis"></div>
     <div class="grid" id="ovGrid"></div>
+  </section>
+
+  <section id="tab-news" class="tab-panel" hidden>
+    <div class="card wide" id="newsBody"></div>
   </section>
 
   <section id="tab-liquidity" class="tab-panel" hidden>
@@ -66,6 +73,11 @@
     <div class="grid" id="fiGrid"></div>
   </section>
 
+  <section id="tab-asia" class="tab-panel" hidden>
+    <div class="kpis" id="asiaKpis"></div>
+    <div class="grid" id="asiaGrid"></div>
+  </section>
+
   <section id="tab-markets" class="tab-panel" hidden>
     <div class="grid" id="mktCharts"></div>
     <div class="card wide">
@@ -73,6 +85,7 @@
         <div>
           <h2>Cross-asset performance</h2>
           <p class="muted small" id="perfNote"></p>
+          <p class="src">Source: Yahoo Finance (indices, ETFs, FX, commodities, crypto, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB, SingStat/MAS, Bank Negara (yields, spreads). Hover a row for its exact series.</p>
         </div>
         <div class="card-tools">
           <button class="ghost" id="perfCsv" type="button">CSV</button>
@@ -107,7 +120,7 @@
 </main>
 
 <footer class="muted small">
-  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB and Yahoo Finance, refreshed every weekday. For research use; not investment advice.
+  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
 </footer>
 
 <script src="vendor/echarts.min.js"></script>

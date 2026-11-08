@@ -68,6 +68,8 @@ YAHOO = [
     ("USDHKD",   "HKD=X",     "USD/HKD",              "FX",                   "price", ""),
     ("USDTWD",   "TWD=X",     "USD/TWD",              "FX",                   "price", ""),
     ("USDIDR",   "IDR=X",     "USD/IDR",              "FX",                   "price", ""),
+    ("USDTHB",   "THB=X",     "USD/THB",              "FX",                   "price", ""),
+    ("USDPHP",   "PHP=X",     "USD/PHP",              "FX",                   "price", ""),
     # Commodities
     ("GOLD",     "GC=F",      "Gold",                 "Commodities",          "price", "USD/oz"),
     ("SILVER",   "SI=F",      "Silver",               "Commodities",          "price", "USD/oz"),

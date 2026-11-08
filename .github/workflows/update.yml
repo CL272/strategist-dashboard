@@ -2,8 +2,9 @@ name: Update data & publish dashboard
 
 on:
   schedule:
-    - cron: "30 22 * * 1-5"   # 06:30 Singapore, after the US close
-    - cron: "15 10 * * 1-5"   # 18:15 Singapore, after the Asia close
+    # every 30 minutes: headlines every run; full data refresh once a daily slot
+    # (06:30 and 18:15 Singapore) has passed - see pipeline/update.py
+    - cron: "7,37 * * * *"
   workflow_dispatch:           # "Run workflow" button in the Actions tab
   push:
     branches: [main]
@@ -37,13 +38,14 @@ jobs:
         run: |
           mkdir -p docs/data
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
-          for f in yahoo.json fred.json derived.json; do curl -sfL "$base/$f" -o "docs/data/$f" || true; done
+          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json; do curl -sfL "$base/$f" -o "docs/data/$f" || rm -f "docs/data/$f"; done
 
       - name: Pull latest data
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ESTAT_APP_ID: ${{ secrets.ESTAT_API_KEY || secrets.ESTAT_APP_ID }}
-        run: python pipeline/fetch.py
+          FULL: ${{ github.event_name != 'schedule' }}
+        run: python pipeline/update.py
 
       - name: Save credit-spread archive
         run: |

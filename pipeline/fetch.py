@@ -430,8 +430,16 @@ def main() -> int:
     import curves
     import fetch as _self   # curves.py imports this module by name; collect its error notes too
     curves.build_curves(status)
+    import asia
+    asia.build_asia(status)
     if _self is not sys.modules.get("__main__"):
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
+
+    try:
+        import news
+        news.build_news()
+    except Exception as e:   # headlines must never break the data refresh
+        print(f"News failed: {type(e).__name__}")
 
     ok = sum(v == "ok" for v in status.values())
     write("meta.json", {"updated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
