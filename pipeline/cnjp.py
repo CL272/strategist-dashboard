@@ -135,7 +135,7 @@ def _as_list(x):
 
 def estat_cpi(app_id: str, notes: list) -> dict[str, pd.Series]:
     """Find the national monthly CPI tables (newest base years) and return YoY for headline/core/core-core."""
-    lst = _estat("getStatsList", {"statsCode": "00200573", "searchWord": "全国 月次", "limit": 200}, app_id)
+    lst = _estat("getStatsList", {"statsCode": "00200573", "limit": 3000}, app_id)
     if not lst:
         notes.append("e-Stat: table search failed")
         return {}
@@ -145,18 +145,24 @@ def estat_cpi(app_id: str, notes: list) -> dict[str, pd.Series]:
         notes.append(f"e-Stat: {st.get('ERROR_MSG', 'error')}")
         return {}
     tables = _as_list(res.get("DATALIST_INF", {}).get("TABLE_INF"))
+
+    def txt(x):
+        return x.get("$", "") if isinstance(x, dict) else str(x or "")
+
     cands = []
     for t in tables:
-        title = t.get("TITLE")
-        title = title.get("$", "") if isinstance(title, dict) else str(title or "")
-        stat = t.get("STATISTICS_NAME", "")
+        title, stat, cycle = txt(t.get("TITLE")), txt(t.get("STATISTICS_NAME")), txt(t.get("CYCLE"))
         full = f"{stat} {title}"
-        if "品目別価格指数" in full and "全国" in full and "月" in full and "年平均" not in full:
-            cands.append((str(t.get("OPEN_DATE", "")), str(t.get("@id")), full.strip()))
+        monthly = "月" in cycle or "月次" in full
+        if monthly and "全国" in full and ("品目別" in full or "中分類" in full or "総合" in full) and "年平均" not in full:
+            score = 2 if "品目別" in full else 1
+            cands.append((score, str(t.get("OPEN_DATE", "")), str(t.get("@id")), full.strip()))
     cands.sort(reverse=True)
     if not cands:
-        notes.append(f"e-Stat: no national monthly CPI table among {len(tables)} results")
+        sample = "; ".join(f"{txt(t.get('TITLE'))[:40]} [{txt(t.get('CYCLE'))}]" for t in tables[:6])
+        notes.append(f"e-Stat: no national monthly CPI table among {len(tables)} results. Sample: {sample}")
         return {}
+    cands = [(o, i, f) for _, o, i, f in cands]
     want = {"JP_CPI_YOY": ["総合"], "JP_CORE_YOY": ["生鮮食品を除く総合"], "JP_CORECORE_YOY": ["生鮮食品及びエネルギーを除く総合"]}
     found: dict[str, list[pd.Series]] = {k: [] for k in want}
     for _, sid, title in cands[:3]:
