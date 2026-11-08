@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strategist Dashboard</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232a78d6'/><path d='M3 11l3-3 2 2 5-5' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="style.css">
+<script>
+  try { const t = localStorage.getItem('sd-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Strategist Dashboard</h1>
+    <span id="asof" class="muted">Loading data…</span>
+  </div>
+  <div class="top-actions">
+    <span id="status" class="status-pill" hidden></span>
+    <button id="themeBtn" class="ghost" type="button" aria-label="Toggle dark mode">◐ Theme</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="liquidity" aria-selected="true">Liquidity</button>
+  <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
+  <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
+</nav>
+
+<section class="filters" aria-label="Date range">
+  <div class="presets" id="presets">
+    <button data-p="1M">1M</button><button data-p="3M">3M</button><button data-p="6M">6M</button>
+    <button data-p="YTD">YTD</button><button data-p="1Y">1Y</button><button data-p="3Y">3Y</button>
+    <button data-p="5Y">5Y</button><button data-p="10Y">10Y</button><button data-p="MAX">Max</button>
+  </div>
+  <div class="custom">
+    <label>From <input type="date" id="fromDate"></label>
+    <label>To <input type="date" id="toDate"></label>
+  </div>
+</section>
+
+<main>
+  <section id="tab-liquidity" class="tab-panel">
+    <div class="kpis" id="liqKpis"></div>
+    <div class="signals" id="liqSignals"></div>
+    <div class="grid" id="liqGrid"></div>
+  </section>
+
+  <section id="tab-markets" class="tab-panel" hidden>
+    <div class="grid" id="mktCharts"></div>
+    <div class="card wide">
+      <div class="card-head">
+        <div>
+          <h2>Cross-asset performance</h2>
+          <p class="muted small" id="perfNote"></p>
+        </div>
+        <div class="card-tools">
+          <button class="ghost" id="perfCsv" type="button">CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="perf" id="perfTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-correlation" class="tab-panel" hidden>
+    <div class="controls">
+      <label>Universe <select id="corrUniverse"></select></label>
+      <label>Window <select id="corrWindow">
+        <option value="1">1M</option><option value="3" selected>3M</option>
+        <option value="6">6M</option><option value="12">1Y</option><option value="24">2Y</option>
+      </select></label>
+      <label>Frequency <select id="corrFreq">
+        <option value="D">Daily</option><option value="W" selected>Weekly</option>
+      </select></label>
+      <label>Show <select id="corrShow">
+        <option value="now">Correlation now</option>
+        <option value="chg">Change vs 3Y average</option>
+      </select></label>
+    </div>
+    <p class="muted small hint">Correlations use returns (% change for prices, bp change for yields and spreads) in the window ending on the “To” date. Asian and US markets close at different times, so daily figures understate their link. Use Weekly for pairs across regions.</p>
+    <div class="grid">
+      <div class="card" id="corrMatrixCard"></div>
+      <div class="card" id="corrShiftsCard"></div>
+      <div class="card wide" id="corrPairCard"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="muted small">
+  Public data only: FRED (St. Louis Fed) and Yahoo Finance, refreshed every weekday. For research use; not investment advice.
+</footer>
+
+<script src="vendor/echarts.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

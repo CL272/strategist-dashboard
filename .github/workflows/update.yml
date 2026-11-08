@@ -1,0 +1,60 @@
+name: Update data & publish dashboard
+
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # 06:30 Singapore, after the US close
+    - cron: "15 10 * * 1-5"   # 18:15 Singapore, after the Asia close
+  workflow_dispatch:           # "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Start from the currently published data, so a source that fails today keeps yesterday's values
+      - name: Fetch previously published data
+        run: |
+          mkdir -p docs/data
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
+          for f in yahoo.json fred.json derived.json; do curl -sfL "$base/$f" -o "docs/data/$f" || true; done
+
+      - name: Pull latest data
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+        run: python pipeline/fetch.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

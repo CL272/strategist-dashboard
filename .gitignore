@@ -1,0 +1,8 @@
+# secrets - never commit
+.streamlit/
+.env
+*.toml
+# data is rebuilt by GitHub Actions on every run
+docs/data/*.json
+__pycache__/
+*.pyc

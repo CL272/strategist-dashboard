@@ -1,0 +1,111 @@
+"""
+Series catalogue for the strategist dashboard.
+
+To ADD a market or indicator, add one line here and the next daily run picks it up.
+  - Yahoo entries:  (id, yahoo_symbol, label, group, kind, unit)
+  - FRED entries:   (id, fred_series_id, label, group, kind, unit)
+
+kind tells the dashboard how to measure change:
+  "price"  -> % returns          (equities, FX, commodities, ETFs)
+  "yield"  -> change in bp       (interest rates, spreads quoted in %)
+  "level"  -> simple difference  (balance sheets, index levels like NFCI)
+"""
+
+START_DATE = "2005-01-01"
+
+# ---------------------------------------------------------------- Yahoo Finance
+YAHOO = [
+    # Equities - developed
+    ("SPX",      "^GSPC",     "S&P 500",              "Equities · US",        "price", "pts"),
+    ("NDX",      "^NDX",      "Nasdaq 100",           "Equities · US",        "price", "pts"),
+    ("RTY",      "^RUT",      "Russell 2000",         "Equities · US",        "price", "pts"),
+    ("SX5E",     "^STOXX50E", "Euro Stoxx 50",        "Equities · Europe",    "price", "pts"),
+    ("DAX",      "^GDAXI",    "DAX",                  "Equities · Europe",    "price", "pts"),
+    ("CAC",      "^FCHI",     "CAC 40",               "Equities · Europe",    "price", "pts"),
+    ("UKX",      "^FTSE",     "FTSE 100",             "Equities · Europe",    "price", "pts"),
+    ("NKY",      "^N225",     "Nikkei 225",           "Equities · Japan",     "price", "pts"),
+    ("AS51",     "^AXJO",     "ASX 200",              "Equities · Australia", "price", "pts"),
+    # Equities - Asia / EM
+    ("CSI300",   "510300.SS", "CSI 300 (510300 ETF)", "Equities · China/HK",  "price", "CNY"),
+    ("SHCOMP",   "000001.SS", "Shanghai Composite",   "Equities · China/HK",  "price", "pts"),
+    ("HSCEI",    "^HSCE",     "HS China Enterprises", "Equities · China/HK",  "price", "pts"),
+    ("MCHI",     "MCHI",      "MSCI China (MCHI)",    "Equities · China/HK",  "price", "USD"),
+    ("HSI",      "^HSI",      "Hang Seng",            "Equities · China/HK",  "price", "pts"),
+    ("STI",      "^STI",      "Straits Times",        "Equities · ASEAN",     "price", "pts"),
+    ("KLCI",     "^KLSE",     "FBM KLCI",             "Equities · ASEAN",     "price", "pts"),
+    ("JCI",      "^JKSE",     "Jakarta Composite",    "Equities · ASEAN",     "price", "pts"),
+    ("KOSPI",    "^KS11",     "KOSPI",                "Equities · N. Asia",   "price", "pts"),
+    ("TWSE",     "^TWII",     "Taiwan Weighted",      "Equities · N. Asia",   "price", "pts"),
+    ("NIFTY",    "^NSEI",     "Nifty 50",             "Equities · India",     "price", "pts"),
+    ("IBOV",     "^BVSP",     "Bovespa",              "Equities · LatAm",     "price", "pts"),
+    ("ACWI",     "URTH",      "MSCI World (URTH)",    "Equities · Global",    "price", "USD"),
+    ("EEM",      "EEM",       "MSCI EM (EEM)",        "Equities · Global",    "price", "USD"),
+    ("AAXJ",     "AAXJ",      "MSCI Asia ex-JP (AAXJ)","Equities · Global",   "price", "USD"),
+    # US sectors
+    ("XLK",      "XLK",       "US Tech (XLK)",        "Equities · US sectors","price", "USD"),
+    ("XLF",      "XLF",       "US Financials (XLF)",  "Equities · US sectors","price", "USD"),
+    ("XLE",      "XLE",       "US Energy (XLE)",      "Equities · US sectors","price", "USD"),
+    ("VNQ",      "VNQ",       "US REITs (VNQ)",       "Equities · US sectors","price", "USD"),
+    # Bonds / credit (ETF total return proxies)
+    ("TLT",      "TLT",       "UST 20Y+ (TLT)",       "Bonds & credit",       "price", "USD"),
+    ("IEF",      "IEF",       "UST 7-10Y (IEF)",      "Bonds & credit",       "price", "USD"),
+    ("LQD",      "LQD",       "US IG credit (LQD)",   "Bonds & credit",       "price", "USD"),
+    ("HYG",      "HYG",       "US HY credit (HYG)",   "Bonds & credit",       "price", "USD"),
+    ("EMB",      "EMB",       "EM USD bonds (EMB)",   "Bonds & credit",       "price", "USD"),
+    # FX (quoted as Yahoo quotes them; USDxxx up = USD stronger)
+    ("DXY",      "DX-Y.NYB",  "US Dollar Index",      "FX",                   "price", "idx"),
+    ("EURUSD",   "EURUSD=X",  "EUR/USD",              "FX",                   "price", ""),
+    ("USDJPY",   "JPY=X",     "USD/JPY",              "FX",                   "price", ""),
+    ("USDCNY",   "CNY=X",     "USD/CNY",              "FX",                   "price", ""),
+    ("AUDUSD",   "AUDUSD=X",  "AUD/USD",              "FX",                   "price", ""),
+    ("USDSGD",   "SGD=X",     "USD/SGD",              "FX",                   "price", ""),
+    ("USDMYR",   "MYR=X",     "USD/MYR",              "FX",                   "price", ""),
+    ("USDKRW",   "KRW=X",     "USD/KRW",              "FX",                   "price", ""),
+    ("USDINR",   "INR=X",     "USD/INR",              "FX",                   "price", ""),
+    ("USDBRL",   "BRL=X",     "USD/BRL",              "FX",                   "price", ""),
+    # Commodities
+    ("GOLD",     "GC=F",      "Gold",                 "Commodities",          "price", "USD/oz"),
+    ("SILVER",   "SI=F",      "Silver",               "Commodities",          "price", "USD/oz"),
+    ("BRENT",    "BZ=F",      "Brent crude",          "Commodities",          "price", "USD/bbl"),
+    ("WTI",      "CL=F",      "WTI crude",            "Commodities",          "price", "USD/bbl"),
+    ("COPPER",   "HG=F",      "Copper",               "Commodities",          "price", "USD/lb"),
+    ("NATGAS",   "NG=F",      "US natural gas",       "Commodities",          "price", "USD/MMBtu"),
+    # Crypto
+    ("BTC",      "BTC-USD",   "Bitcoin",              "Crypto",               "price", "USD"),
+    ("ETH",      "ETH-USD",   "Ether",                "Crypto",               "price", "USD"),
+    # Volatility
+    ("VIX",      "^VIX",      "VIX (equity vol)",     "Volatility",           "level", "pts"),
+    ("MOVE",     "^MOVE",     "MOVE (rates vol)",     "Volatility",           "level", "pts"),
+]
+
+# ---------------------------------------------------------------- FRED (St. Louis Fed)
+FRED = [
+    # Fed balance sheet & liquidity plumbing
+    ("FED_ASSETS",  "WALCL",       "Fed total assets",            "Liquidity", "level", "USD mn"),
+    ("TGA",         "WDTGAL",      "Treasury General Account",    "Liquidity", "level", "USD mn"),
+    ("RRP",         "RRPONTSYD",   "Overnight reverse repo",      "Liquidity", "level", "USD bn"),
+    ("RESERVES",    "WRESBAL",     "Bank reserves",               "Liquidity", "level", "USD mn"),
+    ("SRF",         "RPONTSYD",    "Repo operations (SRF)",       "Liquidity", "level", "USD bn"),
+    ("SOFR",        "SOFR",        "SOFR",                        "Liquidity", "yield", "%"),
+    ("IORB",        "IORB",        "Interest on reserves (IORB)", "Liquidity", "yield", "%"),
+    ("EFFR",        "EFFR",        "Effective fed funds",         "Liquidity", "yield", "%"),
+    ("M2",          "M2SL",        "US M2 money supply",          "Liquidity", "level", "USD bn"),
+    # Other central banks
+    ("ECB_ASSETS",  "ECBASSETSW",  "ECB total assets",            "Global CBs", "level", "EUR mn"),
+    ("BOJ_ASSETS",  "JPNASSETS",   "BoJ total assets",            "Global CBs", "level", "JPY 100mn"),
+    ("FX_USDEUR",   "DEXUSEU",     "USD per EUR (FRED)",          "Global CBs", "price", ""),
+    ("FX_JPYUSD",   "DEXJPUS",     "JPY per USD (FRED)",          "Global CBs", "price", ""),
+    # Rates
+    ("UST3M",       "DGS3MO",      "UST 3M yield",                "Rates · US", "yield", "%"),
+    ("UST2Y",       "DGS2",        "UST 2Y yield",                "Rates · US", "yield", "%"),
+    ("UST10Y",      "DGS10",       "UST 10Y yield",               "Rates · US", "yield", "%"),
+    ("UST30Y",      "DGS30",       "UST 30Y yield",               "Rates · US", "yield", "%"),
+    ("REAL10Y",     "DFII10",      "UST 10Y real yield (TIPS)",   "Rates · US", "yield", "%"),
+    ("BE10Y",       "T10YIE",      "10Y breakeven inflation",     "Rates · US", "yield", "%"),
+    ("CURVE_2s10s", "T10Y2Y",      "2s10s curve",                 "Rates · US", "yield", "%"),
+    ("CURVE_3m10y", "T10Y3M",      "3m10y curve",                 "Rates · US", "yield", "%"),
+    # Credit & financial conditions
+    ("HY_OAS",      "BAMLH0A0HYM2","US HY spread (OAS)",          "Credit",     "yield", "%"),
+    ("IG_OAS",      "BAMLC0A0CM",  "US IG spread (OAS)",          "Credit",     "yield", "%"),
+    ("NFCI",        "NFCI",        "Chicago Fed financial conditions", "Credit", "level", "idx"),
+]
