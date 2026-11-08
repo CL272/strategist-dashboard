@@ -41,8 +41,16 @@ def _shillerdata_urls() -> list[str]:
     if r is None:
         return []
     import re
-    links = re.findall(r"""https?://[^"' )<>]+""", r.text)
-    return [u.replace("&amp;", "&") for u in links if "ie_data" in u.lower() and ".xls" in u.lower()][:3]
+    text = r.text.replace("\\/", "/").replace("\\u002F", "/")
+    links = re.findall(r"""(?:https?:)?//[^"' )<>\\]+""", text)
+    hits = []
+    for u in links:
+        if "ie_data" in u.lower() and ".xls" in u.lower():
+            u = ("https:" + u if u.startswith("//") else u).replace("&amp;", "&")
+            if u not in hits:
+                hits.append(u)
+    print(f"  shillerdata.com: page {len(r.text)} bytes, {sum('.xls' in u.lower() for u in links)} .xls links, {len(hits)} ie_data links")
+    return hits[:3]
 
 
 def shiller(status: dict) -> pd.DataFrame | None:
