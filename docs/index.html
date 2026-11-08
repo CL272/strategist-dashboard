@@ -27,6 +27,7 @@
   <button role="tab" data-tab="overview" aria-selected="true">Strategist View</button>
   <button role="tab" data-tab="liquidity" aria-selected="false">Liquidity</button>
   <button role="tab" data-tab="regime" aria-selected="false">Regime</button>
+  <button role="tab" data-tab="fixed" aria-selected="false">Fixed Income</button>
   <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
   <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
 </nav>
@@ -59,6 +60,10 @@
     <div class="kpis" id="regKpis"></div>
     <div class="regime-now" id="regNow"></div>
     <div class="grid" id="regGrid"></div>
+  </section>
+
+  <section id="tab-fixed" class="tab-panel" hidden>
+    <div class="grid" id="fiGrid"></div>
   </section>
 
   <section id="tab-markets" class="tab-panel" hidden>
@@ -102,7 +107,7 @@
 </main>
 
 <footer class="muted small">
-  Public data only: FRED (St. Louis Fed) and Yahoo Finance, refreshed every weekday. For research use; not investment advice.
+  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB and Yahoo Finance, refreshed every weekday. For research use; not investment advice.
 </footer>
 
 <script src="vendor/echarts.min.js"></script>

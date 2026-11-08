@@ -467,7 +467,7 @@ const USD_PER = { EUR: ['EURUSD', 1], GBP: ['GBPUSD', 1], AUD: ['AUDUSD', 1], JP
 const OV_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV'];
 const OV_ROWS = [
   ['Equities', OV_EQ.concat(['EEM'])],
-  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'HY_OAS', 'BAA_10Y']],
+  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'JGB10Y', 'EA10Y', 'HY_OAS', 'BAA_10Y']],
   ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD']],
   ['Commodities & crypto', ['GOLD', 'BRENT', 'COPPER', 'BTC']],
   ['Volatility', ['VIX', 'MOVE']],
@@ -940,11 +940,169 @@ function renderRegime() {
   ['quad', 'comp_gi', 'reghist', 'regtable', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
 }
 
+// ------------------------------------------------------------------ FIXED INCOME
+const CURVES = {};
+const CURVE_KEYS = [['US', 'US'], ['US_REAL', 'US real'], ['JP', 'Japan'], ['EA', 'Euro AAA']];
+state.fiMkt = 'US'; state.fiSlope = 'US'; state.fiDiff = 'JP'; state.fiHedge = 'usd';
+function curveAt(key, t) {
+  const c = CURVES[key]; if (!c) return null;
+  const i = idxLE(c, t); return i < 0 ? null : { t: c.t[i], y: c.y[i] };
+}
+const curveCache = new Map();
+function curveSeries(key, years, meta = {}) {   // one tenor of a curve as a normal series
+  const ck = key + '|' + years; if (curveCache.has(ck)) return curveCache.get(ck);
+  const c = CURVES[key]; if (!c) return null;
+  const j = c.tenors.findIndex(x => Math.abs(x - years) < 1e-6); if (j < 0) return null;
+  const t = [], v = [];
+  for (let i = 0; i < c.t.length; i++) if (c.y[i][j] != null) { t.push(c.t[i]); v.push(c.y[i][j]); }
+  const s = { id: ck, label: `${c.label} ${c.names[j]}`, kind: 'yield', unit: '%', source: c.source, t, v, ...meta };
+  curveCache.set(ck, s); return s;
+}
+function combine(a, b, fn, meta) {   // align two series on a's dates (b as-of within 7 days)
+  const t = [], v = [];
+  for (let i = 0; i < a.t.length; i++) { const x = asOf(b, a.t[i]); if (x && a.t[i] - x.t < 7 * DAY) { t.push(a.t[i]); v.push(fn(a.v[i], x.v)); } }
+  return { kind: 'level', unit: '', source: '', ...meta, t, v };
+}
+function registerCurveSeries() {
+  const reg = (id, key, yrs, label, group) => { const s = curveSeries(key, yrs); if (s && !has(id)) S[id] = { ...s, id, label, group }; };
+  reg('JGB2Y', 'JP', 2, 'JGB 2Y yield', 'Rates · Japan'); reg('JGB10Y', 'JP', 10, 'JGB 10Y yield', 'Rates · Japan'); reg('JGB30Y', 'JP', 30, 'JGB 30Y yield', 'Rates · Japan');
+  reg('EA2Y', 'EA', 2, 'Euro AAA 2Y yield', 'Rates · Euro area'); reg('EA10Y', 'EA', 10, 'Euro AAA 10Y yield', 'Rates · Euro area'); reg('EA30Y', 'EA', 30, 'Euro AAA 30Y yield', 'Rates · Euro area');
+  // US from the Treasury curve when FRED is unavailable
+  reg('UST3M', 'US', 0.25, 'UST 3M yield', 'Rates · US'); reg('UST2Y', 'US', 2, 'UST 2Y yield', 'Rates · US');
+  reg('UST10Y', 'US', 10, 'UST 10Y yield', 'Rates · US'); reg('UST30Y', 'US', 30, 'UST 30Y yield', 'Rates · US');
+  reg('REAL10Y', 'US_REAL', 10, 'UST 10Y real yield (TIPS)', 'Rates · US');
+  if (!has('CURVE_2s10s') && has('UST2Y', 'UST10Y')) S.CURVE_2s10s = { ...combine(S.UST10Y, S.UST2Y, (a, b) => a - b), id: 'CURVE_2s10s', label: '2s10s curve', group: 'Rates · US', kind: 'yield', unit: '%', source: 'US Treasury' };
+}
+function renderCurve(c) {
+  const key = state.fiMkt, cv = CURVES[key];
+  if (!cv) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const now = curveAt(key, state.to); if (!now) return setEmpty(c, 'No curve on or before this date.');
+  const comps = [['1M ago', addMonths(now.t, -1)], ['3M ago', addMonths(now.t, -3)], ['1Y ago', addMonths(now.t, -12)]].map(([n, t]) => [n, curveAt(key, t)]).filter(x => x[1]);
+  c.titleEl.textContent = `Yield curve: ${cv.label}`;
+  c.subEl.textContent = `${cv.source}. Curve on ${nice(now.t)} against 1 month, 3 months and 1 year earlier; bars show the change by maturity.`;
+  const names = cv.names, o = baseOpt();
+  o.grid = [{ left: 8, right: 16, top: 34, height: '52%', containLabel: true }, { left: 8, right: 16, top: '70%', bottom: 8, containLabel: true }];
+  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
+  const cat = gi => ({ type: 'category', data: names, gridIndex: gi, boundaryGap: true, axisLabel: { color: tok('--muted'), fontSize: 11, show: gi === 1 }, axisLine: { lineStyle: { color: tok('--axis') } }, axisTick: { show: false } });
+  o.xAxis = [cat(0), cat(1)];
+  o.yAxis = [valAxis(v => fmtNum(v, 1) + '%', { gridIndex: 0 }), valAxis(v => fmtNum(v, 0) + 'bp', { gridIndex: 1, scale: false, splitNumber: 3 })];
+  o.tooltip.formatter = ps => {
+    const arr = Array.isArray(ps) ? ps : [ps]; if (!arr.length) return '';
+    return `<div style="color:${tok('--ink-2')};margin-bottom:4px">${esc(cv.label)} ${esc(arr[0].axisValue)}</div>` + arr.filter(p => p.value != null).map(p =>
+      `<div style="display:flex;gap:8px;align-items:center;line-height:1.6"><span style="width:12px;height:2px;background:${p.color};display:inline-block"></span><b style="font-variant-numeric:tabular-nums">${p.seriesIndex < 1 + comps.length ? fmtNum(p.value, 2) + '%' : (p.value > 0 ? '+' : '') + fmtNum(p.value, 0) + 'bp'}</b><span style="color:${tok('--ink-2')}">${esc(p.seriesName)}</span></div>`).join('');
+  };
+  const nowName = `${nice(now.t)}`;
+  o.series = [{ ...line(nowName, now.y, col(0)), sampling: undefined, showSymbol: true, symbolSize: 6, lineStyle: { width: 3, color: col(0) }, connectNulls: true }];
+  comps.forEach(([n, cc], i) => o.series.push({ ...line(`${n} (${nice(cc.t)})`, cc.y, col(i + 1)), sampling: undefined, showSymbol: true, symbolSize: 5, connectNulls: true }));
+  comps.forEach(([n, cc], i) => o.series.push({ name: `Change vs ${n}`, type: 'bar', xAxisIndex: 1, yAxisIndex: 1, barGap: '10%', barMaxWidth: 12,
+    data: now.y.map((y, j) => y == null || cc.y[j] == null ? null : +((y - cc.y[j]) * 100).toFixed(1)), itemStyle: { color: col(i + 1), borderRadius: 2 } }));
+  o.legend.data = o.series.slice(0, 1 + comps.length).map(s => s.name);
+  inst(c).setOption(o, true);
+  c.csv = [['Tenor', nowName, ...comps.map(([n, cc]) => `${n} (${iso(cc.t)})`), ...comps.map(([n]) => `Change vs ${n} (bp)`)],
+    ...names.map((nm, j) => [nm, now.y[j], ...comps.map(([, cc]) => cc.y[j]), ...comps.map(([, cc]) => now.y[j] == null || cc.y[j] == null ? '' : ((now.y[j] - cc.y[j]) * 100).toFixed(1))])];
+  setNote(c, key === 'EA' ? 'ECB AAA curve is a fitted zero-coupon (spot) curve; US and Japan are par yields.' : '');
+}
+function renderXCurve(c) {
+  const ks = ['US', 'JP', 'EA'].filter(k => CURVES[k]);
+  if (!ks.length) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const o = baseOpt(), list = [];
+  o.series = ks.map((k, i) => { const a = curveAt(k, state.to); const data = a ? CURVES[k].tenors.map((x, j) => [x, a.y[j]]).filter(p => p[1] != null) : [];
+    list.push({ name: CURVES[k].label, data, t: a && a.t });
+    return { ...line(`${CURVES[k].label} (${a ? nice(a.t) : '–'})`, data, col(i)), sampling: undefined, showSymbol: true, symbolSize: 6 }; });
+  o.xAxis = { type: 'value', min: 0, max: 40, name: 'maturity (years)', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tok('--muted'), fontSize: 11 },
+    axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { show: false }, axisLine: { lineStyle: { color: tok('--axis') } } };
+  o.yAxis = valAxis(v => fmtNum(v, 1) + '%');
+  o.grid.bottom = 28;
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${fmtNum(p.value[1], 2)}%</b> <span style="color:${tok('--ink-2')}">${esc(p.seriesName)}, ${fmtNum(p.value[0], p.value[0] < 1 ? 2 : 0)}Y</span>` };
+  inst(c).setOption(o, true);
+  c.csv = [['Market', 'Date', 'Maturity (years)', 'Yield %'], ...list.flatMap(l => l.data.map(([x, y]) => [l.name, l.t ? iso(l.t) : '', x, y]))];
+}
+function slopeSeries(key, a, b, label) {
+  const A = curveSeries(key, a), B = curveSeries(key, b); if (!A || !B) return null;
+  return { name: label, data: pts(combine(B, A, (yb, ya) => (yb - ya) * 100), state.from, state.to) };
+}
+function renderSlopes(c) {
+  const key = state.fiSlope; if (!CURVES[key]) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const defs = { US: [[0.25, 10, '3m10y'], [2, 10, '2s10s'], [10, 30, '10s30s']], JP: [[1, 10, '1s10s'], [2, 10, '2s10s'], [10, 30, '10s30s']], EA: [[0.25, 10, '3m10y'], [2, 10, '2s10s'], [10, 30, '10s30s']] };
+  const list = defs[key].map(([a, b, n]) => slopeSeries(key, a, b, n)).filter(Boolean);
+  c.subEl.textContent = `${CURVES[key].label} curve slopes in bp. Below zero = inverted.`;
+  drawLines(c, list, { fmt: v => fmtNum(v, 0) + 'bp', axisFmt: v => fmtNum(v, 0) + 'bp', zero: true, areas: key === 'US' ? recessionAreas(state.from, state.to) : null });
+}
+function renderTenY(c) {
+  const list = [['US', 'UST 10Y'], ['JP', 'JGB 10Y'], ['EA', 'Euro AAA 10Y']].map(([k, n]) => { const s = curveSeries(k, 10); return s && { name: n, data: pts(s, state.from, state.to) }; }).filter(Boolean);
+  if (!list.length) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  drawLines(c, list, { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%' });
+}
+function renderDiff(c) {
+  const k = state.fiDiff, fx = k === 'JP' ? 'USDJPY' : 'EURUSD';
+  const us = curveSeries('US', 10), fo = curveSeries(k, 10);
+  if (!us || !fo || !has(fx)) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const spread = pts(combine(us, fo, (a, b) => (a - b) * 100), state.from, state.to), f = pts(S[fx], state.from, state.to);
+  const nm = k === 'JP' ? 'US − Japan 10Y spread' : 'US − Euro AAA 10Y spread';
+  c.subEl.textContent = `${nm} (bp, top) and ${S[fx].label} (bottom), same dates. A wider US yield advantage usually supports the USD.`;
+  const o = baseOpt();
+  o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
+  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
+  o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
+  o.yAxis = [valAxis(v => fmtNum(v, 0) + 'bp', { gridIndex: 0 }), valAxis(v => fmtNum(v, autoDec(v)), { gridIndex: 1 })];
+  o.tooltip.formatter = tipFormatter((v, n) => n === nm ? fmtNum(v, 0) + 'bp' : fmtNum(v, autoDec(v)));
+  o.series = [line(nm, spread, col(0)), line(S[fx].label, f, col(1), { xAxisIndex: 1, yAxisIndex: 1 })];
+  inst(c).setOption(o, true);
+  c.csv = toCSV([{ name: nm + ' (bp)', data: spread }, { name: S[fx].label, data: f }]);
+  const m = new Map(f.map(p => [p[0], p[1]])), pairs = spread.filter(p => m.has(p[0]));
+  const wk = pairs.filter((p, i) => i % 5 === 0), dx = [], dy = [];
+  for (let i = 1; i < wk.length; i++) { dx.push(wk[i][1] - wk[i - 1][1]); dy.push(Math.log(m.get(wk[i][0]) / m.get(wk[i - 1][0]))); }
+  const r = pearson(dx, dy);
+  setNote(c, r == null ? '' : `Correlation of weekly changes over the selected range: ${fmtCorr(r)} (spread vs ${S[fx].label}).`);
+}
+function renderHedged(c) {
+  const us10 = curveSeries('US', 10), us3m = curveSeries('US', 0.25), jp10 = curveSeries('JP', 10), jp1 = curveSeries('JP', 1), ea10 = curveSeries('EA', 10), ea3m = curveSeries('EA', 0.25);
+  if (!us10 || !us3m) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const list = [];
+  if (state.fiHedge === 'usd') {
+    c.subEl.textContent = 'What a USD-based investor earns on 10Y government bonds after hedging the currency: foreign 10Y yield + (US short rate − foreign short rate).';
+    list.push({ name: 'UST 10Y', data: pts(us10, state.from, state.to) });
+    if (jp10 && jp1) { const carry = combine(us3m, jp1, (a, b) => a - b); list.push({ name: 'JGB 10Y, USD-hedged', data: pts(combine(jp10, carry, (a, b) => a + b), state.from, state.to) }); }
+    if (ea10 && ea3m) { const carry = combine(us3m, ea3m, (a, b) => a - b); list.push({ name: 'Euro AAA 10Y, USD-hedged', data: pts(combine(ea10, carry, (a, b) => a + b), state.from, state.to) }); }
+  } else {
+    c.subEl.textContent = 'What a Japanese or euro-area investor earns on UST 10Y after hedging back to their currency: UST 10Y − (US short rate − home short rate), against their home 10Y.';
+    if (jp10 && jp1) { const carry = combine(us3m, jp1, (a, b) => a - b);
+      list.push({ name: 'UST 10Y, JPY-hedged', data: pts(combine(us10, carry, (a, b) => a - b), state.from, state.to) }, { name: 'JGB 10Y', data: pts(jp10, state.from, state.to) }); }
+    if (ea10 && ea3m) { const carry = combine(us3m, ea3m, (a, b) => a - b);
+      list.push({ name: 'UST 10Y, EUR-hedged', data: pts(combine(us10, carry, (a, b) => a - b), state.from, state.to) }, { name: 'Euro AAA 10Y', data: pts(ea10, state.from, state.to) }); }
+  }
+  drawLines(c, list, { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true, endLabels: false });
+  setNote(c, 'Approximation: hedge cost ≈ short-rate differential (3-month bills; Japan uses the 1Y JGB as its shortest tenor). Ignores cross-currency basis, which can add or subtract 10–50bp. SGD-hedged view comes with the Singapore data phase.');
+}
+function renderReal(c) {
+  const r5 = curveSeries('US_REAL', 5), r10 = curveSeries('US_REAL', 10), r30 = curveSeries('US_REAL', 30), n10 = curveSeries('US', 10);
+  if (!r10 || !n10) return setEmpty(c, 'Curve data arrives with the next daily run.');
+  const be = combine(n10, r10, (a, b) => a - b);
+  drawLines(c, [{ name: 'Real 5Y', data: pts(r5, state.from, state.to) }, { name: 'Real 10Y', data: pts(r10, state.from, state.to) },
+    { name: 'Real 30Y', data: pts(r30, state.from, state.to) }, { name: '10Y breakeven inflation', data: pts(be, state.from, state.to) }],
+    { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true, endLabels: false });
+  setNote(c, 'Breakeven = 10Y nominal − 10Y real (TIPS) par yield: the inflation rate the bond market is pricing.');
+}
+function buildFixedIncome() {
+  const g = $('#fiGrid');
+  makeCard(g, { key: 'curve', title: 'Yield curve', wide: true, tall: true, source: 'US Treasury, MOF Japan, ECB',
+    seg: { key: 'fiMkt', options: CURVE_KEYS }, render: renderCurve });
+  makeCard(g, { key: 'xcurve', title: 'Curves compared', sub: 'US, Japan and euro area AAA curves on the “To” date, by maturity.', source: 'US Treasury, MOF Japan, ECB', render: renderXCurve });
+  makeCard(g, { key: 'teny', title: '10-year yields', sub: 'US Treasury, JGB and euro area AAA 10Y.', source: 'US Treasury, MOF Japan, ECB', render: renderTenY });
+  makeCard(g, { key: 'slopes', title: 'Curve slopes', source: 'US Treasury, MOF Japan, ECB', seg: { key: 'fiSlope', options: [['US', 'US'], ['JP', 'Japan'], ['EA', 'Euro AAA']] }, render: renderSlopes });
+  makeCard(g, { key: 'real', title: 'US real yields & breakeven', sub: 'TIPS real par yields and 10Y breakeven inflation, %.', source: 'US Treasury', render: renderReal });
+  makeCard(g, { key: 'diff', title: 'Rate differentials vs FX', wide: true, tall: true, source: 'US Treasury, MOF Japan, ECB, Yahoo Finance',
+    seg: { key: 'fiDiff', options: [['JP', 'US − Japan vs USD/JPY'], ['EA', 'US − Euro vs EUR/USD']] }, render: renderDiff });
+  makeCard(g, { key: 'hedged', title: 'FX-hedged 10Y yields', wide: true, source: 'US Treasury, MOF Japan, ECB',
+    seg: { key: 'fiHedge', options: [['usd', 'For a USD investor'], ['home', 'UST for JPY / EUR investors']] }, render: renderHedged });
+}
+function renderFixedIncome() { ['curve', 'xcurve', 'teny', 'slopes', 'real', 'diff', 'hedged'].forEach(k => cards[k].render()); }
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
   'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · US sectors',
-  'Rates · US', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
-const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS'];
+  'Rates · US', 'Rates · Japan', 'Rates · Euro area', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
+const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y'];
 const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
   ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['1Y', t => addMonths(t, -12)], ['Range', () => state.from]];
 function perfRows() {
@@ -1054,7 +1212,7 @@ const UNIVERSES = {
   'Global equities': ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'AS51', 'NIFTY', 'IBOV'],
   'Asia & FX': ['NKY', 'CSI300', 'HSI', 'STI', 'KLCI', 'AS51', 'DXY', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'USDKRW', 'AUDUSD', 'UST10Y'],
   'Liquidity & macro': ['NET_LIQ', 'GCB_TOTAL', 'SPX', 'NDX', 'BTC', 'GOLD', 'COPPER', 'UST10Y', 'REAL10Y', 'DXY', 'HY_OAS', 'VIX'],
-  'Rates & commodities': ['UST2Y', 'UST10Y', 'REAL10Y', 'BE10Y', 'TLT', 'GOLD', 'SILVER', 'BRENT', 'COPPER', 'NATGAS', 'DXY', 'AUDUSD'],
+  'Rates & commodities': ['UST2Y', 'UST10Y', 'REAL10Y', 'JGB10Y', 'EA10Y', 'TLT', 'GOLD', 'SILVER', 'BRENT', 'COPPER', 'NATGAS', 'DXY', 'AUDUSD'],
 };
 const corrCache = new Map();
 function sampled(id, freq) {
@@ -1244,7 +1402,7 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, liquidity: renderLiquidity, regime: renderRegime, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 function setTab(t) {
   state.tab = t;
@@ -1276,10 +1434,14 @@ function wire() {
 }
 async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 async function init() {
-  const [meta, y, f, d] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json'].map(loadJSON));
+  const [meta, y, f, d, cv] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json'].map(loadJSON));
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d]) if (res.status === 'fulfilled') {
     for (const [id, s] of Object.entries(res.value)) { S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
+  }
+  if (cv.status === 'fulfilled') {
+    for (const [k, c] of Object.entries(cv.value)) CURVES[k] = { ...c, t: c.d.map(x => x * DAY) };
+    registerCurveSeries();
   }
   const lasts = Object.values(S).filter(s => (s.group || '').startsWith('Equities') || s.id === 'NET_LIQ').map(s => s.t[s.t.length - 1]).filter(Boolean);
   state.latest = lasts.length ? Math.max(...lasts) : Date.now();
@@ -1301,7 +1463,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildMarkets(); buildCorrelation(); wire();
-  setTab(['overview', 'liquidity', 'regime', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildMarkets(); buildCorrelation(); wire();
+  setTab(['overview', 'liquidity', 'regime', 'fixed', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
