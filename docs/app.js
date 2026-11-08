@@ -184,7 +184,8 @@ function buildCardRange(c) {
   f.addEventListener('change', onDate); t.addEventListener('change', onDate);
   const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Top bar', title: 'Follow the date bar at the top of the page',
     onclick: () => { c.range = null; c.render(); } });
-  row.append(seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset);
+  row.append(seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset,
+    el('span', { class: 'muted small zoom-hint', text: 'Tip: drag across the chart to zoom' }));
   c.rangeParts = { seg, f, t, reset };
   return row;
 }
@@ -266,6 +267,54 @@ function withEndLabels(series) {
   }
   return Math.min(140, maxLen * 6.2 + 10);
 }
+// two series on different scales: one chart with left/right axes (default) or stacked panels
+function drawPair(c, A, B, { fmtA, fmtB, axisA, axisB, zeroA = false, zeroB = false } = {}) {
+  const ca = A.color || col(0), cb = B.color || col(1), overlay = c.pairMode !== 'stack';
+  const o = baseOpt();
+  o.legend.show = true;
+  const sa = line(A.name, A.data, ca), sb = line(B.name, B.data, cb, { yAxisIndex: 1, xAxisIndex: overlay ? 0 : 1 });
+  if (zeroA) sa.markLine = zeroLine();
+  if (zeroB) sb.markLine = zeroLine();
+  const tint = (axis, color) => { axis.axisLabel = { ...axis.axisLabel, color }; axis.axisLine = { show: true, lineStyle: { color, width: 2 } }; return axis; };
+  if (overlay) {
+    o.grid = { left: 8, right: 8, top: 34, bottom: 8, containLabel: true };
+    o.xAxis = timeAxis();
+    o.yAxis = [tint(valAxis(axisA), ca), tint(valAxis(axisB, { position: 'right', splitLine: { show: false } }), cb)];
+  } else {
+    o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
+    o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
+    o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
+    o.yAxis = [valAxis(axisA, { gridIndex: 0 }), valAxis(axisB, { gridIndex: 1 })];
+  }
+  o.tooltip.formatter = tipFormatter((v, n) => n === A.name ? fmtA(v) : fmtB(v));
+  o.series = [sa, sb];
+  setZoomable(c, o);
+  c.csv = toCSV([A, B]);
+}
+function pairToggle(c) {   // card tool: switch between one chart with two axes and stacked panels
+  c.pairMode = 'overlay';
+  const b = el('button', { class: 'ghost', type: 'button', text: '⇅ Stack', title: 'Switch between one chart with two axes and two stacked panels' });
+  b.addEventListener('click', () => { c.pairMode = c.pairMode === 'stack' ? 'overlay' : 'stack'; b.textContent = c.pairMode === 'stack' ? '⇅ Overlay' : '⇅ Stack'; c.render(); });
+  c.root.querySelector('.card-tools').prepend(b);
+}
+// drag a box across a time chart to zoom: sets this chart's own date range (↺ resets)
+function setZoomable(c, o) {
+  // the zoom tool must exist (show: true) for drag-select to work; it is made invisible instead
+  o.toolbox = { show: true, right: -200, top: -200, itemSize: 1, feature: { dataZoom: { yAxisIndex: 'none', filterMode: 'none',
+    brushStyle: { color: hexA(tok('--accent'), 0.12), borderColor: tok('--accent'), borderWidth: 1 } } } };
+  const ch = inst(c);
+  ch.setOption(o, true);
+  ch.off('datazoom');
+  ch.dispatchAction({ type: 'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: true });
+  ch.on('datazoom', e => {
+    const dz = (e.batch || [e]).find(d => d.startValue != null && d.endValue != null);
+    if (!dz) return;
+    const a = Math.round(dz.startValue), b = Math.round(dz.endValue);
+    if (b - a < 2 * DAY) return;
+    c.range = { from: a, to: b };
+    setTimeout(() => c.render(), 0);
+  });
+}
 function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null } = {}) {
   const series = list.map((s, i) => line(s.name, s.data, s.color || col(i), s.extra || {}));
   if ((zero || hlines.length) && series.length) {
@@ -288,7 +337,7 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   o.xAxis = timeAxis();
   o.yAxis = valAxis(axisFmt || (v => fmtNum(v, autoDec(v))), yExtra);
   o.series = series;
-  inst(c).setOption(o, true);
+  setZoomable(c, o);
   c.csv = toCSV(list);
 }
 function toCSV(list) {
@@ -381,17 +430,10 @@ function renderNetLiq(c) {
   if (!has('NET_LIQ')) return setEmpty(c, NO_FRED);
   const nl = S.NET_LIQ, spx = S.SPX, { from, to } = state;
   if (state.liqMode === 'level' || !spx) {
-    c.subEl.textContent = 'Fed total assets − Treasury General Account − overnight reverse repo (weekly). S&P 500 below, same dates.';
+    c.subEl.textContent = 'Fed total assets − Treasury General Account − overnight reverse repo (weekly), against the S&P 500.';
     const a = pts(nl, from, to), b = spx ? pts(spx, from, to) : [];
-    const o = baseOpt();
-    o.legend.show = true;
-    o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
-    o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
-    o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
-    o.yAxis = [valAxis(v => '$' + fmtNum(v, 1) + 'tn', { gridIndex: 0 }), valAxis(v => fmtNum(v, 0), { gridIndex: 1 })];
-    o.tooltip.formatter = tipFormatter((v, n) => n === 'S&P 500' ? fmtNum(v, 0) : '$' + fmtNum(v, 2) + 'tn');
-    o.series = [line('Fed net liquidity', a, col(0)), line('S&P 500', b, col(1), { xAxisIndex: 1, yAxisIndex: 1 })];
-    inst(c).setOption(o, true);
+    drawPair(c, { name: 'Fed net liquidity', data: a }, { name: 'S&P 500', data: b },
+      { fmtA: v => '$' + fmtNum(v, 2) + 'tn', fmtB: v => fmtNum(v, 0), axisA: v => '$' + fmtNum(v, 1) + 'tn', axisB: v => fmtNum(v, 0) });
     c.csv = toCSV([{ name: 'Fed net liquidity (USD tn)', data: a }, { name: 'S&P 500', data: b }]);
     setNote(c, '');
     return;
@@ -441,7 +483,7 @@ function renderGCB(c) {
   o.tooltip.formatter = tipFormatter(v => '$' + fmtNum(v, 2) + 'tn');
   o.xAxis = timeAxis(); o.yAxis = valAxis(v => '$' + fmtNum(v, 0) + 'tn', { scale: false });
   o.series = series;
-  inst(c).setOption(o, true);
+  setZoomable(c, o);
   c.csv = toCSV(ids.map(id => ({ name: S[id].label + ' (USD tn)', data: pts(S[id], state.from, state.to) })));
   const tot = S.GCB_TOTAL, a = asOf(tot, state.to), b = a && asOf(tot, a.t - 365 * DAY);
   setNote(c, a ? `Total ${fmtVal(tot, a.v)} as of ${nice(a.t)}` + (b ? `, ${sign(a.v - b.v)}${fmtNum(Math.abs((a.v / b.v - 1) * 100), 1)}% YoY.` : '.') : '');
@@ -760,6 +802,7 @@ function buildOverview() {
   for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "m2": "Federal Reserve via FRED (M2SL); YoY calculated", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
+function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
@@ -888,7 +931,7 @@ function renderRegimeHistory(c) {
   };
   o.xAxis = timeAxis(); o.yAxis = valAxis(v => fmtNum(v, autoDec(v)));
   o.series = series;
-  inst(c).setOption(o, true);
+  setZoomable(c, o);
   c.csv = [['Date', s.label, 'Regime'], ...data.map(([t, v]) => { const q = asOf(S.REG_QUAD, t); return [iso(t), v, q ? QUADS[q.v].name : '']; })];
 }
 function monthEnds(s) {  // month key (UTC month start ms) -> last value in that month
@@ -1102,16 +1145,9 @@ function renderDiff(c) {
   if (!us || !fo || !has(fx)) return setEmpty(c, 'Curve data arrives with the next daily run.');
   const spread = pts(combine(us, fo, (a, b) => (a - b) * 100), state.from, state.to), f = pts(S[fx], state.from, state.to);
   const nm = k === 'JP' ? 'US − Japan 10Y spread' : 'US − Euro AAA 10Y spread';
-  c.subEl.textContent = `${nm} (bp, top) and ${S[fx].label} (bottom), same dates. A wider US yield advantage usually supports the USD.`;
-  const o = baseOpt();
-  o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
-  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
-  o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
-  o.yAxis = [valAxis(v => fmtNum(v, 0) + 'bp', { gridIndex: 0 }), valAxis(v => fmtNum(v, autoDec(v)), { gridIndex: 1 })];
-  o.tooltip.formatter = tipFormatter((v, n) => n === nm ? fmtNum(v, 0) + 'bp' : fmtNum(v, autoDec(v)));
-  o.series = [line(nm, spread, col(0)), line(S[fx].label, f, col(1), { xAxisIndex: 1, yAxisIndex: 1 })];
-  inst(c).setOption(o, true);
-  c.csv = toCSV([{ name: nm + ' (bp)', data: spread }, { name: S[fx].label, data: f }]);
+  c.subEl.textContent = `${nm} (bp) against ${S[fx].label}. A wider US yield advantage usually supports the USD.`;
+  drawPair(c, { name: nm, data: spread }, { name: S[fx].label, data: f },
+    { fmtA: v => fmtNum(v, 0) + 'bp', fmtB: v => fmtNum(v, autoDec(v)), axisA: v => fmtNum(v, 0) + 'bp', axisB: v => fmtNum(v, autoDec(v)) });
   const m = new Map(f.map(p => [p[0], p[1]])), pairs = spread.filter(p => m.has(p[0]));
   const wk = pairs.filter((p, i) => i % 5 === 0), dx = [], dy = [];
   for (let i = 1; i < wk.length; i++) { dx.push(wk[i][1] - wk[i - 1][1]); dy.push(Math.log(m.get(wk[i][0]) / m.get(wk[i - 1][0]))); }
@@ -1192,15 +1228,8 @@ function renderSneer(c) {
   const b0 = p[0][1], lvl = p.map(([t, v]) => [t, v / b0 * 100]);
   const slope = [];   // 26-week change, annualised
   for (let i = 26; i < s.t.length; i++) if (s.t[i] >= state.from && s.t[i] <= state.to) slope.push([s.t[i], (Math.pow(s.v[i] / s.v[i - 26], 2) - 1) * 100]);
-  const o = baseOpt();
-  o.grid = [{ left: 8, right: 16, top: 34, height: '44%', containLabel: true }, { left: 8, right: 16, top: '62%', bottom: 8, containLabel: true }];
-  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
-  o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
-  o.yAxis = [valAxis(v => fmtNum(v, 1), { gridIndex: 0 }), valAxis(v => fmtNum(v, 1) + '%', { gridIndex: 1 })];
-  o.tooltip.formatter = tipFormatter((v, n) => n.startsWith('Pace') ? sign(v) + fmtNum(Math.abs(v), 2) + '% a year' : fmtNum(v, 2));
-  o.series = [line('S$NEER proxy (= 100 at range start)', lvl, col(0)), { ...line('Pace: 26-week change, annualised', slope, col(1), { xAxisIndex: 1, yAxisIndex: 1 }), markLine: { ...zeroLine() } }];
-  inst(c).setOption(o, true);
-  c.csv = toCSV([{ name: 'S$NEER proxy', data: lvl }, { name: '26w annualised %', data: slope }]);
+  drawPair(c, { name: 'S$NEER proxy (= 100 at range start)', data: lvl }, { name: 'Pace: 26-week change, annualised', data: slope },
+    { fmtA: v => fmtNum(v, 2), fmtB: v => sign(v) + fmtNum(Math.abs(v), 2) + '% a year', axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 1) + '%', zeroB: true });
   const last = slope[slope.length - 1];
   setNote(c, `Estimate only: MAS does not publish the S$NEER basket or band. Weights here approximate Singapore's trade shares (${Object.entries(SNEER_W).map(([k, w]) => `${k} ${Math.round(w * 100)}%`).join(', ')}). Up = stronger SGD. Latest pace ${last ? sign(last[1]) + fmtNum(Math.abs(last[1]), 1) + '% a year' : 'n/a'}; MAS steers the slope of the band, so watch changes in this pace around MAS policy statements (January, April, July, October).`);
 }
@@ -1378,15 +1407,8 @@ function renderCnSpread(c) {
   if (!has('UST10Y', 'CN_10Y', 'USDCNY')) return setEmpty(c, 'Waiting for data.');
   const spread = pts(combine(S.CN_10Y, S.UST10Y, (cn, us) => (us - cn) * 100, {}, 40 * DAY), state.from, state.to);
   const f = pts(S.USDCNY, state.from, state.to), nm = 'US − China 10Y spread';
-  const o = baseOpt();
-  o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
-  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
-  o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
-  o.yAxis = [valAxis(v => fmtNum(v, 0) + 'bp', { gridIndex: 0 }), valAxis(v => fmtNum(v, 2), { gridIndex: 1 })];
-  o.tooltip.formatter = tipFormatter((v, n) => n === nm ? fmtNum(v, 0) + 'bp' : fmtNum(v, 4));
-  o.series = [{ ...line(nm, spread, col(0)), markLine: zeroLine() }, line('USD/CNY', f, col(1), { xAxisIndex: 1, yAxisIndex: 1 })];
-  inst(c).setOption(o, true);
-  c.csv = toCSV([{ name: nm + ' (bp)', data: spread }, { name: 'USD/CNY', data: f }]);
+  drawPair(c, { name: nm, data: spread }, { name: 'USD/CNY', data: f },
+    { fmtA: v => fmtNum(v, 0) + 'bp', fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 0) + 'bp', axisB: v => fmtNum(v, 2), zeroA: true });
   setSource(c, srcOf(['UST10Y', 'CN_10Y', 'USDCNY']) + '; spread calculated');
   setNote(c, 'China 10Y is a monthly average (OECD); UST 10Y daily, matched to the month. A US yield advantage over China puts weakening pressure on the yuan.');
 }
@@ -1811,7 +1833,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildMarkets(); buildCorrelation(); applySources(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
   setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

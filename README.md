@@ -18,7 +18,7 @@ It is a plain web page, so it opens in any browser (including a locked-down work
 | **Markets** | Performance table for about 60 markets (equities across US, Europe, Japan, China/HK, N. Asia, ASEAN incl. Singapore & Malaysia, India, Australia, Brazil; sectors; bonds & credit; US rates; FX; commodities; crypto; vol). Columns: 1D/1W/1M/3M/YTD/1Y and your chosen range. Tick any rows to chart them rebased to 100. |
 | **Correlation** | Correlation matrix for preset universes, plus each correlation's change vs its own 3-year average. "Biggest shifts" list (where ideas start). Rolling correlation for any two series. |
 
-Every chart shows its **source** (provider and series codes) and has its **own date range** underneath (1M … Max or custom; ↺ returns it to the top bar). Every chart also has **⤢ Focus** (enlarge for screenshots), **PNG** (downloads a titled, sourced image) and **CSV** (downloads the data). The date bar (1M … Max, or custom From/To) drives every chart and table. The URL remembers the tab and range, so you can bookmark a view.
+Every chart shows its **source** (provider and series codes) and has its **own date range** underneath (1M … Max or custom; ↺ returns it to the top bar). **Drag across any time chart to zoom** into that period. Paired series (e.g. net liquidity vs S&P 500) share one chart with left and right axes; **⇅ Stack** switches to two panels. Every chart also has **⤢ Focus** (enlarge for screenshots), **PNG** (downloads a titled, sourced image) and **CSV** (downloads the data). The date bar (1M … Max, or custom From/To) drives every chart and table. The URL remembers the tab and range, so you can bookmark a view.
 
 ## Daily refresh
 
