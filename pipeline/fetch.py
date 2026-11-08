@@ -21,7 +21,7 @@ import pandas as pd
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import ARCHIVE, FRED, START_DATE, YAHOO  # noqa: E402
+from config import ARCHIVE, FRED, LONG_YAHOO, START_DATE, YAHOO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "data"
@@ -118,8 +118,8 @@ def get(url: str, params: dict | None = None, tries: int = 3) -> requests.Respon
 
 
 # ------------------------------------------------------------------ sources
-def fetch_yahoo(symbol: str) -> pd.Series | None:
-    p1 = int(pd.Timestamp(START_DATE).timestamp())
+def fetch_yahoo(symbol: str, start: str = START_DATE) -> pd.Series | None:
+    p1 = int(pd.Timestamp(start).timestamp())
     p2 = int(time.time())
     r = get(f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(symbol)}",
             {"period1": p1, "period2": p2, "interval": "1d", "includeAdjustedClose": "true"})
@@ -244,15 +244,26 @@ def _z(x: pd.Series, window: int = 120, min_periods: int = 60) -> pd.Series:
     return ((x - m) / sd).clip(-3, 3)
 
 
+def _confirm(q: pd.Series, n: int = 2) -> pd.Series:
+    """Only switch regime after the new reading has held for n consecutive months."""
+    out, cur, run, last = [], None, 0, None
+    for v in q.values:
+        run = run + 1 if v == last else 1
+        last = v
+        if cur is None or (v != cur and run >= n):
+            cur = v
+        out.append(cur)
+    return pd.Series(out, index=q.index, dtype="float64")
+
+
 def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
     """
-    Growth x inflation regime (the 'Investment Clock' / 'GIP quad' family of models).
+    Growth x inflation regime (Investment Clock / All Weather family).
 
-    1. Each input becomes a year-on-year growth rate (CFNAI is used as a 3-month average level).
-    2. Each is z-scored against its own trailing 10 years, then averaged into a
-       Growth composite and an Inflation composite.
-    3. Momentum = change in the 3-month average of each composite over 3 months.
-    4. Growth momentum up/down x inflation momentum up/down -> 4 regimes.
+    Inputs -> year-on-year rates -> z-scores against ALL past data (expanding window, min 5 years)
+    -> Growth and Inflation composites. Direction = change in the 3-month average over 6 months.
+    The regime switches only after two consecutive months agree. Three alternative constructions are
+    kept for a robustness check: 10-year rolling z, 3-month momentum, and a scale-free sign vote.
     """
     out = {}
     have = lambda k: k in f and f[k] is not None and len(f[k]) > 24
@@ -280,33 +291,74 @@ def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
     if len(g_in) < 3 or len(i_in) < 2:
         return out
 
-    def composite(inputs, prefix, side):
+    def z_exp(x):
+        m, sd = x.expanding(60).mean(), x.expanding(60).std()
+        return ((x - m) / sd).clip(-3, 3)
+
+    def z_roll(x):
+        m, sd = x.rolling(120, min_periods=60).mean(), x.rolling(120, min_periods=60).std()
+        return ((x - m) / sd).clip(-3, 3)
+
+    def composite(inputs, zf, prefix=None, side=None):
         zs = {}
         for k, (label, x) in inputs.items():
-            z = _z(x.dropna())
+            z = zf(x.dropna())
             zs[k] = z
-            out[f"{prefix}_{k}"] = (z, dict(label=label, unit="z", kind="level", side=side))
+            if prefix:
+                out[f"{prefix}_{k}"] = (z, dict(label=label, unit="z", kind="level", side=side))
         df = pd.DataFrame(zs)
         need = max(2, len(inputs) - 2)
-        comp = df.mean(axis=1, skipna=True).where(df.notna().sum(axis=1) >= need)
-        return comp.dropna()
+        return df.mean(axis=1, skipna=True).where(df.notna().sum(axis=1) >= need).dropna()
 
-    G = composite(g_in, "RZG", "growth")
-    I = composite(i_in, "RZI", "inflation")
-    Gs, Is = G.rolling(3).mean(), I.rolling(3).mean()
-    Gm, Im = (Gs - Gs.shift(3)).dropna(), (Is - Is.shift(3)).dropna()
-    idx = Gm.index.intersection(Im.index)
-    Gm, Im = Gm.reindex(idx), Im.reindex(idx)
-    quad = pd.Series(4.0, index=idx)
-    quad[(Gm >= 0) & (Im < 0)] = 1
-    quad[(Gm >= 0) & (Im >= 0)] = 2
-    quad[(Gm < 0) & (Im >= 0)] = 3
-    note = "Monthly. Dated to the data month; most inputs are published 2-6 weeks after month end."
-    out["REG_G"] = (G, dict(label="Growth composite", unit="z", kind="level", note=note))
-    out["REG_I"] = (I, dict(label="Inflation composite", unit="z", kind="level", note=note))
-    out["REG_GM"] = (Gm, dict(label="Growth momentum", unit="z", kind="level", note=note))
-    out["REG_IM"] = (Im, dict(label="Inflation momentum", unit="z", kind="level", note=note))
-    out["REG_QUAD"] = (quad, dict(label="Regime", unit="", kind="level", note=note, names=REGIMES))
+    def mom(c, k):
+        s = c.rolling(3).mean()
+        return (s - s.shift(k)).dropna()
+
+    def quad(gm, im):
+        idx = gm.index.intersection(im.index)
+        gm, im = gm.reindex(idx), im.reindex(idx)
+        q = pd.Series(4.0, index=idx)
+        q[(gm >= 0) & (im < 0)] = 1
+        q[(gm >= 0) & (im >= 0)] = 2
+        q[(gm < 0) & (im >= 0)] = 3
+        return q
+
+    def sign_vote(inputs, k):
+        df = pd.DataFrame({key: (lambda s: (s - s.shift(k)))(x.dropna().rolling(3).mean()).apply(lambda v: 1 if v > 0 else (-1 if v < 0 else 0))
+                           for key, (_, x) in inputs.items()})
+        need = max(2, len(inputs) - 2)
+        return df.mean(axis=1).where(df.notna().sum(axis=1) >= need).dropna()
+
+    Ge = composite(g_in, z_exp, "RZG", "growth")
+    Ie = composite(i_in, z_exp, "RZI", "inflation")
+    Gr, Ir = composite(g_in, z_roll), composite(i_in, z_roll)
+    gm6, im6 = mom(Ge, 6), mom(Ie, 6)
+    methods = {
+        "A": quad(gm6, im6),                                        # default (before confirmation)
+        "B": quad(mom(Gr, 6), mom(Ir, 6)),                          # 10-year rolling z
+        "C": quad(mom(Ge, 3), mom(Ie, 3)),                          # faster: 3-month momentum
+        "D": quad(sign_vote(g_in, 6), sign_vote(i_in, 6)),          # no scaling: vote on direction
+        "OLD": quad(mom(Gr, 3), mom(Ir, 3)),                        # previous model (10y rolling, 3m)
+    }
+    q = _confirm(methods["A"], 2)
+    # agreement: how many of the 4 constructions give the same reading as the latest (unconfirmed) signal
+    agree = pd.DataFrame({k: methods[k] for k in "ABCD"}).reindex(q.index)
+    agree = agree.eq(methods["A"].reindex(q.index), axis=0).sum(axis=1)
+    # strength: how far the weaker of the two signals is from zero, in units of its own typical size
+    gsd, isd = gm6.abs().expanding(60).median(), im6.abs().expanding(60).median()
+    strength = pd.concat([(gm6.abs() / gsd), (im6.abs() / isd)], axis=1).min(axis=1).reindex(q.index)
+
+    note = "Monthly, dated to the data month; most inputs are published 2-6 weeks after month end."
+    out["REG_G"] = (Ge, dict(label="Growth composite (level vs history)", unit="z", kind="level", note=note))
+    out["REG_I"] = (Ie, dict(label="Inflation composite (level vs history)", unit="z", kind="level", note=note))
+    out["REG_GM"] = (gm6, dict(label="Growth momentum (6m)", unit="z", kind="level", note=note))
+    out["REG_IM"] = (im6, dict(label="Inflation momentum (6m)", unit="z", kind="level", note=note))
+    out["REG_QUAD"] = (q, dict(label="Regime", unit="", kind="level", note=note, names=REGIMES))
+    out["REG_AGREE"] = (agree.astype(float), dict(label="Methods agreeing (of 4)", unit="", kind="level"))
+    out["REG_STRENGTH"] = (strength.dropna(), dict(label="Signal strength", unit="x", kind="level"))
+    for k, lab in (("A", "6m momentum, all-history z (unconfirmed)"), ("B", "6m momentum, 10-year rolling z"),
+                   ("C", "3m momentum, all-history z"), ("D", "6m momentum, sign vote (no scaling)"), ("OLD", "Previous model: 3m, 10-year rolling z")):
+        out[f"REG_Q_{k}"] = (methods[k], dict(label=lab, unit="", kind="level"))
 
     # NY Fed yield-curve recession model (Estrella & Mishkin probit), 12 months ahead
     curve = f.get("CURVE_3m10y_LONG")
@@ -314,7 +366,7 @@ def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
         curve = f.get("CURVE_3m10y")
     if curve is not None and len(curve):
         sp = _monthly(curve)
-        prob = sp.apply(lambda x: 50 * (1 + math.erf((-0.5333 - 0.6330 * x) / math.sqrt(2))) * 1.0)
+        prob = sp.apply(lambda x: 50 * (1 + math.erf((-0.5333 - 0.6330 * x) / math.sqrt(2))))
         out["REC_PROB_NYF"] = (prob, dict(label="Recession probability, 12m ahead (NY Fed curve model)", unit="%", kind="level",
                                note="Probit on the monthly-average 10y-3m Treasury spread: P = Φ(−0.5333 − 0.6330 × spread)"))
     if have("CLAIMS"):
@@ -327,29 +379,82 @@ def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
         out["CPI_YOY"] = (yoy(_monthly(f["CPI"])), dict(label="Headline CPI YoY", unit="%", kind="level"))
     if have("CORE_PCE"):
         out["CORE_PCE_YOY"] = (yoy(_monthly(f["CORE_PCE"])), dict(label="Core PCE YoY", unit="%", kind="level"))
+    out.update(build_lei(f))
+    out.update(build_long_assets(f))
     return out
 
 
-# ------------------------------------------------------------------ archive
-def merge_archive(sid: str, new: pd.Series | None, published: pd.Series | None) -> pd.Series | None:
-    """Append-only history: archive CSV + last published data + today's fetch (newest wins)."""
-    parts = []
-    path = ARCHIVE_DIR / f"{sid}.csv"
-    if path.exists():
-        a = pd.read_csv(path, parse_dates=["date"]).set_index("date")["value"]
-        parts.append(a)
-    if published is not None:
-        parts.append(published)
-    if new is not None:
-        parts.append(new)
-    if not parts:
-        return None
-    merged = pd.concat(parts)
-    merged = merged[~merged.index.duplicated(keep="last")].sort_index().dropna()
-    if new is not None:   # only rewrite the archive when we actually got fresh data
-        ARCHIVE_DIR.mkdir(exist_ok=True)
-        merged.rename("value").rename_axis("date").to_csv(path, date_format="%Y-%m-%d")
-    return merged
+LEI_PARTS = [  # (key, label, transform, sign)  transform: 'pct' monthly % change, 'diff' monthly difference
+    ("AWHMAN", "Weekly hours, manufacturing", "diff", 1),
+    ("CLAIMS", "Initial jobless claims", "pct", -1),
+    ("ACOGNO", "Consumer goods orders", "pct", 1),
+    ("PHILLY_NO", "Philly Fed new orders", "diff", 1),
+    ("NEWORDER", "Core capital goods orders", "pct", 1),
+    ("PERMIT", "Building permits", "pct", 1),
+    ("LH_SPX", "S&P 500", "pct", 1),
+    ("NFCI", "Financial conditions (NFCI)", "diff", -1),
+    ("T10YFF", "10Y − fed funds spread", "diff", 1),
+    ("UMCSENT", "Consumer sentiment", "diff", 1),
+]
+
+
+def build_lei(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
+    """DIY leading index following the Conference Board method with free FRED/Yahoo proxies:
+    monthly changes, each scaled by the inverse of its volatility (weights sum to 1), summed and cumulated."""
+    ch = {}
+    for key, label, tr, sgn in LEI_PARTS:
+        if key not in f or f[key] is None or len(f[key]) < 60:
+            continue
+        m = _monthly(f[key]).dropna()
+        x = (m.pct_change() * 100) if tr == "pct" else m.diff()
+        ch[key] = sgn * x.replace([float("inf"), float("-inf")], float("nan"))
+    if len(ch) < 6:
+        return {}
+    df = pd.DataFrame(ch).loc["1965":]
+    w = 1 / df.std()
+    w = w / w.sum()
+    contrib = df.mul(w, axis=1)
+    avail = df.notna().mul(w, axis=1).sum(axis=1)
+    r = (contrib.sum(axis=1) / avail).where(df.notna().sum(axis=1) >= 6).dropna()
+    idx = (1 + r / 100).cumprod()
+    idx = idx / idx.loc["2016"].mean() * 100 if len(idx.loc["2016"]) else idx
+    g6 = ((idx / idx.shift(6)) ** 2 - 1) * 100
+    six = df.rolling(6).sum()
+    diff = (six > 0).sum(axis=1) / six.notna().sum(axis=1) * 100
+    src = "Dashboard calculation (Conference Board method) from FRED: AWHMAN, ICSA, ACOGNO, NOCDFSA066MSFRBPHI, NEWORDER, PERMIT, NFCI, T10YFF, UMCSENT; S&P 500 from Yahoo Finance"
+    out = {
+        "LEI_IDX": (idx, dict(label="DIY leading index (2016 = 100)", unit="idx", kind="level", source=src)),
+        "LEI_6M": (g6.dropna(), dict(label="Leading index, 6-month change annualised", unit="%", kind="level", source=src)),
+        "LEI_DIFF": (diff.dropna(), dict(label="Leading index diffusion (% of components rising, 6m)", unit="%", kind="level", source=src)),
+    }
+    for key, label, _, _ in LEI_PARTS:
+        if key in contrib:
+            out[f"LEIC_{key}"] = (contrib[key].rolling(6).sum().dropna(), dict(label=label, unit="pts", kind="level", source=src))
+    return out
+
+
+def build_long_assets(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
+    """Monthly total-return style indices back to the 1960s-70s, for regime statistics."""
+    out = {}
+    if "LH_SPX" in f:
+        out["LH_SPX"] = (f["LH_SPX"].dropna(), dict(label="S&P 500 (price)", unit="idx", kind="price", source="Yahoo Finance (^GSPC), monthly"))
+    if "LH_USD" in f:
+        out["LH_USD"] = (f["LH_USD"].dropna(), dict(label="US dollar index", unit="idx", kind="price", source="Yahoo Finance (DX-Y.NYB), monthly"))
+    if "LH_GSCI" in f:
+        out["LH_GSCI"] = (f["LH_GSCI"].dropna(), dict(label="Commodities (S&P GSCI)", unit="idx", kind="price", source="Yahoo Finance (^SPGSCI), monthly"))
+    if "GS10" in f and len(f["GS10"]) > 60:
+        y = _monthly(f["GS10"]).dropna() / 100
+        dur = (1 - (1 + y / 2) ** -20) / y          # modified duration of a 10-year par bond
+        ret = y.shift(1) / 12 - dur.shift(1) * (y - y.shift(1))
+        out["LH_UST10"] = ((1 + ret.fillna(0)).cumprod() * 100, dict(label="10Y Treasury (approx. total return)", unit="idx", kind="price",
+                           source="Calculated from FRED GS10: yield income − duration × yield change"))
+    if "TB3MS" in f and len(f["TB3MS"]) > 60:
+        y = _monthly(f["TB3MS"]).dropna() / 100
+        out["LH_CASH"] = ((1 + (y.shift(1) / 12).fillna(0)).cumprod() * 100, dict(label="Cash (3M T-bills)", unit="idx", kind="price",
+                          source="Calculated from FRED TB3MS"))
+    if "WTI_LONG" in f and len(f["WTI_LONG"]) > 60:
+        out["LH_OIL"] = (_monthly(f["WTI_LONG"]).dropna(), dict(label="WTI crude oil", unit="USD/bbl", kind="price", source="FRED (WTISPLC), monthly"))
+    return out
 
 
 # ------------------------------------------------------------------ main
@@ -419,10 +524,19 @@ def main() -> int:
         time.sleep(0.2)
     write("fred.json", fred)
 
+    # --- long daily histories (monthly, for regime statistics)
+    for sid, sym, label in LONG_YAHOO:
+        s = fetch_yahoo(sym, "1960-01-01")
+        if s is not None and len(s) > 1000:
+            fred_series[sid] = s.resample("MS").last()
+            status[sid] = "ok"
+        else:
+            status[sid] = "missing"
+
     # --- derived
     derived = {}
     for sid, (s, meta) in build_derived(fred_series).items():
-        derived[sid] = {**meta, "group": "Derived", "source": "Calculated from FRED", **pack(s)}
+        derived[sid] = {"group": "Derived", "source": "Calculated from FRED", **meta, **pack(s)}
     write("derived.json", derived)
     print(f"Derived: {', '.join(derived) or 'none (FRED data missing)'}")
 
@@ -435,6 +549,11 @@ def main() -> int:
     if _self is not sys.modules.get("__main__"):
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
 
+    try:
+        import ai
+        ai.build_ai(status)
+    except Exception as e:   # AI indicators must never break the data refresh
+        print(f"AI indicators failed: {type(e).__name__}")
     try:
         import news
         news.build_news()

@@ -12,7 +12,7 @@ kind tells the dashboard how to measure change:
 """
 
 START_DATE = "2005-01-01"
-MACRO_START = "1990-01-01"   # macro series need longer history for 10-year rolling z-scores
+MACRO_START = "1959-01-01"   # macro series: long history so regimes include the 1970s-80s inflation cycles
 
 # ---------------------------------------------------------------- Yahoo Finance
 YAHOO = [
@@ -47,6 +47,20 @@ YAHOO = [
     ("XLF",      "XLF",       "US Financials (XLF)",  "Equities · US sectors","price", "USD"),
     ("XLE",      "XLE",       "US Energy (XLE)",      "Equities · US sectors","price", "USD"),
     ("VNQ",      "VNQ",       "US REITs (VNQ)",       "Equities · US sectors","price", "USD"),
+    ("XLY",      "XLY",       "US Cons. Discretionary (XLY)", "Equities · US sectors","price", "USD"),
+    ("XLI",      "XLI",       "US Industrials (XLI)", "Equities · US sectors","price", "USD"),
+    ("XLP",      "XLP",       "US Cons. Staples (XLP)", "Equities · US sectors","price", "USD"),
+    ("XLU",      "XLU",       "US Utilities (XLU)",   "Equities · US sectors","price", "USD"),
+    # AI complex
+    ("NVDA",     "NVDA",      "Nvidia",               "Equities · AI",        "price", "USD"),
+    ("AVGO",     "AVGO",      "Broadcom",             "Equities · AI",        "price", "USD"),
+    ("TSM",      "TSM",       "TSMC (ADR)",           "Equities · AI",        "price", "USD"),
+    ("AMD",      "AMD",       "AMD",                  "Equities · AI",        "price", "USD"),
+    ("MSFT",     "MSFT",      "Microsoft",            "Equities · AI",        "price", "USD"),
+    ("GOOGL",    "GOOGL",     "Alphabet",             "Equities · AI",        "price", "USD"),
+    ("AMZN",     "AMZN",      "Amazon",               "Equities · AI",        "price", "USD"),
+    ("META",     "META",      "Meta",                 "Equities · AI",        "price", "USD"),
+    ("SMH",      "SMH",       "Semiconductors ETF (SMH)", "Equities · AI",    "price", "USD"),
     # Bonds / credit (ETF total return proxies)
     ("TLT",      "TLT",       "UST 20Y+ (TLT)",       "Bonds & credit",       "price", "USD"),
     ("IEF",      "IEF",       "UST 7-10Y (IEF)",      "Bonds & credit",       "price", "USD"),
@@ -135,6 +149,18 @@ FRED = [
     ("CPI",         "CPIAUCSL",    "CPI (headline)",              "Macro · Inflation", "level", "idx", MACRO_START),
     ("CORE_CPI",    "CPILFESL",    "Core CPI",                    "Macro · Inflation", "level", "idx", MACRO_START),
     ("CORE_PCE",    "PCEPILFE",    "Core PCE price index",        "Macro · Inflation", "level", "idx", MACRO_START),
+    # Leading index components (Conference Board method, free proxies)
+    ("AWHMAN",      "AWHMAN",      "Avg weekly hours, manufacturing", "Macro · Leading", "level", "hours", MACRO_START),
+    ("ACOGNO",      "ACOGNO",      "New orders: consumer goods & materials", "Macro · Leading", "level", "USD mn", MACRO_START),
+    ("PHILLY_NO",   "NOCDFSA066MSFRBPHI", "Philly Fed new orders (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    ("NEWORDER",    "NEWORDER",    "Core capital goods orders (ex defence & aircraft)", "Macro · Leading", "level", "USD mn", MACRO_START),
+    ("PERMIT",      "PERMIT",      "Building permits",            "Macro · Leading", "level", "k", MACRO_START),
+    ("T10YFF",      "T10YFF",      "10Y Treasury − fed funds",    "Macro · Leading", "yield", "%", MACRO_START),
+    ("UMCSENT",     "UMCSENT",     "UMich consumer sentiment",    "Macro · Leading", "level", "idx", MACRO_START),
+    # Long-history assets for regime statistics
+    ("GS10",        "GS10",        "10Y Treasury yield (monthly)", "Rates · US", "yield", "%", MACRO_START),
+    ("TB3MS",       "TB3MS",       "3M T-bill rate (monthly)",    "Rates · US", "yield", "%", MACRO_START),
+    ("WTI_LONG",    "WTISPLC",     "WTI crude spot (monthly)",    "Commodities", "price", "USD/bbl", MACRO_START),
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
@@ -146,3 +172,7 @@ FRED = [
 # These are archived in archive/<id>.csv (committed by the daily job) so history
 # is never lost again: each run merges what FRED returns into the archive.
 ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS"}
+
+# Long daily histories from Yahoo (for regime statistics back to the 1970s), stored monthly
+LONG_YAHOO = [("LH_SPX", "^GSPC", "S&P 500 (price, since 1960)"), ("LH_USD", "DX-Y.NYB", "US Dollar Index (since 1971)"),
+              ("LH_GSCI", "^SPGSCI", "S&P GSCI commodities (since 1984)")]
