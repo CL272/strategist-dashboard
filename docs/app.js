@@ -862,6 +862,7 @@ function renderWhere(c) {
     }
   }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  foldableGroups(tb, 'where');
   c.csv = csv;
   setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency, commodities and crypto in USD.' : `Equities, commodities and crypto converted to ${tgt} at daily FX (markets already priced in ${tgt} are unchanged).`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
 }
@@ -2509,7 +2510,7 @@ const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t
 state.mktCcy = 'local';
 const mktSeries = id => state.mktCcy !== 'local' && convertible(id) ? inCcy(id, state.mktCcy) : S[id];
 function perfRows() {
-  const ids = Object.keys(S).filter(id => S[id].source && S[id].source.startsWith('Yahoo')).concat(PERF_FRED.filter(id => has(id)));
+  const ids = Object.keys(S).filter(id => S[id].source && S[id].source.startsWith('Yahoo') && S[id].group !== 'Derived').concat(PERF_FRED.filter(id => has(id)));
   return ids.filter(id => has(id)).map(id => {
     const s = mktSeries(id), a = asOf(s, state.to);
     if (!a) return null;
@@ -2538,9 +2539,11 @@ function toggleSel(id, on) {
 const PERF_CLASSES = ['Equities', 'Rates & credit', 'FX', 'Commodities & crypto', 'Volatility', 'All'];
 const perfClass = g => /^Equities/.test(g) ? 'Equities' : /^(Rates|Credit|Bonds)/.test(g) ? 'Rates & credit' : /^FX/.test(g) ? 'FX'
   : /^(Commodities|Crypto)/.test(g) ? 'Commodities & crypto' : /^Volatility/.test(g) ? 'Volatility' : 'All';
-state.perfClass = 'Equities';
+state.perfClass = 'All';
 function renderPerfTable() {
-  const rows = perfRows().filter(r => state.perfClass === 'All' || perfClass(r.s.group) === state.perfClass);
+  const q = (state.perfQuery || '').trim().toLowerCase();
+  const rows = perfRows().filter(r => (state.perfClass === 'All' || perfClass(r.s.group) === state.perfClass)
+    && (!q || (r.s.label + ' ' + r.id + ' ' + r.s.group).toLowerCase().includes(q)));
   const nav = $('#perfNav');
   if (nav) nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.textContent === state.perfClass));
   const tbl = $('#perfTable'); tbl.replaceChildren();
@@ -2582,9 +2585,33 @@ function renderPerfTable() {
     }
   }
   tbl.append(tb);
+  foldableGroups(tb, 'perf');
+  if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: cols.length + 2, class: 'muted', text: 'No assets match this filter.' })));
   $('#perfNote').textContent = `Changes to ${nice(state.to)}. “Range” runs from ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Prices in local currency' : `Equities, ETFs, commodities and crypto in ${state.mktCcy} (FX pairs unchanged)`}, % (ETFs include dividends); yields and spreads in bp; VIX/MOVE in points. Tick a row to chart it.`;
   $('#perfCsv').onclick = () => downloadCSV([['Asset', 'Group', 'Last', ...cols], ...rows.map(r => [r.s.label, r.s.group, r.last, ...cols.map(k => r[k] == null ? '' : r[k].toFixed(2))])], 'cross-asset-performance');
 }
+const FOLD_KEY = 'sd-folded-groups';
+const folded = (() => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || '[]')); } catch (e) { return new Set(); } })();
+function saveFolded() { try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (e) { /* storage blocked: folding still works this session */ } }
+function foldableGroups(tbody, table) {   // table = a name so the same group can be folded separately in two tables
+  let head = null, kids = [];
+  const wire = (h, rows) => {
+    if (!h) return;
+    const td = h.firstElementChild, name = td.textContent, key = table + '|' + name.split(' · in ')[0];
+    const set = open => { h.classList.toggle('folded', !open); rows.forEach(r => r.hidden = !open); h.setAttribute('aria-expanded', open); };
+    td.replaceChildren(el('span', { class: 'chev', 'aria-hidden': 'true' }), el('span', { text: name }), el('span', { class: 'muted small cnt', text: ` ${rows.length}` }));
+    h.classList.add('foldable'); h.tabIndex = 0; h.title = 'Click to fold or unfold this group';
+    const toggle = () => { const open = h.classList.contains('folded'); open ? folded.delete(key) : folded.add(key); saveFolded(); set(open); };
+    h.addEventListener('click', toggle); h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    h.foldTo = open => { open ? folded.delete(key) : folded.add(key); set(open); };
+    set(!folded.has(key));
+  };
+  for (const tr of [...tbody.children]) {
+    if (tr.classList.contains('grp')) { wire(head, kids); head = tr; kids = []; } else if (head) kids.push(tr);
+  }
+  wire(head, kids);
+}
+function foldAll(tbody, open) { tbody.querySelectorAll('tr.foldable').forEach(h => h.foldTo(open)); saveFolded(); }
 function hexA(hex, a) {
   const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a.toFixed(3)})`;
@@ -2619,9 +2646,15 @@ function buildMarkets() {
   sel.addEventListener('change', () => { state.mktCcy = sel.value; syncMktCcy(); renderMarkets(); });
   $('#perfCsv').before(sel);
   // the performance table is split by asset class, like the sub-tabs on other pages
-  const nav = el('div', { class: 'subtabs', id: 'perfNav', role: 'tablist', 'aria-label': 'Asset class' });
+  const nav = el('div', { class: 'seg-chips', id: 'perfNav', role: 'tablist', 'aria-label': 'Asset class' });
   PERF_CLASSES.forEach(k => nav.append(el('button', { type: 'button', role: 'tab', text: k, onclick: () => { state.perfClass = k; renderPerfTable(); } })));
-  $('#mktCharts').before(nav);
+  const search = el('input', { type: 'search', placeholder: 'Find an asset…', 'aria-label': 'Find an asset', class: 'perf-search' });
+  search.addEventListener('input', () => { state.perfQuery = search.value; renderPerfTable(); });
+  const tb = () => $('#perfTable tbody');
+  const bar = el('div', { class: 'perf-bar' }, nav, el('div', { class: 'perf-bar-r' }, search,
+    el('button', { type: 'button', class: 'ghost', text: 'Fold all', title: 'Fold every group to its heading', onclick: () => foldAll(tb(), false) }),
+    el('button', { type: 'button', class: 'ghost', text: 'Unfold all', onclick: () => foldAll(tb(), true) })));
+  $('#perfTable').closest('.card').querySelector('.table-wrap').before(bar);
   makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }

@@ -317,3 +317,25 @@ table.rules th, table.rules td { text-align: left; white-space: normal; } table.
 .subtabs button:hover { color: var(--ink); background: var(--wash); }
 .subtabs button[aria-selected="true"] { background: var(--ink); color: var(--page); font-weight: 600; }
 @media print { .subtabs { display: none; } }
+
+/* foldable group headings in tables */
+table.perf tr.foldable { cursor: pointer; user-select: none; }
+table.perf tr.foldable td { display: table-cell; }
+table.perf tr.foldable:hover td { color: var(--accent); }
+table.perf tr.foldable:focus-visible td { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.perf tr.foldable .chev { display: inline-block; width: 14px; transition: transform .12s; }
+table.perf tr.foldable .chev::before { content: '▾'; }
+table.perf tr.foldable.folded .chev { transform: rotate(-90deg); }
+table.perf tr.foldable .cnt { font-weight: 400; }
+/* asset-class chips, search and fold controls above the Markets table; stays in view while scrolling */
+.perf-bar {
+  position: sticky; top: var(--filters-h, 0px); z-index: 3; background: var(--surface);
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 8px 0; margin-bottom: 4px; border-bottom: 1px solid var(--grid);
+}
+.perf-bar-r { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.perf-bar .ghost { font-size: 12px; padding: 3px 9px; }
+.perf-search { font-size: 13px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); width: 170px; }
+.seg-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.seg-chips button { border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font-size: 12.5px; padding: 4px 11px; border-radius: 999px; cursor: pointer; }
+.seg-chips button:hover { color: var(--ink); background: var(--wash); }
+.seg-chips button[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); font-weight: 600; }
