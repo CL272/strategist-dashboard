@@ -17,7 +17,7 @@ import pandas as pd
 
 from fetch import DIAG, ROOT, get
 
-SHILLER_URLS = ["https://www.econ.yale.edu/~shiller/data/ie_data.xls", "http://www.econ.yale.edu/~shiller/data/ie_data.xls"]
+SHILLER_URLS: list[str] = []   # Yale page frozen since Sep 2023; shillerdata.com is the live source (repo copy as fallback)
 ACM_URL = "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls"
 
 
