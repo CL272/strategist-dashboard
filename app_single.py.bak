@@ -1,0 +1,817 @@
+"""
+Fed Liquidity Monitor
+=====================
+A Streamlit dashboard for monitoring US dollar funding conditions, Federal
+Reserve balance sheet dynamics, reserve scarcity and money market stress.
+
+Data source: `macro_liquidity_master.csv` (produced by the upstream builder script).
+
+Run with:
+    streamlit run app.py
+"""
+
+from __future__ import annotations
+
+import io
+import os
+from datetime import timedelta
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from plotly.subplots import make_subplots
+
+# --------------------------------------------------------------------------- #
+# Page configuration
+# --------------------------------------------------------------------------- #
+
+st.set_page_config(
+    layout="wide",
+    page_title="Fed Liquidity Monitor",
+    page_icon="🏦",
+    initial_sidebar_state="expanded",
+)
+
+DATA_FILE = os.environ.get("MACRO_LIQUIDITY_CSV", "macro_liquidity_master.csv")
+
+
+def _full_width_kwargs() -> dict:
+    """`use_container_width` was replaced by `width='stretch'` in Streamlit 1.49."""
+    try:
+        major, minor = (int(p) for p in st.__version__.split(".")[:2])
+    except (ValueError, AttributeError):
+        return {"use_container_width": True}
+    return {"width": "stretch"} if (major, minor) >= (1, 49) else {"use_container_width": True}
+
+
+FULL_WIDTH = _full_width_kwargs()
+
+# --------------------------------------------------------------------------- #
+# Theme
+# --------------------------------------------------------------------------- #
+
+PALETTE = {
+    "bg": "#0E1117",
+    "panel": "#161A23",
+    "grid": "#262B36",
+    "text": "#E6E8EB",
+    "muted": "#8B93A1",
+    "blue": "#4C8DFF",
+    "cyan": "#22D3EE",
+    "amber": "#F5A524",
+    "green": "#2DD4A7",
+    "red": "#F4636E",
+    "violet": "#A78BFA",
+    "slate": "#94A3B8",
+}
+
+st.markdown(
+    f"""
+    <style>
+        .stApp {{ background-color: {PALETTE['bg']}; }}
+        section[data-testid="stSidebar"] {{
+            background-color: {PALETTE['panel']};
+            border-right: 1px solid {PALETTE['grid']};
+        }}
+        div[data-testid="stMetric"] {{
+            background-color: {PALETTE['panel']};
+            border: 1px solid {PALETTE['grid']};
+            border-radius: 10px;
+            padding: 14px 16px;
+        }}
+        div[data-testid="stMetricLabel"] p {{
+            font-size: 0.78rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: {PALETTE['muted']};
+        }}
+        div[data-testid="stMetricValue"] {{ font-size: 1.55rem; }}
+        .stTabs [data-baseweb="tab-list"] {{ gap: 4px; }}
+        .stTabs [data-baseweb="tab"] {{
+            background-color: {PALETTE['panel']};
+            border-radius: 8px 8px 0 0;
+            padding: 8px 18px;
+        }}
+        .block-container {{ padding-top: 2.2rem; }}
+        .caption-note {{
+            color: {PALETTE['muted']};
+            font-size: 0.82rem;
+            margin-top: -0.4rem;
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def style_fig(fig: go.Figure, height: int = 460, title: str | None = None) -> go.Figure:
+    """Apply the shared dark styling to a Plotly figure."""
+    fig.update_layout(
+        template="plotly_dark",
+        title=dict(text=title, x=0.01, xanchor="left", font=dict(size=17)) if title else None,
+        height=height,
+        margin=dict(l=60, r=60, t=60 if title else 30, b=40),
+        paper_bgcolor=PALETTE["panel"],
+        plot_bgcolor=PALETTE["panel"],
+        font=dict(color=PALETTE["text"], size=12),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.01,
+            xanchor="left",
+            x=0,
+            bgcolor="rgba(0,0,0,0)",
+        ),
+    )
+    fig.update_xaxes(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False)
+    return fig
+
+
+# --------------------------------------------------------------------------- #
+# Column registry — keeps the app resilient to partially-populated files
+# --------------------------------------------------------------------------- #
+
+COL = {
+    "reserves": "Total_Reserves",
+    "onrrp": "ON_RRP_Facility",
+    "tga": "TGA_Balance",
+    "assets": "Fed_Total_Assets_Bil",
+    "netliq": "Net_Liquidity_Bil",
+    "dw": "Discount_Window_Primary_Credit",
+    "srf": "SRF_Daily_Accepted_Bil",
+    "iorb": "IORB_Rate",
+    "sofr": "SOFR_Rate",
+    "effr": "EFFR_Rate",
+    "pcr": "Primary_Credit_Rate",
+    "sofr_sprd": "SOFR_IORB_Spread_bps",
+    "effr_sprd": "EFFR_IORB_Spread_bps",
+    "m2": "M2_Money_Supply",
+    "m2_yoy": "M2_YoY_Growth_%",
+    "m2_3mma": "M2_3M_MA",
+    "m2_3mann": "M2_3M_Annualized_%",
+    "res_gdp": "Reserves_to_GDP_%",
+    "res_bank": "Reserves_to_Large_Bank_Assets_%",
+    "cash_share": "Large_Bank_Cash_Share_%",
+}
+
+# Policy thresholds referenced in the Fed literature.
+WALLER_LCLOR = (10.0, 11.0)          # Reserves / GDP, Waller "lowest comfortable level of reserves"
+ACHARYA_SCARCITY = (8.5, 9.0)        # Reserves / large-bank assets, inelastic demand region
+
+
+# --------------------------------------------------------------------------- #
+# Data loading
+# --------------------------------------------------------------------------- #
+
+@st.cache_data(show_spinner="Loading macro liquidity data…")
+def load_data(path: str, _mtime: float | None = None) -> pd.DataFrame:
+    """Read the master CSV, coerce types, sort and forward-fill."""
+    df = pd.read_csv(path)
+    return _prepare(df)
+
+
+@st.cache_data(show_spinner="Parsing uploaded file…")
+def load_uploaded(raw: bytes) -> pd.DataFrame:
+    df = pd.read_csv(io.BytesIO(raw))
+    return _prepare(df)
+
+
+def _prepare(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalise the raw frame: datetime index, numeric columns, forward fill."""
+    date_col = next(
+        (c for c in df.columns if str(c).strip().lower() in {"date", "unnamed: 0", "index"}),
+        df.columns[0],
+    )
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col]).rename(columns={date_col: "Date"})
+    df = df.sort_values("Date").set_index("Date")
+
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Graceful handling of gaps: carry the last observation forward. Leading
+    # NaNs are deliberately left in place and dropped per-series at plot time,
+    # so a short history on one column never truncates the others.
+    df = df[~df.index.duplicated(keep="last")].ffill()
+    return df
+
+
+def get(df: pd.DataFrame, key: str) -> pd.Series | None:
+    """Return a cleaned series for a registry key, or None if unavailable."""
+    col = COL.get(key)
+    if col is None or col not in df.columns:
+        return None
+    s = df[col].dropna()
+    return s if not s.empty else None
+
+
+def missing_note(labels: list[str]) -> None:
+    st.info(f"Not available in this dataset: {', '.join(labels)}")
+
+
+# --------------------------------------------------------------------------- #
+# Sidebar — data source, date filter, export
+# --------------------------------------------------------------------------- #
+
+st.sidebar.markdown("### 🏦 Fed Liquidity Monitor")
+st.sidebar.caption("Balance sheet · reserve scarcity · money market stress")
+st.sidebar.divider()
+
+data: pd.DataFrame | None = None
+if os.path.exists(DATA_FILE):
+    try:
+        data = load_data(DATA_FILE, os.path.getmtime(DATA_FILE))
+    except Exception as exc:  # noqa: BLE001
+        st.sidebar.error(f"Could not read `{DATA_FILE}`: {exc}")
+
+if data is None:
+    st.sidebar.warning(f"`{DATA_FILE}` not found in the working directory.")
+    upload = st.sidebar.file_uploader("Upload macro_liquidity_master.csv", type=["csv"])
+    if upload is not None:
+        data = load_uploaded(upload.getvalue())
+
+if data is None or data.empty:
+    st.title("Fed Liquidity Monitor")
+    st.error(
+        f"No data loaded. Place **{DATA_FILE}** next to `app.py` "
+        "(or set the `MACRO_LIQUIDITY_CSV` environment variable), then reload."
+    )
+    st.stop()
+
+full_start, full_end = data.index.min(), data.index.max()
+
+RANGES = {
+    "Last 1 Year": 365,
+    "Last 3 Years": 365 * 3,
+    "Last 5 Years": 365 * 5,
+    "Full History": None,
+    "Custom…": -1,
+}
+
+choice = st.sidebar.radio("Date range", list(RANGES), index=1)
+
+if choice == "Custom…":
+    picked = st.sidebar.date_input(
+        "Select window",
+        value=(max(full_start, full_end - timedelta(days=365)).date(), full_end.date()),
+        min_value=full_start.date(),
+        max_value=full_end.date(),
+    )
+    if isinstance(picked, (tuple, list)) and len(picked) == 2:
+        start, end = pd.Timestamp(picked[0]), pd.Timestamp(picked[1])
+    else:
+        start, end = full_start, full_end
+elif RANGES[choice] is None:
+    start, end = full_start, full_end
+else:
+    start, end = full_end - timedelta(days=RANGES[choice]), full_end
+
+start = max(start, full_start)
+end = min(end, full_end)
+
+df = data.loc[start:end]
+
+if df.empty:
+    st.warning("No observations in the selected window. Widen the date range.")
+    st.stop()
+
+st.sidebar.caption(
+    f"**{len(df):,}** observations  \n"
+    f"{df.index.min():%d %b %Y} → {df.index.max():%d %b %Y}"
+)
+st.sidebar.divider()
+
+st.sidebar.download_button(
+    "⬇️  Download filtered CSV",
+    data=df.reset_index().to_csv(index=False).encode("utf-8"),
+    file_name=f"macro_liquidity_{df.index.min():%Y%m%d}_{df.index.max():%Y%m%d}.csv",
+    mime="text/csv",
+    **FULL_WIDTH,
+)
+
+with st.sidebar.expander("Threshold reference"):
+    st.markdown(
+        f"""
+        **Reserves / GDP** — Waller LCLoR band
+        `{WALLER_LCLOR[0]:.1f}% – {WALLER_LCLOR[1]:.1f}%`
+
+        **Reserves / Large-bank assets** — Acharya inelastic demand band
+        `{ACHARYA_SCARCITY[0]:.1f}% – {ACHARYA_SCARCITY[1]:.1f}%`
+
+        **SOFR–IORB spread** — persistent prints above `0 bps`
+        signal repo pressure and reserve scarcity.
+        """
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Header + KPI row
+# --------------------------------------------------------------------------- #
+
+st.title("Fed Liquidity Monitor")
+st.markdown(
+    f"<p class='caption-note'>Data through <b>{df.index.max():%d %B %Y}</b> · "
+    f"showing {choice.replace('…', '')} · deltas are 30-day changes</p>",
+    unsafe_allow_html=True,
+)
+st.write("")
+
+
+def kpi(series: pd.Series | None, fmt: str, delta_fmt: str, lookback: int = 30):
+    """Return (value_str, delta_str) for the latest print vs ~`lookback` days ago."""
+    if series is None or series.empty:
+        return "—", None
+    latest = series.iloc[-1]
+    target = series.index[-1] - timedelta(days=lookback)
+    prior_slice = series.loc[:target]
+    if prior_slice.empty:
+        return fmt.format(latest), None
+    delta = latest - prior_slice.iloc[-1]
+    return fmt.format(latest), delta_fmt.format(delta)
+
+
+k1, k2, k3, k4, k5 = st.columns(5)
+
+v, d = kpi(get(df, "netliq"), "${:,.0f}B", "{:+,.0f}B")
+k1.metric("Net Liquidity", v, d)
+
+v, d = kpi(get(df, "reserves"), "${:,.0f}B", "{:+,.0f}B")
+k2.metric("Total Reserves", v, d)
+
+v, d = kpi(get(df, "res_gdp"), "{:.2f}%", "{:+.2f} pp")
+k3.metric("Reserves / GDP", v, d)
+
+v, d = kpi(get(df, "sofr_sprd"), "{:+.1f} bps", "{:+.1f} bps")
+k4.metric("SOFR – IORB Spread", v, d, delta_color="inverse")
+
+v, d = kpi(get(df, "onrrp"), "${:,.0f}B", "{:+,.0f}B")
+k5.metric("ON RRP Facility", v, d)
+
+st.write("")
+
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "🏛️  Fed Balance Sheet & Net Liquidity",
+        "📉  Reserve Scarcity & Bank Liquidity",
+        "⚡  Money Market Stress & Facilities",
+        "💵  M2 & Monetary Dynamics",
+    ]
+)
+
+
+# --------------------------------------------------------------------------- #
+# Tab 1 — Fed balance sheet & net liquidity
+# --------------------------------------------------------------------------- #
+
+with tab1:
+    assets, tga, onrrp, netliq = (get(df, k) for k in ("assets", "tga", "onrrp", "netliq"))
+
+    if assets is None and netliq is None:
+        missing_note([COL["assets"], COL["netliq"]])
+    else:
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        if assets is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=assets.index, y=assets, name="Fed Total Assets",
+                    line=dict(color=PALETTE["blue"], width=2.2),
+                    hovertemplate="Total Assets: $%{y:,.0f}B<extra></extra>",
+                ),
+                secondary_y=False,
+            )
+        if netliq is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=netliq.index, y=netliq, name="Net Liquidity",
+                    line=dict(color=PALETTE["green"], width=2.6),
+                    hovertemplate="Net Liquidity: $%{y:,.0f}B<extra></extra>",
+                ),
+                secondary_y=False,
+            )
+        if tga is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=tga.index, y=tga, name="TGA Balance",
+                    line=dict(color=PALETTE["amber"], width=1.8),
+                    hovertemplate="TGA: $%{y:,.0f}B<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+        if onrrp is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=onrrp.index, y=onrrp, name="ON RRP Facility",
+                    line=dict(color=PALETTE["violet"], width=1.8),
+                    hovertemplate="ON RRP: $%{y:,.0f}B<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+
+        fig.update_yaxes(title_text="Total Assets / Net Liquidity ($ Bil)", secondary_y=False)
+        fig.update_yaxes(
+            title_text="TGA / ON RRP ($ Bil)", secondary_y=True, showgrid=False
+        )
+        st.plotly_chart(
+            style_fig(fig, 500, "Fed Balance Sheet vs. Net Liquidity"),
+            **FULL_WIDTH,
+        )
+        st.caption(
+            "Net Liquidity ≈ Fed Total Assets − TGA − ON RRP. Treasury cash rebuilds and "
+            "RRP take-up drain reserves even when the balance sheet is unchanged."
+        )
+
+    st.divider()
+
+    # ---- Stacked liability composition -------------------------------------
+    liab_keys = [
+        ("reserves", "Bank Reserves", PALETTE["blue"]),
+        ("tga", "Treasury General Account", PALETTE["amber"]),
+        ("onrrp", "ON RRP Facility", PALETTE["violet"]),
+    ]
+    available = [(k, lbl, c) for k, lbl, c in liab_keys if get(df, k) is not None]
+
+    if not available:
+        missing_note([COL["reserves"], COL["tga"], COL["onrrp"]])
+    else:
+        c1, c2 = st.columns([3, 1])
+        with c2:
+            freq_label = st.selectbox(
+                "Bar frequency", ["Monthly", "Weekly", "Quarterly"], index=0, key="liab_freq"
+            )
+            normalise = st.toggle("Show as % of total", value=False, key="liab_norm")
+        freq = {"Weekly": "W", "Monthly": "ME", "Quarterly": "QE"}[freq_label]
+
+        stack = pd.DataFrame({lbl: get(df, k) for k, lbl, _ in available}).resample(freq).last()
+        stack = stack.dropna(how="all")
+
+        plot_df = stack
+        if normalise:
+            total = stack.sum(axis=1).replace(0, pd.NA)
+            plot_df = stack.div(total, axis=0) * 100
+
+        fig2 = go.Figure()
+        for _, lbl, colour in available:
+            if lbl not in plot_df.columns:
+                continue
+            fig2.add_trace(
+                go.Bar(
+                    x=plot_df.index, y=plot_df[lbl], name=lbl, marker_color=colour,
+                    hovertemplate=f"{lbl}: %{{y:,.1f}}"
+                    + ("%<extra></extra>" if normalise else "B<extra></extra>"),
+                )
+            )
+        fig2.update_layout(barmode="stack", bargap=0.12)
+        fig2.update_yaxes(
+            title_text="Share of total (%)" if normalise else "$ Billions",
+            range=[0, 100] if normalise else None,
+        )
+        with c1:
+            st.plotly_chart(
+                style_fig(fig2, 440, "Fed Liabilities: Reserves + TGA + ON RRP"),
+                **FULL_WIDTH,
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Tab 2 — Reserve scarcity & bank liquidity
+# --------------------------------------------------------------------------- #
+
+with tab2:
+    reserves = get(df, "reserves")
+    res_gdp = get(df, "res_gdp")
+    res_bank = get(df, "res_bank")
+    cash_share = get(df, "cash_share")
+
+    if reserves is None and res_gdp is None and res_bank is None:
+        missing_note([COL["reserves"], COL["res_gdp"], COL["res_bank"]])
+    else:
+        show_bands = st.checkbox("Show policy stress bands", value=True, key="bands")
+
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        if reserves is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=reserves.index, y=reserves, name="Total Reserves ($ Bil)",
+                    line=dict(color=PALETTE["blue"], width=2.4),
+                    fill="tozeroy", fillcolor="rgba(76,141,255,0.10)",
+                    hovertemplate="Reserves: $%{y:,.0f}B<extra></extra>",
+                ),
+                secondary_y=False,
+            )
+        if res_gdp is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=res_gdp.index, y=res_gdp, name="Reserves / GDP (%)",
+                    line=dict(color=PALETTE["amber"], width=2.2),
+                    hovertemplate="Reserves/GDP: %{y:.2f}%<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+        if res_bank is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=res_bank.index, y=res_bank, name="Reserves / Large-Bank Assets (%)",
+                    line=dict(color=PALETTE["cyan"], width=2.2),
+                    hovertemplate="Reserves/Bank Assets: %{y:.2f}%<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+        if cash_share is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=cash_share.index, y=cash_share, name="Large-Bank Cash Share (%)",
+                    line=dict(color=PALETTE["slate"], width=1.6, dash="dot"),
+                    hovertemplate="Cash share: %{y:.2f}%<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+
+        if show_bands:
+
+            def add_band(lo: float, hi: float, colour: str, label: str) -> None:
+                """Shade a threshold band on the right-hand (ratio) axis."""
+                fig.add_hrect(
+                    y0=lo, y1=hi, fillcolor=colour, opacity=0.16,
+                    line_width=0, secondary_y=True, layer="below",
+                )
+                # Placed explicitly against the secondary axis so the caption
+                # always sits inside its own band rather than at the plot floor.
+                fig.add_annotation(
+                    xref="paper", x=0.995, xanchor="right",
+                    yref="y2", y=(lo + hi) / 2, yanchor="middle",
+                    text=label, showarrow=False,
+                    font=dict(color=colour, size=11),
+                    bgcolor="rgba(22,26,35,0.82)", borderpad=3,
+                )
+
+            if res_gdp is not None:
+                add_band(*WALLER_LCLOR, PALETTE["amber"],
+                         "Waller LCLoR band · 10.0–11.0%")
+            if res_bank is not None:
+                add_band(*ACHARYA_SCARCITY, PALETTE["red"],
+                         "Inelastic demand band · 8.5–9.0%")
+
+        fig.update_yaxes(title_text="Total Reserves ($ Bil)", secondary_y=False)
+        fig.update_yaxes(title_text="Ratio (%)", secondary_y=True, showgrid=False)
+        st.plotly_chart(
+            style_fig(fig, 540, "Reserve Adequacy vs. Policy Stress Thresholds"),
+            **FULL_WIDTH,
+        )
+
+        # ---- Threshold status cards ----------------------------------------
+        c1, c2, c3 = st.columns(3)
+
+        def status(series: pd.Series | None, lo: float, hi: float) -> tuple[str, str]:
+            if series is None or series.empty:
+                return "—", "No data"
+            x = float(series.iloc[-1])
+            if x < lo:
+                return f"{x:.2f}%", "🔴 Below band — scarce"
+            if x <= hi:
+                return f"{x:.2f}%", "🟠 In band — approaching scarcity"
+            return f"{x:.2f}%", "🟢 Above band — ample"
+
+        val, note = status(res_gdp, *WALLER_LCLOR)
+        c1.metric("Reserves / GDP", val, note, delta_color="off")
+
+        val, note = status(res_bank, *ACHARYA_SCARCITY)
+        c2.metric("Reserves / Large-Bank Assets", val, note, delta_color="off")
+
+        v, d = kpi(cash_share, "{:.2f}%", "{:+.2f} pp")
+        c3.metric("Large-Bank Cash Share", v, d)
+
+        st.caption(
+            "Waller's LCLoR frames reserve adequacy against nominal GDP; Acharya et al. "
+            "measure it against large-bank balance sheets, where demand turns inelastic "
+            "below roughly 8.5–9.0%."
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Tab 3 — Money market rate stress & backstop facilities
+# --------------------------------------------------------------------------- #
+
+with tab3:
+    sofr_sprd, effr_sprd = get(df, "sofr_sprd"), get(df, "effr_sprd")
+
+    if sofr_sprd is None and effr_sprd is None:
+        missing_note([COL["sofr_sprd"], COL["effr_sprd"]])
+    else:
+        fig = go.Figure()
+        if sofr_sprd is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=sofr_sprd.index, y=sofr_sprd, name="SOFR – IORB (bps)",
+                    line=dict(color=PALETTE["cyan"], width=2.2),
+                    hovertemplate="SOFR–IORB: %{y:+.1f} bps<extra></extra>",
+                )
+            )
+        if effr_sprd is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=effr_sprd.index, y=effr_sprd, name="EFFR – IORB (bps)",
+                    line=dict(color=PALETTE["amber"], width=2.0),
+                    hovertemplate="EFFR–IORB: %{y:+.1f} bps<extra></extra>",
+                )
+            )
+        fig.add_hline(
+            y=0, line=dict(color=PALETTE["red"], width=1.4, dash="dash"),
+            annotation_text="0 bps — IORB floor",
+            annotation_position="top right",
+            annotation_font=dict(color=PALETTE["red"], size=11),
+            annotation_bgcolor="rgba(22,26,35,0.82)",
+            annotation_borderpad=3,
+        )
+        fig.update_yaxes(title_text="Spread to IORB (bps)")
+        st.plotly_chart(
+            style_fig(fig, 460, "Money Market Spreads to IORB"),
+            **FULL_WIDTH,
+        )
+        st.caption(
+            "Sustained positive SOFR–IORB prints indicate repo collateral pressure and "
+            "reserve scarcity; the IORB floor should otherwise keep secured rates at or below it."
+        )
+
+    st.divider()
+
+    srf, dw = get(df, "srf"), get(df, "dw")
+    if srf is None and dw is None:
+        missing_note([COL["srf"], COL["dw"]])
+    else:
+        agg_label = st.selectbox(
+            "Facility aggregation", ["Daily / as reported", "Weekly max", "Monthly max"],
+            index=1, key="fac_freq",
+        )
+        rule = {"Weekly max": "W", "Monthly max": "ME"}.get(agg_label)
+
+        def prep(s: pd.Series | None) -> pd.Series | None:
+            if s is None:
+                return None
+            return s.resample(rule).max().dropna() if rule else s
+
+        left, right = st.columns(2)
+
+        with left:
+            s = prep(srf)
+            if s is None:
+                missing_note([COL["srf"]])
+            else:
+                f = go.Figure(
+                    go.Bar(
+                        x=s.index, y=s, name="SRF Accepted",
+                        marker_color=PALETTE["green"],
+                        hovertemplate="SRF: $%{y:,.2f}B<extra></extra>",
+                    )
+                )
+                f.update_yaxes(title_text="$ Billions")
+                st.plotly_chart(
+                    style_fig(f, 400, "Standing Repo Facility — Accepted"),
+                    **FULL_WIDTH,
+                )
+
+        with right:
+            s = prep(dw)
+            if s is None:
+                missing_note([COL["dw"]])
+            else:
+                f = go.Figure(
+                    go.Bar(
+                        x=s.index, y=s, name="Primary Credit",
+                        marker_color=PALETTE["red"],
+                        hovertemplate="Discount Window: $%{y:,.0f}M<extra></extra>",
+                    )
+                )
+                f.update_yaxes(title_text="$ Millions")
+                st.plotly_chart(
+                    style_fig(f, 400, "Discount Window — Primary Credit"),
+                    **FULL_WIDTH,
+                )
+
+    # ---- Policy rate corridor ---------------------------------------------
+    corridor = {
+        "iorb": ("IORB", PALETTE["blue"]),
+        "sofr": ("SOFR", PALETTE["cyan"]),
+        "effr": ("EFFR", PALETTE["amber"]),
+        "pcr": ("Primary Credit Rate", PALETTE["red"]),
+    }
+    present = {k: v for k, v in corridor.items() if get(df, k) is not None}
+    if present:
+        with st.expander("Policy rate corridor (IORB · SOFR · EFFR · Primary Credit)"):
+            f = go.Figure()
+            for key, (lbl, colour) in present.items():
+                s = get(df, key)
+                f.add_trace(
+                    go.Scatter(
+                        x=s.index, y=s, name=lbl,
+                        line=dict(color=colour, width=1.9,
+                                  dash="dot" if key == "pcr" else "solid"),
+                        hovertemplate=f"{lbl}: %{{y:.2f}}%<extra></extra>",
+                    )
+                )
+            f.update_yaxes(title_text="Rate (%)")
+            st.plotly_chart(style_fig(f, 400), **FULL_WIDTH)
+
+
+# --------------------------------------------------------------------------- #
+# Tab 4 — M2 & monetary dynamics
+# --------------------------------------------------------------------------- #
+
+with tab4:
+    m2_yoy, m2_3mann = get(df, "m2_yoy"), get(df, "m2_3mann")
+
+    if m2_yoy is None and m2_3mann is None:
+        missing_note([COL["m2_yoy"], COL["m2_3mann"]])
+    else:
+        fig = go.Figure()
+        if m2_yoy is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=m2_yoy.index, y=m2_yoy, name="M2 YoY Growth (%)",
+                    line=dict(color=PALETTE["blue"], width=2.4),
+                    hovertemplate="YoY: %{y:.2f}%<extra></extra>",
+                )
+            )
+        if m2_3mann is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=m2_3mann.index, y=m2_3mann, name="M2 3M Annualised (%)",
+                    line=dict(color=PALETTE["green"], width=2.0),
+                    hovertemplate="3M ann.: %{y:.2f}%<extra></extra>",
+                )
+            )
+        fig.add_hline(
+            y=0, line=dict(color=PALETTE["muted"], width=1.2, dash="dash"),
+            annotation_text="0% — contraction below",
+            annotation_position="bottom right",
+            annotation_font=dict(color=PALETTE["muted"], size=11),
+            annotation_bgcolor="rgba(22,26,35,0.82)",
+            annotation_borderpad=3,
+        )
+        fig.update_yaxes(title_text="Growth (%)", ticksuffix="%")
+        st.plotly_chart(
+            style_fig(fig, 470, "M2 Growth: Year-over-Year vs. 3-Month Annualised"),
+            **FULL_WIDTH,
+        )
+        st.caption(
+            "The 3-month annualised rate leads the year-over-year series — divergence "
+            "between the two marks turning points in money growth momentum."
+        )
+
+    st.divider()
+
+    m2, m2_3mma = get(df, "m2"), get(df, "m2_3mma")
+    if m2 is None and m2_3mma is None:
+        missing_note([COL["m2"], COL["m2_3mma"]])
+    else:
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            f = go.Figure()
+            if m2 is not None:
+                f.add_trace(
+                    go.Scatter(
+                        x=m2.index, y=m2, name="M2 Money Supply",
+                        line=dict(color=PALETTE["violet"], width=2.2),
+                        hovertemplate="M2: $%{y:,.0f}B<extra></extra>",
+                    )
+                )
+            if m2_3mma is not None:
+                f.add_trace(
+                    go.Scatter(
+                        x=m2_3mma.index, y=m2_3mma, name="M2 3-Month MA",
+                        line=dict(color=PALETTE["slate"], width=1.7, dash="dash"),
+                        hovertemplate="3M MA: $%{y:,.0f}B<extra></extra>",
+                    )
+                )
+            f.update_yaxes(title_text="$ Billions")
+            st.plotly_chart(
+                style_fig(f, 420, "M2 Level and 3-Month Moving Average"),
+                **FULL_WIDTH,
+            )
+        with c2:
+            st.write("")
+            v, d = kpi(m2, "${:,.0f}B", "{:+,.0f}B")
+            st.metric("M2 Money Supply", v, d)
+            v, d = kpi(m2_yoy, "{:.2f}%", "{:+.2f} pp")
+            st.metric("M2 YoY Growth", v, d)
+            v, d = kpi(m2_3mann, "{:.2f}%", "{:+.2f} pp")
+            st.metric("M2 3M Annualised", v, d)
+
+
+# --------------------------------------------------------------------------- #
+# Footer
+# --------------------------------------------------------------------------- #
+
+st.divider()
+with st.expander("Underlying data (filtered window)"):
+    st.dataframe(df.tail(250).iloc[::-1], height=380, **FULL_WIDTH)
+
+st.markdown(
+    f"<p class='caption-note'>Source: <code>{DATA_FILE}</code> · "
+    f"{len(data):,} total rows, {full_start:%b %Y} – {full_end:%b %Y} · "
+    "Missing observations forward-filled.</p>",
+    unsafe_allow_html=True,
+)
