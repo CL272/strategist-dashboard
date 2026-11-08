@@ -578,6 +578,11 @@ def main() -> int:
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
 
     try:
+        import positioning
+        positioning.build_positioning(status)
+    except Exception as e:   # positioning must never break the data refresh
+        print(f"Positioning failed: {type(e).__name__}")
+    try:
         import ai
         ai.build_ai(status)
     except Exception as e:   # AI indicators must never break the data refresh

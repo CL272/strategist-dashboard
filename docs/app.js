@@ -803,7 +803,7 @@ function buildOverview() {
   for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "m2": "Federal Reserve via FRED (M2SL); YoY calculated", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
-function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef']) if (cards[k]) pairToggle(cards[k]); }
+function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
@@ -1918,6 +1918,170 @@ function renderHealth() {
   tbl.append(tb); box.append(el('div', { class: 'table-wrap' }, tbl));
 }
 
+// ------------------------------------------------------------------ POSITIONING & VOLATILITY
+let POS = null;
+state.posSel = 'ES';
+const COT_SRC = 'CFTC Commitments of Traders (publicreporting.cftc.gov): Traders in Financial Futures and Disaggregated reports, futures only';
+function posSeries(m, key) { return { t: m.d.map(x => x * DAY), v: m[key], kind: 'level' }; }
+function posStats(m, key = 'spec') {   // latest vs last 3 years (156 weeks) up to the "To" date
+  const s = posSeries(m, key), a = asOf(s, state.to); if (!a) return null;
+  const lo = Math.max(0, a.i - 155), win = s.v.slice(lo, a.i + 1).filter(v => v != null);
+  if (win.length < 52) return null;
+  const mean = win.reduce((x, y) => x + y, 0) / win.length, sd = Math.sqrt(win.reduce((x, y) => x + (y - mean) ** 2, 0) / (win.length - 1));
+  const pct = win.filter(v => v <= a.v).length / win.length * 100;
+  return { v: a.v, t: a.t, z: sd > 0 ? (a.v - mean) / sd : 0, pct, chg: a.i > 0 ? a.v - s.v[a.i - 1] : null, chg4: a.i > 3 ? a.v - s.v[a.i - 4] : null };
+}
+const crowd = (p, v = 0) => p >= 90 ? (v > 0 ? ['Crowded long', '--critical'] : ['Shorts covered (3y high)', '--serious'])
+  : p <= 10 ? (v < 0 ? ['Crowded short', '--s1'] : ['Longs cut (3y low)', '--s3'])
+  : p >= 75 ? ['Long-heavy', '--serious'] : p <= 25 ? ['Short-heavy', '--s3'] : ['Neutral', '--muted'];
+function realizedVol(id, n = 21) {   // annualised realised vol of daily log returns, rolling n days
+  const s = S[id], t = [], v = [];
+  for (let i = n; i < s.t.length; i++) { let m = 0, q = 0; for (let k = i - n + 1; k <= i; k++) { const r = Math.log(s.v[k] / s.v[k - 1]); m += r; q += r * r; }
+    const mean = m / n; t.push(s.t[i]); v.push(Math.sqrt((q / n - mean * mean) * n / (n - 1)) * Math.sqrt(252) * 100); }
+  return { t, v, kind: 'level' };
+}
+let rvCache = null;
+function posvolKpis() {
+  const box = $('#pvKpis'); box.replaceChildren();
+  const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (has('VIX')) { const p = pctRank(S.VIX, state.to, 10); if (p) tile('VIX', fmtNum(p.v, 1), `${Math.round(p.p)}th percentile (10y)`, 'as of ' + nice(p.t)); }
+  if (has('VIX', 'VIX3M')) { const a = asOf(S.VIX, state.to), b = asOf(S.VIX3M, state.to), r = a.v / b.v;
+    tile('VIX / VIX 3M', fmtNum(r, 2), r >= 1 ? '⚠ inverted: near-term stress priced above 3-month' : 'normal (contango): calm near term', nice(a.t)); }
+  if (has('VIX', 'SPX')) { rvCache = rvCache || realizedVol('SPX'); const a = asOf(S.VIX, state.to), r = asOf(rvCache, state.to);
+    if (r) tile('VIX − realised vol', sign(a.v - r.v) + fmtNum(Math.abs(a.v - r.v), 1) + ' pts', `S&P 500 realised (1m) ${fmtNum(r.v, 1)}%`, 'insurance premium'); }
+  if (has('MOVE')) { const p = pctRank(S.MOVE, state.to, 10); if (p) tile('MOVE (rates vol)', fmtNum(p.v, 0), `${Math.round(p.p)}th percentile (10y)`, nice(p.t)); }
+  if (POS) { const st = Object.values(POS.markets).map(m => posStats(m)).filter(Boolean);
+    tile('Crowded positions', `${st.filter(s => s.pct >= 90 || s.pct <= 10).length} of ${st.length}`, 'speculators at a 3-year extreme (top/bottom 10%)', 'CFTC, week of ' + nice(Math.max(...st.map(s => s.t)))); }
+}
+function renderVolTS(c) {
+  const ids = ['VIX9D', 'VIX', 'VIX3M', 'VIX6M'], names = ['9 days', '30 days', '3 months', '6 months'];
+  if (!ids.every(id => has(id))) return setEmpty(c, 'Waiting for VIX term-structure data (next daily run).');
+  const at = t => ids.map(id => { const a = asOf(S[id], t); return a ? a.v : null; });
+  const now = asOf(S.VIX, state.to).t, comps = [['Now (' + nice(now) + ')', now], ['1 month ago', addMonths(now, -1)], ['1 year ago', addMonths(now, -12)]];
+  const o = baseOpt(); o.legend.data = comps.map(x => x[0]);
+  o.xAxis = { type: 'category', data: names, boundaryGap: false, axisLabel: { color: tok('--muted'), fontSize: 11 }, axisLine: { lineStyle: { color: tok('--axis') } }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0));
+  o.tooltip.formatter = ps => `<div style="color:${tok('--ink-2')};margin-bottom:4px">${esc(ps[0].axisValue)}</div>` + ps.map(p => `<div><b>${fmtNum(p.value, 1)}</b> <span style="color:${tok('--ink-2')}">${esc(p.seriesName)}</span></div>`).join('');
+  o.series = comps.map(([n, t], i) => ({ ...line(n, at(t), col(i)), sampling: undefined, showSymbol: true, symbolSize: 7, lineStyle: { width: i ? 2 : 3, color: col(i) } }));
+  inst(c).setOption(o, true);
+  c.csv = [['Tenor', ...comps.map(x => x[0])], ...names.map((n, j) => [n, ...comps.map(([, t]) => at(t)[j])])];
+  const v = at(now); setNote(c, v[0] > v[2] ? 'Inverted: near-term protection costs more than 3-month. This usually happens during sell-offs and has tended to mark stress peaks.' : 'Upward-sloping (contango): the normal shape in calm markets.');
+}
+function renderVolRatio(c) {
+  if (!has('VIX', 'VIX3M', 'SPX')) return setEmpty(c, 'Waiting for data (next daily run).');
+  const r = combine(S.VIX, S.VIX3M, (a, b) => a / b, {}, 4 * DAY);
+  drawPair(c, { name: 'VIX / VIX 3M', data: pts(r, state.from, state.to) }, { name: 'S&P 500', data: pts(S.SPX, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 2), fmtB: v => fmtNum(v, 0), axisA: v => fmtNum(v, 2), axisB: v => fmtNum(v, 0) });
+  inst(c).setOption({ series: [{ markLine: { silent: true, symbol: 'none', data: [{ yAxis: 1, lineStyle: { color: tok('--critical'), type: 'dashed' }, label: { formatter: 'inverted above 1.0', color: tok('--muted'), fontSize: 11 } }] } }] });
+  // what happened next: S&P 500 1m and 3m returns after the ratio first crosses above 1 (since 2007)
+  const fwd = (t, m) => { const a = asOf(S.SPX, t), b = asOf(S.SPX, addMonths(t, m)); return a && b && b.t > a.t + 20 * DAY ? b.v / a.v - 1 : null; };
+  const ev = []; let lastEv = -Infinity;
+  for (let i = 1; i < r.t.length; i++) if (r.v[i] >= 1 && r.v[i - 1] < 1 && r.t[i] - lastEv > 60 * DAY) { ev.push(r.t[i]); lastEv = r.t[i]; }
+  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length * 100 : null;
+  const f1 = ev.map(t => fwd(t, 1)).filter(x => x != null), f3 = ev.map(t => fwd(t, 3)).filter(x => x != null);
+  const all1 = [], all3 = []; for (let i = 0; i < S.SPX.t.length; i += 21) { const t = S.SPX.t[i]; if (t < r.t[0]) continue; const a = fwd(t, 1), b = fwd(t, 3); if (a != null) all1.push(a); if (b != null) all3.push(b); }
+  setNote(c, `Above 1.0 = inverted term structure (stress). Since ${new Date(r.t[0]).getUTCFullYear()}, the ratio has crossed above 1 on ${ev.length} separate occasions. Average S&P 500 return afterwards: ${fmtNum(avg(f1), 1)}% over 1 month and ${fmtNum(avg(f3), 1)}% over 3 months, against ${fmtNum(avg(all1), 1)}% and ${fmtNum(avg(all3), 1)}% for all periods. Small sample: a tendency, not a rule.`);
+  setSource(c, srcOf(['VIX', 'VIX3M', 'SPX']) + '; ratio and statistics calculated');
+}
+function renderIvRv(c) {
+  if (!has('VIX', 'SPX')) return setEmpty(c, 'Waiting for data.');
+  rvCache = rvCache || realizedVol('SPX');
+  drawLines(c, [{ name: 'VIX (implied, next 30 days)', data: pts(S.VIX, state.from, state.to) }, { name: 'S&P 500 realised vol (last 21 days)', data: pts(rvCache, state.from, state.to) }],
+    { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+  setNote(c, 'The gap is the price of insurance. VIX usually sits a few points above realised volatility; when realised vol overtakes VIX, markets are moving more than options were pricing.');
+  setSource(c, srcOf(['VIX', 'SPX']) + '; realised volatility calculated');
+}
+function renderVolX(c) {
+  const ids = ['VIX', 'VXN', 'VVIX', 'SKEW', 'MOVE', 'OVX', 'GVZ'].filter(id => has(id));
+  const rows = ids.map(id => { const p = pctRank(S[id], state.to, 5); return p && { name: S[id].label, v: p.p, lvl: p.v }; }).filter(Boolean).sort((a, b) => b.v - a.v);
+  if (!rows.length) return setEmpty(c, 'Waiting for volatility data (next daily run).');
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 70, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${Math.round(r.v)}th percentile</b> (5 years)<br><span style="color:${tok('--ink-2')}">${esc(r.name)}: ${fmtNum(r.lvl, 1)}</span>`; } };
+  o.xAxis = { type: 'value', min: 0, max: 100, axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(1), itemStyle: { color: tok('--' + stressBand(r.v)[0]), borderRadius: [0, 4, 4, 0] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => `${Math.round(p.value)} (${fmtNum(rows[p.dataIndex].lvl, 1)})` } }];
+  c.chartEl.style.height = Math.max(240, rows.length * 30 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Index', 'Percentile (5y)', 'Level'], ...rows.map(r => [r.name, r.v.toFixed(0), r.lvl])];
+  setNote(c, 'Each implied-volatility index against its own last 5 years (100 = highest). Labels show the percentile and, in brackets, the level. SKEW measures the price of crash protection; VVIX the volatility of the VIX itself.');
+  setSource(c, srcOf(ids) + '; percentiles calculated');
+}
+function renderPosTable(c) {
+  const b = htmlBody(c);
+  if (!POS) { b.append(el('div', { class: 'empty', text: 'Positioning data arrives with the next daily run.' })); return; }
+  const rows = Object.entries(POS.markets).map(([id, m]) => ({ id, m, s: posStats(m), a: posStats(m, 'alt') })).filter(r => r.s);
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Market', 'Speculators', 'Net % of OI', '3-year percentile', 'z (3y)', '1w / 4w change', 'Read', 'Other side'].map(h => el('th', { text: h })))));
+  const tb = el('tbody'); let g = null;
+  for (const r of rows) {
+    if (r.m.group !== g) { g = r.m.group; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 8, text: g }))); }
+    const [lab, tk] = crowd(r.s.pct, r.s.v);
+    const tr = el('tr', { class: 'row' + (state.posSel === r.id ? ' sel' : ''), title: 'Click to chart the history. ' + (r.m.inverse ? 'Note: long these futures = long the bond / currency (yield or USD/JPY falls).' : '') },
+      el('td', { text: r.m.label }), el('td', { class: 'muted', text: r.m.spec_label }),
+      el('td', { text: sign(r.s.v) + fmtNum(Math.abs(r.s.v), 1) + '%' }),
+      el('td', {}, el('span', { class: 'pbar' }, el('span', { class: 'track' }, el('span', { class: 'fill', style: `width:${r.s.pct.toFixed(0)}%;background:${tok(tk)}` })), el('span', { class: 'pv', text: Math.round(r.s.pct) }))),
+      el('td', { text: zf(r.s.z), style: Math.abs(r.s.z) >= 2 ? 'font-weight:650' : '' }),
+      el('td', { text: `${r.s.chg == null ? '–' : sign(r.s.chg) + fmtNum(Math.abs(r.s.chg), 1)} / ${r.s.chg4 == null ? '–' : sign(r.s.chg4) + fmtNum(Math.abs(r.s.chg4), 1)}` }),
+      el('td', {}, el('span', { class: 'chip', style: `--st:${tok(tk)}` }, lab)),
+      el('td', { class: 'muted', text: r.a ? `${r.m.alt_label} ${sign(r.a.v)}${fmtNum(Math.abs(r.a.v), 1)}%` : '' }));
+    tr.addEventListener('click', () => { state.posSel = r.id; renderPosTable(c); cards.pos_hist.render(); cards.pos_hist.root.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    tb.append(tr);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  const wk = Math.max(...rows.map(r => r.s.t));
+  c.subEl.textContent = `Net position (longs − shorts) as % of open interest, report as of ${nice(wk)} (Tuesday; published the following Friday). Financial futures use leveraged funds (hedge funds, CTAs); commodities use managed money.`;
+  c.csv = [['Market', 'Speculators', 'Net % OI', '3y percentile', 'z', '1w change', '4w change', 'Read', 'Other side'],
+    ...rows.map(r => [r.m.label, r.m.spec_label, r.s.v, r.s.pct.toFixed(0), r.s.z.toFixed(2), r.s.chg ?? '', r.s.chg4 ?? '', crowd(r.s.pct, r.s.v)[0], r.a ? `${r.m.alt_label} ${r.a.v}` : ''])];
+  setNote(c, 'Crowded = speculators in the top or bottom 10% of their 3-year range and on that side of zero (if they are still net short at a 3-year high, it reads “shorts covered”). Crowded positions are vulnerable to sharp reversals if the news turns, but can stay crowded while a trend runs. For Treasury, yen and other futures quoted against the USD, long futures means long the bond or long the currency.');
+}
+function renderPosHist(c) {
+  if (!POS || !POS.markets[state.posSel]) return setEmpty(c, 'Positioning data arrives with the next daily run.');
+  const m = POS.markets[state.posSel];
+  c.titleEl.textContent = `Positioning history: ${m.label}`;
+  const spec = pts(posSeries(m, 'spec'), state.from, state.to);
+  const price = m.price && has(m.price) ? pts(S[m.price], state.from, state.to) : null;
+  if (price) drawPair(c, { name: `${m.spec_label}, net % of OI`, data: spec }, { name: S[m.price].label, data: price },
+    { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => fmtNum(v, autoDec(v)), axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, autoDec(v)), zeroA: true });
+  else drawLines(c, [{ name: `${m.spec_label}, net % of OI`, data: spec }, { name: `${m.alt_label}, net % of OI`, data: pts(posSeries(m, 'alt'), state.from, state.to) }],
+    { fmt: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', zero: true });
+  c.subEl.textContent = (price ? `Weekly speculative positioning against the price (${S[m.price].label}).` : 'Weekly positioning by trader type.') +
+    (m.inverse ? ' Long futures = long the bond / currency, so positioning moves opposite to the yield or USD/JPY on the right axis.' : '') + ' Pick another market in the table above.';
+  setSource(c, COT_SRC + (price ? '; ' + srcOf([m.price]) : ''));
+}
+function renderPosExt(c) {
+  if (!POS) return setEmpty(c, 'Positioning data arrives with the next daily run.');
+  const rows = Object.values(POS.markets).map(m => { const s = posStats(m); return s && { name: m.label, v: s.z, pct: s.pct }; }).filter(Boolean).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 12).sort((a, b) => b.v - a.v);
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${zf(r.v)}σ</b> · ${Math.round(r.pct)}th percentile<br><span style="color:${tok('--ink-2')}">${esc(r.name)}, speculators vs 3 years</span>`; } };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + 'σ' }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(2), itemStyle: { color: r.v >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => zf(p.value) + 'σ' } }];
+  c.chartEl.style.height = Math.max(260, rows.length * 26 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Market', 'z (3y)', 'Percentile'], ...rows.map(r => [r.name, r.v.toFixed(2), r.pct.toFixed(0)])];
+  setNote(c, 'The 12 markets where speculators are furthest from their 3-year average, in standard deviations. Blue = unusually long, red = unusually short.');
+  setSource(c, COT_SRC + '; z-scores calculated');
+}
+function buildPosVol() {
+  const g = $('#pvGrid');
+  g.append(el('h3', { class: 'section', text: 'Volatility' }));
+  makeCard(g, { key: 'vol_ts', title: 'VIX term structure', range: false, sub: 'Implied S&P 500 volatility for 9 days, 30 days, 3 months and 6 months ahead.', source: 'Cboe via Yahoo Finance (^VIX9D, ^VIX, ^VIX3M, ^VIX6M)', render: renderVolTS });
+  makeCard(g, { key: 'vol_x', title: 'Cross-asset implied volatility', range: false, render: renderVolX });
+  makeCard(g, { key: 'vol_ratio', title: 'Stress gauge: VIX / VIX 3-month', wide: true, sub: 'Ratio of 30-day to 3-month implied volatility, against the S&P 500.', render: renderVolRatio });
+  makeCard(g, { key: 'vol_ivrv', title: 'Implied vs realised volatility', wide: true, sub: 'VIX against the S&P 500’s actual volatility over the last month, annualised %.', render: renderIvRv });
+  g.append(el('h3', { class: 'section', text: 'Positioning (CFTC Commitments of Traders)' }));
+  makeCard(g, { key: 'pos_table', title: 'Speculative positioning', wide: true, range: false, source: COT_SRC, render: renderPosTable });
+  makeCard(g, { key: 'pos_ext', title: 'Most extreme positioning', range: false, render: renderPosExt });
+  makeCard(g, { key: 'pos_hist', title: 'Positioning history', render: renderPosHist });
+  for (const k of ['pos_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist'].forEach(k => cards[k].render()); }
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
   'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors',
@@ -2226,10 +2390,10 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia & Singapore',
-  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health' };
+  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility' };
 function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
@@ -2268,6 +2432,7 @@ async function init() {
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
+  try { POS = await loadJSON('data/positioning.json'); } catch (e) { POS = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -2300,7 +2465,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

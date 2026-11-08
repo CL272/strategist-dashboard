@@ -97,6 +97,14 @@ YAHOO = [
     # Volatility
     ("VIX",      "^VIX",      "VIX (equity vol)",     "Volatility",           "level", "pts"),
     ("MOVE",     "^MOVE",     "MOVE (rates vol)",     "Volatility",           "level", "pts"),
+    ("VIX9D",    "^VIX9D",    "VIX 9-day",            "Volatility",           "level", "pts"),
+    ("VIX3M",    "^VIX3M",    "VIX 3-month",          "Volatility",           "level", "pts"),
+    ("VIX6M",    "^VIX6M",    "VIX 6-month",          "Volatility",           "level", "pts"),
+    ("VVIX",     "^VVIX",     "VVIX (vol of VIX)",    "Volatility",           "level", "pts"),
+    ("SKEW",     "^SKEW",     "CBOE SKEW (tail risk)", "Volatility",          "level", "pts"),
+    ("VXN",      "^VXN",      "Nasdaq-100 vol (VXN)", "Volatility",           "level", "pts"),
+    ("OVX",      "^OVX",      "Oil vol (OVX)",        "Volatility",           "level", "pts"),
+    ("GVZ",      "^GVZ",      "Gold vol (GVZ)",       "Volatility",           "level", "pts"),
 ]
 
 # ---------------------------------------------------------------- FRED (St. Louis Fed)
