@@ -33,9 +33,12 @@
     <div class="nav-group">Markets</div>
     <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
     <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
+    <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
     <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
     <div class="nav-group">Themes</div>
     <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
+    <div class="nav-group">System</div>
+    <button role="tab" data-tab="health" aria-selected="false"><span class="ic">✓</span>Data health</button>
   </nav>
   <div class="side-foot">
     <span id="asof" class="muted small">Loading data…</span>
@@ -101,6 +104,14 @@
     <div class="grid" id="aiGrid"></div>
   </section>
 
+  <section id="tab-valuation" class="tab-panel" hidden>
+    <div class="grid" id="valGrid"></div>
+  </section>
+
+  <section id="tab-health" class="tab-panel" hidden>
+    <div class="card wide" id="healthBody"></div>
+  </section>
+
   <section id="tab-markets" class="tab-panel" hidden>
     <div class="grid" id="mktCharts"></div>
     <div class="card wide">
@@ -143,7 +154,7 @@
 </main>
 
 <footer class="muted small">
-  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, OECD, Bank of Japan, e-Stat, OpenRouter, Epoch AI, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
+  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, OECD, Bank of Japan, e-Stat, OpenRouter, Epoch AI, Robert Shiller (Yale), NY Fed, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
 </footer>
 
 </div><!-- /content -->

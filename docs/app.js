@@ -145,6 +145,7 @@ function makeCard(parent, o) {
   c.render = () => {
     const keep = [state.from, state.to];
     if (c.range) [state.from, state.to] = resolveRange(c.range);
+    if (o.earliest && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
     try { o.render(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
     finally { [state.from, state.to] = keep; }
@@ -1747,6 +1748,176 @@ function renderAI() {
   ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq'].forEach(k => cards[k].render());
 }
 
+// ------------------------------------------------------------------ VALUATION
+const REER = ['REER_USD', 'REER_EUR', 'REER_JPY', 'REER_CNY', 'REER_GBP', 'REER_SGD', 'REER_MYR', 'REER_KRW', 'REER_INR', 'REER_AUD', 'REER_IDR'];
+const STRETCH_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'NIFTY', 'AS51', 'IBOV', 'EEM'];
+function pctile(s, to, from = -Infinity) {   // share of history (from..to) at or below the latest value
+  const a = asOf(s, to); if (!a) return null;
+  let n = 0, below = 0; for (let i = 0; i <= a.i; i++) { if (s.t[i] < from) continue; n++; if (s.v[i] <= a.v) below++; }
+  return n > 24 ? { p: below / n * 100, v: a.v, t: a.t, n, since: s.t[Math.max(0, idxLE(s, from - 1) + 1)] } : null;
+}
+function capeNow() {   // CAPE estimated to the latest S&P 500 close (Shiller's file lags a month or two)
+  if (!has('SH_CAPE', 'SH_P', 'SPX')) return null;
+  const c = asOf(S.SH_CAPE, state.to), p = asOf(S.SH_P, c.t + 20 * DAY), x = asOf(S.SPX, state.to);
+  return c && p && x ? { cape: c.v * x.v / p.v, base: c, t: x.t } : null;
+}
+function stretch(id) {   // % above/below a 10-year log-linear trend, and its z-score vs its own history of deviations
+  const s = S[id]; if (!s) return null;
+  const W = sampled(id, 'W'), k = upperIdx(W.t, state.to) - 1; if (k < 520) return null;
+  const xs = [], ys = []; for (let j = k - 520; j <= k; j++) { xs.push(j); ys.push(Math.log(W.v[j])); }
+  const n = xs.length, mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+  let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
+  const b = sxy / sxx, a = my - b * mx, res = ys.map((y, i) => y - (a + b * xs[i]));
+  const sd = Math.sqrt(res.reduce((m, r) => m + r * r, 0) / (n - 2)), last = res[n - 1];
+  return { pct: (Math.exp(last) - 1) * 100, z: last / sd, trend: (Math.exp(b * 52) - 1) * 100 };
+}
+const READ = p => p == null ? ['–', ''] : p >= 80 ? ['Expensive', '--critical'] : p >= 60 ? ['Rich', '--serious'] : p > 40 ? ['Fair', '--muted'] : p > 20 ? ['Cheapish', '--s3'] : ['Cheap', '--good'];
+function valRows() {
+  const rows = [], to = state.to;
+  const add = (group, name, valTxt, p, how, src, invert = false) => rows.push({ group, name, valTxt, p: p == null ? null : (invert ? 100 - p : p), how, src });
+  if (has('SH_CAPE')) { const c = pctile(S.SH_CAPE, to), now = capeNow();
+    add('US equities', 'CAPE (Shiller P/E10)', `${fmtNum(c.v, 1)}x` + (now ? ` (≈${fmtNum(now.cape, 1)}x today)` : ''), c.p, 'percentile since 1881; high = expensive', 'Shiller'); }
+  if (has('SH_PE')) { const c = pctile(S.SH_PE, to); add('US equities', 'Trailing P/E', `${fmtNum(c.v, 1)}x`, c.p, 'since 1871', 'Shiller'); }
+  if (has('SH_ECY')) { const c = pctile(S.SH_ECY, to); add('US equities', 'Excess CAPE yield (vs real bonds)', fmtNum(c.v, 2) + '%', c.p, 'since 1881; low = equities expensive vs bonds', 'Shiller', true); }
+  if (has('SH_DY')) { const c = pctile(S.SH_DY, to); add('US equities', 'Dividend yield', fmtNum(c.v, 2) + '%', c.p, 'since 1871; low = expensive', 'Shiller', true); }
+  if (has('REAL10Y')) { const c = pctile(S.REAL10Y, to); add('US bonds', 'UST 10Y real yield (TIPS)', fmtNum(c.v, 2) + '%', c.p, 'since 2003; high yield = cheap bonds', 'FRED DFII10', true); }
+  if (has('ACM_TP10')) { const c = pctile(S.ACM_TP10, to); add('US bonds', '10Y term premium (ACM)', fmtNum(c.v, 2) + '%', c.p, 'since 1990; high = paid more for duration (cheap)', 'NY Fed', true); }
+  if (has('BAA_10Y_BP')) { const c = pctile(S.BAA_10Y_BP, to); add('Credit', 'Baa − 10Y spread', fmtNum(c.v, 0) + 'bp', c.p, 'since 1990; tight = expensive', "Moody's via FRED", true); }
+  for (const id of REER) if (has(id)) { const c = pctile(S[id], to); if (c) add('FX (real effective rate)', S[id].label.replace(' REER', ''), fmtNum(c.v, 1), c.p, `percentile since ${new Date(c.since).getUTCFullYear()}; high = strong / expensive`, 'BIS via FRED'); }
+  if (has('WTI_LONG', 'CPI')) { const r = combine(S.WTI_LONG, S.CPI, (a, b) => a / b, {}, 40 * DAY); const c = pctile({ ...r, t: r.t, v: r.v }, to);
+    if (c) add('Commodities', 'Real oil price (WTI / CPI)', '', c.p, 'since 1959', 'FRED WTISPLC, CPIAUCSL'); }
+  return rows;
+}
+function renderValTable(c) {
+  const b = htmlBody(c), rows = valRows();
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Waiting for valuation data (next daily run).' })); return; }
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Measure', 'Now', 'Percentile (expensive = high)', 'Read', 'Basis'].map(h => el('th', { text: h })))));
+  const tb = el('tbody'); let g = null;
+  for (const r of rows) {
+    if (r.group !== g) { g = r.group; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: g }))); }
+    const [lab, tk] = READ(r.p);
+    tb.append(el('tr', { class: 'row', title: 'Source: ' + r.src },
+      el('td', { text: r.name }), el('td', { text: r.valTxt }),
+      el('td', {}, el('span', { class: 'pbar' }, el('span', { class: 'track' }, el('span', { class: 'fill', style: `width:${(r.p || 0).toFixed(0)}%;background:${tok(tk || '--muted')}` })),
+        el('span', { class: 'pv', text: r.p == null ? '–' : Math.round(r.p) }))),
+      el('td', {}, el('span', { class: 'chip', style: `--st:${tok(tk || '--muted')}` }, lab)), el('td', { class: 'muted', text: r.how })));
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [['Group', 'Measure', 'Now', 'Percentile (expensive = high)', 'Read', 'Basis'], ...rows.map(r => [r.group, r.name, r.valTxt, r.p == null ? '' : r.p.toFixed(0), READ(r.p)[0], r.how])];
+  setNote(c, 'Percentiles are oriented so that a high number always means expensive (for yields and spreads, a low yield is expensive). Valuation is a poor timing tool: expensive markets can stay expensive for years. It says more about 5–10 year returns than the next few months.');
+}
+function renderCape(c) {
+  if (!has('SH_CAPE')) return setEmpty(c, 'Waiting for Shiller data.');
+  const p = pts(S.SH_CAPE, state.from, state.to), m = S.SH_CAPE.v.reduce((a, b) => a + b, 0) / S.SH_CAPE.v.length;
+  drawLines(c, [{ name: 'CAPE', data: p }], { fmt: v => fmtNum(v, 1) + 'x', axisFmt: v => fmtNum(v, 0) + 'x', hlines: [{ y: +m.toFixed(1), label: `long-run average ${fmtNum(m, 1)}x` }] });
+  const now = capeNow();
+  setNote(c, now ? `Latest Shiller month ${monthLab(now.base.t)}: ${fmtNum(now.base.v, 1)}x. Rolled forward to the S&P 500 close on ${nice(now.t)}: ≈${fmtNum(now.cape, 1)}x.` : '');
+}
+function renderCapeFwd(c) {
+  if (!has('SH_CAPE', 'SH_FWD10')) return setEmpty(c, 'Waiting for Shiller data.');
+  const fm = new Map(S.SH_FWD10.t.map((t, i) => [t, S.SH_FWD10.v[i]])), xs = [], ys = [], dots = [];
+  for (let i = 0; i < S.SH_CAPE.t.length; i++) { const t = S.SH_CAPE.t[i]; if (fm.has(t)) { xs.push(Math.log(S.SH_CAPE.v[i])); ys.push(fm.get(t)); dots.push([S.SH_CAPE.v[i], fm.get(t), t]); } }
+  const n = xs.length, mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+  let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+  const b = sxy / sxx, a = my - b * mx, r2 = sxy * sxy / (sxx * syy);
+  const res = ys.map((y, i) => y - (a + b * xs[i])), se = Math.sqrt(res.reduce((m, r) => m + r * r, 0) / (n - 2));
+  const now = capeNow(), capeX = now ? now.cape : asOf(S.SH_CAPE, state.to).v, fit = a + b * Math.log(capeX);
+  const curve = []; for (let x = 5; x <= 45; x += 1) curve.push([x, a + b * Math.log(x)]);
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 24, top: 14, bottom: 30, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => p.seriesIndex === 0 ? `${esc(monthLab(dots[p.dataIndex][2]))}: CAPE ${fmtNum(p.value[0], 1)}x → next 10 years ${sign(p.value[1])}${fmtNum(Math.abs(p.value[1]), 1)}% a year (real)` : '' };
+  o.xAxis = { type: 'value', name: 'CAPE at the start', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tok('--muted'), fontSize: 11 }, min: 0, axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { show: false } };
+  o.yAxis = valAxis(v => v + '%', { name: 'real return, next 10 years (% a year)', nameTextStyle: { color: tok('--muted'), fontSize: 11 } });
+  o.series = [{ type: 'scatter', symbolSize: 4, data: dots.map(d => [d[0], d[1]]), itemStyle: { color: hexA(tok('--s1'), 0.35) } },
+    { type: 'line', data: curve, showSymbol: false, lineStyle: { color: tok('--s2'), width: 2 }, silent: true },
+    { type: 'line', data: [], markLine: { silent: true, symbol: 'none', data: [{ xAxis: +capeX.toFixed(1), lineStyle: { color: tok('--ink'), type: 'dashed' }, label: { formatter: `today ${fmtNum(capeX, 1)}x`, color: tok('--ink'), fontSize: 11 } }] } }];
+  c.chartEl.style.height = '400px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Month', 'CAPE', 'Next 10y real return % a year'], ...dots.map(d => [iso(d[2]).slice(0, 7), d[0], d[1]])];
+  setNote(c, `Every month since 1881: CAPE then vs the real return of US stocks over the following 10 years. The fitted line (R² ${fmtNum(r2, 2)}) implies about ${sign(fit)}${fmtNum(Math.abs(fit), 1)}% a year real from today's ≈${fmtNum(capeX, 1)}x, with a typical miss of ±${fmtNum(se, 1)}pp. Today's CAPE is near the edge of history, so the estimate leans on few comparable points (mainly 1999–2000).`);
+}
+function renderERP(c) {
+  if (!has('SH_ECY')) return setEmpty(c, 'Waiting for Shiller data.');
+  const list = [{ name: 'Excess CAPE yield (Shiller)', data: pts(S.SH_ECY, state.from, state.to) }];
+  if (has('SH_CAPE', 'REAL10Y')) {
+    const ey = { t: S.SH_CAPE.t, v: S.SH_CAPE.v.map(x => 100 / x) };
+    list.push({ name: 'CAPE earnings yield − 10Y TIPS', data: pts(combine(ey, S.REAL10Y, (a, b) => a - b, {}, 40 * DAY), state.from, state.to) });
+  }
+  drawLines(c, list, { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 0) + '%', zero: true });
+}
+function renderReer(c) {
+  const rows = REER.filter(id => has(id)).map(id => { const s = S[id], a = asOf(s, state.to); if (!a) return null;
+    const lo = addMonths(a.t, -120), win = s.v.filter((v, i) => s.t[i] >= lo && s.t[i] <= a.t), avg = win.reduce((x, y) => x + y, 0) / win.length;
+    return { name: s.label.replace(' REER', ''), v: (a.v / avg - 1) * 100, t: a.t }; }).filter(Boolean).sort((a, b) => b.v - a.v);
+  if (!rows.length) return setEmpty(c, 'Waiting for BIS real exchange rates (next daily run).');
+  c.subEl.textContent = `Real effective exchange rate vs its own 10-year average, as of ${monthLab(rows[0].t)}. Positive = stronger (more expensive) than usual.`;
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${sign(p.value)}${fmtNum(Math.abs(p.value), 1)}%</b> <span style="color:${tok('--ink-2')}">${esc(rows[p.dataIndex].name)} vs 10-year average</span>` };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(2), itemStyle: { color: r.v >= 0 ? tok('--neg') : tok('--pos'), borderRadius: r.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => sign(p.value) + fmtNum(Math.abs(p.value), 1) + '%' } }];
+  c.chartEl.style.height = Math.max(280, rows.length * 26 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Currency', '% vs 10y average'], ...rows.map(r => [r.name, r.v.toFixed(2)])];
+  setNote(c, 'Red = rich (stronger than its 10-year norm), blue = cheap. Real effective rates adjust for inflation and weight each currency by trade.');
+}
+function renderStretch(c) {
+  const rows = STRETCH_EQ.filter(id => has(id)).map(id => { const x = stretch(id); return x && { name: S[id].label, v: x.pct, z: x.z, tr: x.trend }; }).filter(Boolean).sort((a, b) => b.v - a.v);
+  if (!rows.length) return setEmpty(c, 'Not enough history.');
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${sign(r.v)}${fmtNum(Math.abs(r.v), 1)}%</b> vs 10-year trend (${zf(r.z)}σ)<br><span style="color:${tok('--ink-2')}">${esc(r.name)} · trend growth ${fmtNum(r.tr, 1)}% a year</span>`; } };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(2), itemStyle: { color: r.v >= 0 ? tok('--neg') : tok('--pos'), borderRadius: r.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => `${sign(p.value)}${fmtNum(Math.abs(p.value), 0)}% (${zf(rows[p.dataIndex].z)}σ)` } }];
+  c.chartEl.style.height = Math.max(300, rows.length * 26 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Index', '% vs 10y trend', 'z', 'trend % a year'], ...rows.map(r => [r.name, r.v.toFixed(2), r.z.toFixed(2), r.tr.toFixed(2)])];
+  setNote(c, `Price relative to its own 10-year log-linear trend (weekly, local currency), as of ${nice(state.to)}. Not a valuation measure (no earnings), but free for every market: far above trend usually means returns were pulled forward.`);
+  setSource(c, srcOf(STRETCH_EQ) + '; trend calculated');
+}
+function buildValuation() {
+  const g = $('#valGrid');
+  makeCard(g, { key: 'val_table', title: 'Valuation scorecard', wide: true, range: false, sub: 'Where each market sits against its own history.',
+    source: 'Shiller (Yale), FRED (DFII10, BAA10Y, BAMLH0A0HYM2, BIS real effective exchange rates, WTISPLC, CPIAUCSL), NY Fed (ACM term premium)', render: renderValTable });
+  g.append(el('h3', { class: 'section', text: 'US equities' }));
+  makeCard(g, { key: 'val_cape', title: 'US CAPE (Shiller P/E10)', defaultRange: 'MAX', earliest: Date.UTC(1881, 0, 1), sub: 'Price over 10-year average inflation-adjusted earnings, monthly since 1881.',
+    source: 'Robert Shiller, Yale (ie_data.xls); latest estimate rolled forward with the S&P 500 from Yahoo Finance (^GSPC)', render: renderCape });
+  makeCard(g, { key: 'val_fwd', title: 'What CAPE has meant for the next 10 years', range: false, source: 'Robert Shiller, Yale (ie_data.xls); regression calculated', render: renderCapeFwd });
+  makeCard(g, { key: 'val_erp', title: 'Equity risk premium', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1881, 0, 1),
+    sub: 'Earnings yield on stocks minus the real yield on bonds. Low = little extra reward for owning equities over bonds.',
+    source: 'Robert Shiller, Yale (Excess CAPE Yield); FRED (DFII10); spread calculated', render: renderERP });
+  g.append(el('h3', { class: 'section', text: 'Bonds, FX and global equities' }));
+  makeCard(g, { key: 'val_tp', title: 'Treasury term premium and real yield', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1),
+    sub: 'Extra yield for holding 10-year Treasuries rather than rolling short bills (NY Fed ACM model), and the 10Y real (TIPS) yield, %.',
+    source: 'Federal Reserve Bank of New York (ACMTP10); FRED (DFII10)',
+    render: c => { const ids = ['ACM_TP10', 'REAL10Y'].filter(x => has(x)); if (!ids.length) return setEmpty(c, 'Waiting for data.');
+      drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })), { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true }); } });
+  makeCard(g, { key: 'val_reer', title: 'Currency valuation', range: false, source: 'BIS real effective exchange rates (broad) via FRED', render: renderReer });
+  makeCard(g, { key: 'val_stretch', title: 'Global equities: price vs 10-year trend', wide: true, range: false, render: renderStretch });
+}
+function renderValuation() { ['val_table', 'val_cape', 'val_fwd', 'val_erp', 'val_tp', 'val_reer', 'val_stretch'].forEach(k => cards[k].render()); }
+
+// ------------------------------------------------------------------ DATA HEALTH
+let HEALTH = null;
+function renderHealth() {
+  const box = $('#healthBody'); box.replaceChildren();
+  if (!HEALTH) { box.append(el('div', { class: 'empty', text: 'The data health report arrives with the next daily run.' })); return; }
+  const cnt = s => HEALTH.rows.filter(r => r.state === s).length;
+  box.append(el('p', { text: `Checked ${HEALTH.checked_utc}: ${HEALTH.n} series. ${cnt('stale')} stale, ${cnt('missing')} missing, ${cnt('kept previous')} using the previous download, ${cnt('ok')} up to date.` }),
+    el('p', { class: 'muted small', text: 'A series is stale when its latest observation is older than its normal publishing rhythm allows (daily 10 days, weekly 3 weeks, monthly ~4 months, quarterly ~8 months). When anything is stale or missing, the daily run opens a "Data health alert" issue in the GitHub repo (GitHub emails you) and closes it once the data is back.' }));
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['State', 'Series', 'Source', 'Frequency', 'Latest data', 'Age (days)'].map(h => el('th', { text: h })))));
+  const tb = el('tbody'), col_ = { stale: '--critical', missing: '--serious', 'kept previous': '--warning', ok: '--good' };
+  for (const r of HEALTH.rows) tb.append(el('tr', { class: 'row' }, el('td', {}, el('span', { class: 'chip', style: `--st:${tok(col_[r.state])}` }, r.state)),
+    el('td', { text: `${r.label} (${r.id})` }), el('td', { class: 'muted', text: r.source }), el('td', { text: r.freq }), el('td', { text: r.last }), el('td', { text: r.age_days == null ? '' : String(r.age_days) })));
+  tbl.append(tb); box.append(el('div', { class: 'table-wrap' }, tbl));
+}
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
   'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors',
@@ -2055,10 +2226,10 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia & Singapore',
-  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex' };
+  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health' };
 function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
@@ -2096,6 +2267,7 @@ async function init() {
   const [meta, y, f, d, cv, as] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json'].map(loadJSON));
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
+  try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -2114,6 +2286,8 @@ async function init() {
   if (META.total) {
     pill.hidden = false;
     pill.textContent = fredOk ? `${META.ok}/${META.total} series live` : `${META.ok}/${META.total} series · FRED pending`;
+    if (HEALTH && HEALTH.n_bad) { pill.textContent += ` · ${HEALTH.n_bad} stale`; pill.classList.add('warn'); }
+    pill.style.cursor = 'pointer'; pill.addEventListener('click', () => setTab('health'));
     const bad = Object.entries(META.status || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`);
     pill.title = (bad.length ? bad.join('\n') : 'All series refreshed') +
       ('fred_key_found' in META ? `\n\nFRED API key on GitHub: ${META.fred_key_found ? 'found' : 'NOT found'}` : '') +
@@ -2126,7 +2300,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

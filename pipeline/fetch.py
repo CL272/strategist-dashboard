@@ -559,6 +559,12 @@ def main() -> int:
     derived = {}
     for sid, (s, meta) in build_derived(fred_series).items():
         derived[sid] = {"group": "Derived", "source": "Calculated from FRED", **meta, **pack(s)}
+    try:
+        import valuation
+        for sid, (s, meta) in valuation.build(status).items():
+            derived[sid] = {**meta, **pack(s)}
+    except Exception as e:   # valuation inputs must never break the data refresh
+        print(f"Valuation failed: {type(e).__name__}")
     write("derived.json", derived)
     print(f"Derived: {', '.join(derived) or 'none (FRED data missing)'}")
 
@@ -581,6 +587,12 @@ def main() -> int:
         news.build_news()
     except Exception as e:   # headlines must never break the data refresh
         print(f"News failed: {type(e).__name__}")
+
+    try:
+        import health
+        health.build_health(status)
+    except Exception as e:
+        print(f"Health check failed: {type(e).__name__}")
 
     ok = sum(v == "ok" for v in status.values())
     write("meta.json", {"updated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),

@@ -10,7 +10,8 @@ on:
     branches: [main]
 
 permissions:
-  contents: write   # to commit the credit-spread archive
+  contents: write   # to commit the credit-spread and AI archives
+  issues: write     # to open / close the "Data health alert" issue
 
   pages: write
   id-token: write
@@ -56,6 +57,30 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "Archive ICE BofA spread history"
             git pull --rebase origin main && git push origin HEAD:main
+          fi
+
+      - name: Data health alert (opens an issue when series go stale; GitHub emails you)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f docs/data/health.json ] || exit 0
+          n=$(python -c "import json;print(json.load(open('docs/data/health.json'))['n_bad'])")
+          gh label create data-health --color B60205 --description "Stale or missing data" --force >/dev/null 2>&1 || true
+          open=$(gh issue list --label data-health --state open --json number --jq '.[0].number' || true)
+          if [ "$n" -gt 0 ]; then
+            python - <<'PY' > body.md
+          import json
+          h = json.load(open("docs/data/health.json"))
+          print(f"Checked {h['checked_utc']}: {h['n_bad']} series stale or missing.\n")
+          print("| Series | Source | Last data | Frequency | State |\n|---|---|---|---|---|")
+          for r in h["rows"]:
+              if r["state"] in ("stale", "missing"):
+                  print(f"| {r['label']} (`{r['id']}`) | {r['source']} | {r['last']} | {r['freq']} | {r['state']} |")
+          print("\nThis issue closes itself when the data updates again. Details: the Data health page on the dashboard.")
+          PY
+            if [ -n "$open" ]; then gh issue edit "$open" --body-file body.md; else gh issue create --title "Data health alert" --label data-health --body-file body.md; fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "All series are updating again."
           fi
 
       - uses: actions/configure-pages@v5

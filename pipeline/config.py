@@ -161,6 +161,18 @@ FRED = [
     ("GS10",        "GS10",        "10Y Treasury yield (monthly)", "Rates · US", "yield", "%", MACRO_START),
     ("TB3MS",       "TB3MS",       "3M T-bill rate (monthly)",    "Rates · US", "yield", "%", MACRO_START),
     ("WTI_LONG",    "WTISPLC",     "WTI crude spot (monthly)",    "Commodities", "price", "USD/bbl", MACRO_START),
+    # Real effective exchange rates (BIS broad, monthly) for FX valuation
+    ("REER_USD",    "RBUSBIS",     "US dollar REER",              "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_EUR",    "RBXMBIS",     "Euro REER",                   "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_JPY",    "RBJPBIS",     "Japanese yen REER",           "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_CNY",    "RBCNBIS",     "Chinese yuan REER",           "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_GBP",    "RBGBBIS",     "British pound REER",          "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_SGD",    "RBSGBIS",     "Singapore dollar REER",       "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_MYR",    "RBMYBIS",     "Malaysian ringgit REER",      "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_KRW",    "RBKRBIS",     "Korean won REER",             "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_INR",    "RBINBIS",     "Indian rupee REER",           "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_AUD",    "RBAUBIS",     "Australian dollar REER",      "Valuation · FX", "level", "idx", MACRO_START),
+    ("REER_IDR",    "RBIDBIS",     "Indonesian rupiah REER",      "Valuation · FX", "level", "idx", MACRO_START),
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
