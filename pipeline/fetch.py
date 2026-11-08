@@ -67,6 +67,17 @@ def unpack(obj: dict) -> pd.Series:
     return pd.Series(obj["v"], index=idx, dtype="float64")
 
 
+DIAG: list[str] = []   # non-secret error notes, written to meta.json for troubleshooting
+
+
+def scrub(text: str) -> str:
+    for name in ("FRED_API_KEY", "ESTAT_APP_ID"):
+        v = get_secret(name)
+        if v:
+            text = text.replace(v, "***")
+    return text
+
+
 def get(url: str, params: dict | None = None, tries: int = 3) -> requests.Response | None:
     """GET with retries. Errors are reported without the URL (it may hold an API key)."""
     last = None
@@ -75,11 +86,17 @@ def get(url: str, params: dict | None = None, tries: int = 3) -> requests.Respon
             r = requests.get(url, params=params, headers=UA, timeout=30)
             if r.status_code == 200:
                 return r
-            last = f"HTTP {r.status_code}"
+            last = f"HTTP {r.status_code}: {r.text[:160].strip()}"
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                break   # client error: retrying will not help
         except requests.RequestException as e:
             last = type(e).__name__
         time.sleep(2 * (i + 1))
-    print(f"      request failed: {last}")
+    last = scrub(last or "unknown error")
+    host = url.split("/")[2]
+    print(f"      request failed ({host}): {last}")
+    if len(DIAG) < 8:
+        DIAG.append(f"{host}: {last}")
     return None
 
 
@@ -111,15 +128,15 @@ def fetch_yahoo(symbol: str) -> pd.Series | None:
 
 
 def fetch_fred(series_id: str, api_key: str | None, start: str = START_DATE) -> pd.Series | None:
+    s = None
     if api_key:
         r = get("https://api.stlouisfed.org/fred/series/observations",
                 {"series_id": series_id, "api_key": api_key, "file_type": "json",
                  "observation_start": start})
-        if r is None:
-            return None
-        obs = r.json().get("observations", [])
-        s = pd.Series({pd.Timestamp(o["date"]): o["value"] for o in obs})
-    else:  # keyless fallback (public CSV download)
+        if r is not None:
+            obs = r.json().get("observations", [])
+            s = pd.Series({pd.Timestamp(o["date"]): o["value"] for o in obs})
+    if s is None:  # no key, or the API failed: public CSV download
         r = get("https://fred.stlouisfed.org/graph/fredgraph.csv", {"id": series_id, "cosd": start})
         if r is None:
             return None
@@ -359,7 +376,8 @@ def main() -> int:
 
     ok = sum(v == "ok" for v in status.values())
     write("meta.json", {"updated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-                        "ok": ok, "total": len(status), "status": status})
+                        "ok": ok, "total": len(status), "status": status,
+                        "fred_key_found": bool(fred_key), "errors": DIAG})
     print(f"Done: {ok}/{len(status)} series refreshed")
     return 0 if ok > len(status) * 0.5 else 1
 
