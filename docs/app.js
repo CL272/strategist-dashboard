@@ -212,9 +212,19 @@ function withEndLabels(series) {
   }
   return Math.min(140, maxLen * 6.2 + 10);
 }
-function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true } = {}) {
+function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null } = {}) {
   const series = list.map((s, i) => line(s.name, s.data, s.color || col(i), s.extra || {}));
-  if (zero && series.length) series[0].markLine = zeroLine();
+  if ((zero || hlines.length) && series.length) {
+    const ml = zeroLine();
+    if (!zero) ml.data = [];
+    for (const h of hlines) ml.data.push({ yAxis: h.y, lineStyle: { color: tok('--muted'), type: 'dashed', width: 1 },
+      label: { show: true, formatter: h.label, color: tok('--muted'), position: 'insideStartTop', fontSize: 11 } });
+    series[0].markLine = ml;
+  }
+  if (areas && areas.length && series.length) {
+    series[0].markArea = { silent: true, data: areas.map(([a, b, color, name]) => [{ xAxis: a, itemStyle: { color }, name: name || '' }, { xAxis: b }]),
+      label: { show: false } };
+  }
   const o = baseOpt();
   const pad = endLabels ? withEndLabels(series) : 0;
   o.grid.right = 16 + pad;
@@ -418,6 +428,240 @@ function buildLiquidity() {
 function renderLiquidity() {
   liquidityKpis(); liquiditySignals();
   ['netliq', 'comp', 'fund', 'gcb', 'credit', 'nfci', 'm2', 'rates'].forEach(k => cards[k].render());
+}
+
+// ------------------------------------------------------------------ REGIME
+const QUADS = {
+  1: { name: 'Goldilocks', tag: 'Growth ↑ · Inflation ↓', tok: '--s3', text: 'Typically favours equities (growth, tech) and credit. Bonds do fine as inflation cools.' },
+  2: { name: 'Overheat', tag: 'Growth ↑ · Inflation ↑', tok: '--s4', text: 'Typically favours commodities, cyclicals and value. Long bonds lag as yields rise.' },
+  3: { name: 'Stagflation', tag: 'Growth ↓ · Inflation ↑', tok: '--s2', text: 'Typically favours cash, gold and commodities. Equities and bonds both struggle.' },
+  4: { name: 'Slowdown', tag: 'Growth ↓ · Inflation ↓', tok: '--s1', text: 'Typically favours long-duration bonds, defensives and the USD. Cyclicals lag.' },
+};
+const qColor = q => tok(QUADS[q].tok);
+const monthLab = t => { const d = new Date(t); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+const zf = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 2);
+const REG_ASSETS = ['SPX', 'NDX', 'RTY', 'XLK', 'XLF', 'XLE', 'VNQ', 'SX5E', 'NKY', 'EEM', 'AAXJ', 'STI', 'TLT', 'IEF', 'LQD', 'HYG', 'EMB', 'GOLD', 'BRENT', 'COPPER', 'DXY', 'USDJPY', 'BTC'];
+state.regLag = 'lag'; state.regSpan = 'full'; state.regAsset = 'SPX';
+
+function regimeRuns(from, to) {   // consecutive months in the same regime -> [start, end, quad]
+  const q = S.REG_QUAD, runs = [];
+  for (let i = 0; i < q.t.length; i++) {
+    const a = q.t[i], b = i + 1 < q.t.length ? q.t[i + 1] : addMonths(a, 1);
+    if (b < from || a > to) continue;
+    const last = runs[runs.length - 1];
+    if (last && last[2] === q.v[i] && last[1] === a) last[1] = b; else runs.push([a, b, q.v[i]]);
+  }
+  return runs.map(([a, b, v]) => [Math.max(a, from), Math.min(b, to), v]);
+}
+function recessionAreas(from, to) {
+  if (!has('USREC')) return [];
+  const s = S.USREC, out = [];
+  for (let i = 0; i < s.t.length; i++) {
+    if (s.v[i] !== 1) continue;
+    const a = s.t[i], b = addMonths(a, 1);
+    if (b < from || a > to) continue;
+    const last = out[out.length - 1];
+    if (last && last[1] === a) last[1] = b; else out.push([a, b]);
+  }
+  return out.map(([a, b]) => [Math.max(a, from), Math.min(b, to), hexA(tok('--muted'), 0.16), 'US recession (NBER)']);
+}
+function regimeKpis() {
+  const box = $('#regKpis'); box.replaceChildren();
+  const now = $('#regNow'); now.replaceChildren();
+  if (!has('REG_QUAD')) { box.append(el('div', { class: 'muted small', text: NO_FRED })); return; }
+  const q = asOf(S.REG_QUAD, state.to);
+  // how long in this regime
+  let k = q.i; while (k > 0 && S.REG_QUAD.v[k - 1] === q.v) k--;
+  const prev = k > 0 ? S.REG_QUAD.v[k - 1] : null;
+  const tile = (label, valueNode, delta, asofTxt) => box.append(el('div', { class: 'kpi' },
+    el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value' }, valueNode),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: asofTxt })));
+  tile('Current regime', el('span', {}, el('span', { class: 'qdot', style: `background:${qColor(q.v)}` }), QUADS[q.v].name),
+    `${q.i - k + 1} month${q.i - k ? 's' : ''} in a row` + (prev ? ` · from ${QUADS[prev].name}` : ''), `data month ${monthLab(q.t)}`);
+  const gm = asOf(S.REG_GM, state.to), im = asOf(S.REG_IM, state.to);
+  tile('Growth momentum', el('span', { text: zf(gm.v) }), gm.v >= 0 ? 'accelerating' : 'decelerating', `z-score change · ${monthLab(gm.t)}`);
+  tile('Inflation momentum', el('span', { text: zf(im.v) }), im.v >= 0 ? 'accelerating' : 'decelerating', `z-score change · ${monthLab(im.t)}`);
+  const simple = (id, label, fmt, desc) => {
+    if (!has(id)) return;
+    const a = asOf(S[id], state.to); if (!a) return;
+    tile(label, el('span', { text: fmt(a.v) }), desc(a.v), monthLab(a.t));
+  };
+  simple('SAHM', 'Sahm rule', v => fmtNum(v, 2) + 'pp', v => v >= 0.5 ? '⚠ triggered (≥0.50)' : `trigger at 0.50 (${fmtNum(0.5 - v, 2)}pp away)`);
+  simple('REC_PROB_NYF', 'Recession odds, 12m (curve)', v => fmtNum(v, 0) + '%', v => v >= 30 ? '⚠ elevated (≥30%)' : 'NY Fed yield-curve model');
+  simple('CORE_CPI_3M', 'Core CPI, 3m annualised', v => fmtNum(v, 1) + '%', v => has('CORE_CPI_YOY') ? `YoY ${fmtNum(asOf(S.CORE_CPI_YOY, state.to).v, 1)}%` : '');
+  for (const n of [1, 2, 3, 4]) {
+    now.append(el('div', { class: 'quad' + (n === q.v ? ' on' : ''), style: `--qc:${qColor(n)}` },
+      el('h3', {}, el('span', { text: QUADS[n].name + (n === q.v ? ' · now' : '') }), el('span', { class: 'tag', text: QUADS[n].tag })),
+      el('p', { text: QUADS[n].text })));
+  }
+}
+function renderQuadPath(c) {
+  if (!has('REG_GM', 'REG_IM')) return setEmpty(c, NO_FRED);
+  const gm = S.REG_GM, im = S.REG_IM, imMap = new Map(im.t.map((t, i) => [t, im.v[i]]));
+  let p = [];
+  for (let i = 0; i < gm.t.length; i++) if (gm.t[i] >= addMonths(state.from, -1) && gm.t[i] <= state.to && imMap.has(gm.t[i])) p.push([gm.v[i], imMap.get(gm.t[i]), gm.t[i]]);
+  const capped = p.length > 36; if (capped) p = p.slice(-36);
+  if (!p.length) return setEmpty(c, 'No regime readings in this date range.');
+  const qOf = (x, y) => x >= 0 ? (y < 0 ? 1 : 2) : (y >= 0 ? 3 : 4);
+  const m = Math.max(0.3, ...p.map(d => Math.max(Math.abs(d[0]), Math.abs(d[1])))) * 1.2;
+  c.subEl.textContent = `Change in growth (x) and inflation (y) composites, monthly path from ${monthLab(p[0][2])} to ${monthLab(p[p.length - 1][2])}${capped ? ' (last 36 months of range)' : ''}. Larger dot = latest.`;
+  const o = baseOpt();
+  o.legend.show = false;
+  o.grid = { left: 8, right: 16, top: 14, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: pp => {
+    if (!pp.data || pp.data.length < 3) return '';
+    const [x, y, t] = pp.data;
+    return `<div style="color:${tok('--ink-2')};margin-bottom:4px">${esc(monthLab(t))} · ${esc(QUADS[qOf(x, y)].name)}</div><b>${zf(x)}</b> growth momentum<br><b>${zf(y)}</b> inflation momentum`;
+  } };
+  const ax = name => ({ type: 'value', min: -m, max: m, name, nameLocation: 'end', nameTextStyle: { color: tok('--muted'), fontSize: 11 },
+    axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v.toFixed(1), showMinLabel: false, showMaxLabel: false }, splitLine: { lineStyle: { color: tok('--grid') } },
+    axisLine: { onZero: true, lineStyle: { color: tok('--axis') } }, axisTick: { show: false } });
+  o.xAxis = ax('Growth →'); o.yAxis = ax('Inflation ↑');
+  const QPOS = { 1: 'insideBottomRight', 2: 'insideTopRight', 3: 'insideTopLeft', 4: 'insideBottomLeft' };
+  const area = (x0, x1, y0, y1, n) => [{ coord: [x0, y0], itemStyle: { color: hexA(qColor(n), 0.10) }, name: QUADS[n].name,
+    label: { show: true, color: tok('--ink-2'), fontSize: 12, fontWeight: 600, position: QPOS[n], distance: 8 } }, { coord: [x1, y1] }];
+  const n = p.length;
+  o.series = [
+    { type: 'line', data: p.map(d => [d[0], d[1], d[2]]), showSymbol: false, lineStyle: { color: tok('--muted'), width: 1 }, silent: true, z: 1,
+      markArea: { silent: true, data: [area(0, m, -m, 0, 1), area(0, m, 0, m, 2), area(-m, 0, 0, m, 3), area(-m, 0, -m, 0, 4)] } },
+    { type: 'scatter', z: 3, data: p.map((d, i) => ({ value: d, symbolSize: i === n - 1 ? 16 : 7 + 5 * (i / n),
+      itemStyle: { color: qColor(qOf(d[0], d[1])), opacity: i === n - 1 ? 1 : 0.35 + 0.55 * (i / n), borderColor: tok('--surface'), borderWidth: 2 },
+      label: { show: i === n - 1 || i === 0, formatter: monthLab(d[2]), position: 'right', color: tok('--ink'), fontSize: 11, fontWeight: i === n - 1 ? 600 : 400 } })) },
+  ];
+  inst(c).setOption(o, true);
+  c.csv = [['Month', 'Growth momentum', 'Inflation momentum', 'Regime'], ...p.map(d => [iso(d[2]).slice(0, 7), d[0], d[1], QUADS[qOf(d[0], d[1])].name])];
+}
+function renderRegimeHistory(c) {
+  if (!has('REG_QUAD')) return setEmpty(c, NO_FRED);
+  const id = has(state.regAsset) ? state.regAsset : 'SPX', s = S[id];
+  const data = pts(s, state.from, state.to);
+  const runs = regimeRuns(state.from, state.to);
+  c.titleEl.textContent = `Regime history: ${s.label}`;
+  c.subEl.textContent = 'Background = regime for each data month. Regimes are only known 1–2 months later, when the data is published.';
+  const series = [line(s.label, data, tok('--ink-2'))];
+  series[0].markArea = { silent: true, data: runs.map(([a, b, q]) => [{ xAxis: a, itemStyle: { color: hexA(qColor(q), 0.28) } }, { xAxis: b }]) };
+  for (const n of [1, 2, 3, 4]) series.push({ name: QUADS[n].name, type: 'line', data: [], itemStyle: { color: qColor(n) }, lineStyle: { color: qColor(n) } });
+  const o = baseOpt();
+  o.legend.data = [1, 2, 3, 4].map(n => ({ name: QUADS[n].name, icon: 'rect', itemStyle: { color: qColor(n) } }));
+  o.tooltip.formatter = ps => {
+    const p = (Array.isArray(ps) ? ps : [ps]).find(x => x.seriesIndex === 0); if (!p) return '';
+    const q = asOf(S.REG_QUAD, p.value[0]);
+    return `<div style="color:${tok('--ink-2')};margin-bottom:4px">${esc(nice(p.value[0]))}</div><b>${esc(fmtVal(s, p.value[1]))}</b> ${esc(s.label)}` +
+      (q ? `<br><span style="color:${tok('--ink-2')}">Regime (data month ${esc(monthLab(q.t))}): </span><b>${esc(QUADS[q.v].name)}</b>` : '');
+  };
+  o.xAxis = timeAxis(); o.yAxis = valAxis(v => fmtNum(v, autoDec(v)));
+  o.series = series;
+  inst(c).setOption(o, true);
+  c.csv = [['Date', s.label, 'Regime'], ...data.map(([t, v]) => { const q = asOf(S.REG_QUAD, t); return [iso(t), v, q ? QUADS[q.v].name : '']; })];
+}
+function monthEnds(s) {  // month key (UTC month start ms) -> last value in that month
+  const m = new Map();
+  for (let i = 0; i < s.t.length; i++) { const d = new Date(s.t[i]); m.set(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), s.v[i]); }
+  return m;
+}
+function renderRegimeTable(c) {
+  c.chartEl.hidden = true; c.emptyEl.hidden = true;
+  let wrap = c.root.querySelector('.table-wrap');
+  if (!wrap) { wrap = el('div', { class: 'table-wrap' }); c.root.insertBefore(wrap, c.noteEl); }
+  wrap.replaceChildren();
+  if (!has('REG_QUAD')) { wrap.append(el('div', { class: 'empty', text: NO_FRED })); return; }
+  const q = S.REG_QUAD, qMap = new Map(q.t.map((t, i) => [t, q.v[i]]));
+  const lag = state.regLag === 'lag' ? 2 : 0;
+  const lo = state.regSpan === 'range' ? state.from : -Infinity, hi = state.regSpan === 'range' ? state.to : Infinity;
+  const cur = asOf(q, state.to);
+  const rows = [], counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  let counted = false;
+  for (const id of REG_ASSETS.filter(x => has(x))) {
+    const s = S[id], me = monthEnds(s), keys = [...me.keys()].sort((a, b) => a - b);
+    const acc = { 1: [], 2: [], 3: [], 4: [] };
+    for (let i = 1; i < keys.length; i++) {
+      const mk = keys[i]; if (mk < lo || mk > hi) continue;
+      const rq = qMap.get(addMonths(mk, -lag)); if (!rq) continue;
+      acc[rq].push(me.get(keys[i]) / me.get(keys[i - 1]) - 1);
+    }
+    if (!counted && id === 'SPX') { for (const n of [1, 2, 3, 4]) counts[n] = acc[n].length; counted = true; }
+    const row = { id, s };
+    for (const n of [1, 2, 3, 4]) {
+      const xs = acc[n];
+      row[n] = xs.length >= 3 ? { ann: xs.reduce((a, b) => a + b, 0) / xs.length * 1200, hit: xs.filter(x => x > 0).length / xs.length * 100, n: xs.length } : null;
+    }
+    rows.push(row);
+  }
+  const tbl = el('table', { class: 'perf' });
+  const hr = el('tr', {}, el('th', { text: 'Asset' }));
+  for (const n of [1, 2, 3, 4]) hr.append(el('th', { class: n === (cur && cur.v) ? 'now' : '', title: QUADS[n].tag,
+    text: `${QUADS[n].name}${n === (cur && cur.v) ? ' · now' : ''} (${counts[n]}m)` }));
+  tbl.append(el('thead', {}, hr));
+  const mx = Math.max(1, ...rows.flatMap(r => [1, 2, 3, 4].map(n => r[n] ? Math.abs(r[n].ann) : 0)).sort((a, b) => a - b).slice(-Math.ceil(rows.length * 0.4)));
+  const pos = tok('--pos'), neg = tok('--neg'), tb = el('tbody');
+  for (const r of rows) {
+    const tr = el('tr', { class: 'row' }, el('td', { text: r.s.label }));
+    for (const n of [1, 2, 3, 4]) {
+      const v = r[n];
+      const td = el('td', { class: 'heat', title: v ? `${QUADS[n].name}: avg ${fmtNum(v.ann, 1)}% annualised, up in ${fmtNum(v.hit, 0)}% of ${v.n} months` : 'Fewer than 3 months' ,
+        style: v ? `background:${hexA(v.ann >= 0 ? pos : neg, Math.min(1, Math.abs(v.ann) / mx) * 0.42)}` : '',
+        text: v ? `${sign(v.ann)}${fmtNum(Math.abs(v.ann), 1)}%` : '–' });
+      if (v) td.append(el('span', { class: 'muted', text: `  ${fmtNum(v.hit, 0)}%↑` }));
+      tr.append(td);
+    }
+    tb.append(tr);
+  }
+  tbl.append(tb); wrap.append(tbl);
+  c.csv = [['Asset', ...[1, 2, 3, 4].flatMap(n => [`${QUADS[n].name} ann. %`, `${QUADS[n].name} hit %`, `${QUADS[n].name} months`])],
+    ...rows.map(r => [r.s.label, ...[1, 2, 3, 4].flatMap(n => r[n] ? [r[n].ann.toFixed(2), r[n].hit.toFixed(0), r[n].n] : ['', '', ''])])];
+  setNote(c, (lag ? 'Investable: each month’s return is matched to the regime from 2 months earlier, the latest one published by then. ' :
+    'Same month: each month’s return is matched to that month’s regime, which is only known with hindsight. ') +
+    'Average monthly return ×12, then the share of months it was up. ' + (state.regSpan === 'full' ? 'Uses all history since 2005, ignoring the date bar.' : `Months in ${rangeLabel()} only.`));
+}
+function buildRegime() {
+  const g = $('#regGrid');
+  makeCard(g, { key: 'quad', title: 'Growth × inflation quadrant', tall: true, source: 'FRED; growth and inflation composites', render: renderQuadPath });
+  makeCard(g, { key: 'comp_gi', title: 'Growth and inflation composites', sub: 'Average z-score of the inputs below, each against its own last 10 years. 0 = normal.', source: 'FRED',
+    render: c => { if (!has('REG_G', 'REG_I')) return setEmpty(c, NO_FRED);
+      drawLines(c, [{ name: 'Growth', data: pts(S.REG_G, state.from, state.to), color: col(0) }, { name: 'Inflation', data: pts(S.REG_I, state.from, state.to), color: col(1) }],
+        { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, areas: recessionAreas(state.from, state.to) }); } });
+  const hist = makeCard(g, { key: 'reghist', title: 'Regime history', wide: true, tall: true, source: 'FRED, Yahoo Finance',
+    seg: { key: 'regAsset', options: [['SPX', 'S&P 500'], ['NDX', 'Nasdaq'], ['TLT', 'Long UST'], ['GOLD', 'Gold'], ['COPPER', 'Copper'], ['DXY', 'USD']] }, render: renderRegimeHistory });
+  makeCard(g, { key: 'regtable', title: 'What worked in each regime', wide: true, source: 'FRED, Yahoo Finance',
+    sub: 'Annualised average monthly return by regime (local currency; ETFs include dividends). Hover a cell for details.',
+    seg: { key: 'regLag', options: [['lag', 'Investable'], ['same', 'Same month']] }, render: renderRegimeTable });
+  const t = cards.regtable, seg2 = el('div', { class: 'seg', role: 'group' });
+  for (const [val, lab] of [['full', 'Since 2005'], ['range', 'Date bar']]) {
+    const b = el('button', { type: 'button', text: lab, class: state.regSpan === val ? 'on' : '' });
+    b.addEventListener('click', () => { state.regSpan = val; seg2.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); t.render(); });
+    seg2.append(b);
+  }
+  t.root.querySelector('.card-tools').prepend(seg2);
+  t.root.querySelector('[title^="Focus"]').hidden = true; t.root.querySelector('[title^="Download chart as"]').hidden = true;
+  const zcard = (key, title, prefix) => makeCard(g, { key, title, source: 'FRED', sub: 'z-scores against each input’s own last 10 years (capped at ±3). Grey = US recession.',
+    render: c => { const ids = Object.keys(S).filter(k => k.startsWith(prefix)); if (!ids.length) return setEmpty(c, NO_FRED);
+      drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
+        { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, endLabels: false, areas: recessionAreas(state.from, state.to) }); } });
+  zcard('zg', 'Growth inputs', 'RZG_');
+  zcard('zi', 'Inflation inputs', 'RZI_');
+  makeCard(g, { key: 'sahm', title: 'Sahm rule recession indicator', source: 'FRED (SAHMREALTIME)',
+    sub: '3-month average unemployment rate minus its low of the prior 12 months. 0.50pp or more has marked every US recession since 1970.',
+    render: c => { if (!has('SAHM')) return setEmpty(c, NO_FRED);
+      drawLines(c, [{ name: 'Sahm rule (real-time)', data: pts(S.SAHM, state.from, state.to) }],
+        { fmt: v => fmtNum(v, 2) + 'pp', axisFmt: v => v.toFixed(2), hlines: [{ y: 0.5, label: 'trigger 0.50' }], areas: recessionAreas(state.from, state.to) }); } });
+  makeCard(g, { key: 'recprob', title: 'Recession probability', source: 'FRED (T10Y3M, RECPROUSM156N); NY Fed model',
+    sub: 'Yield-curve model: odds of recession 12 months ahead. Chauvet-Piger: odds the US is in recession now.',
+    render: c => { const ids = ['REC_PROB_NYF', 'REC_PROB_CP'].filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
+      const names = { REC_PROB_NYF: 'Yield curve, 12m ahead', REC_PROB_CP: 'Chauvet-Piger, now' };
+      drawLines(c, ids.map((id, i) => ({ name: names[id], data: pts(S[id], state.from, state.to), color: col(i) })),
+        { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, hlines: [{ y: 30, label: '30%' }], areas: recessionAreas(state.from, state.to) }); } });
+  makeCard(g, { key: 'infl', title: 'US inflation', source: 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)', sub: 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.',
+    render: c => { const ids = ['CPI_YOY', 'CORE_CPI_YOY', 'CORE_PCE_YOY', 'CORE_CPI_3M'].filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
+      drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
+        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => v.toFixed(0) + '%', hlines: [{ y: 2, label: '2% target' }] }); } });
+  makeCard(g, { key: 'claims', title: 'Initial jobless claims', source: 'FRED (ICSA)', sub: '4-week average, thousands. Weekly, the timeliest labour-market signal.',
+    render: c => { if (!has('CLAIMS_4WK')) return setEmpty(c, NO_FRED);
+      drawLines(c, [{ name: 'Initial claims, 4-week avg', data: pts(S.CLAIMS_4WK, state.from, state.to) }],
+        { fmt: v => fmtNum(v, 0) + 'k', axisFmt: v => fmtNum(v, 0) + 'k', areas: recessionAreas(state.from, state.to) }); } });
+}
+function renderRegime() {
+  regimeKpis();
+  ['quad', 'comp_gi', 'reghist', 'regtable', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ MARKETS
@@ -724,7 +968,7 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ liquidity: renderLiquidity, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ liquidity: renderLiquidity, regime: renderRegime, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 function setTab(t) {
   state.tab = t;
@@ -778,7 +1022,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildLiquidity(); buildMarkets(); buildCorrelation(); wire();
-  setTab(['liquidity', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'liquidity');
+  buildLiquidity(); buildRegime(); buildMarkets(); buildCorrelation(); wire();
+  setTab(['liquidity', 'regime', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'liquidity');
 }
 init();

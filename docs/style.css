@@ -167,3 +167,19 @@ footer { padding: 8px 24px 24px; }
 @media print {
   .filters, .tabs, .card-tools, .top-actions { display: none; }
 }
+
+/* ---- regime tab */
+.regime-now {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px;
+}
+.quad {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  border-top: 4px solid var(--qc); opacity: .72;
+}
+.quad.on { opacity: 1; box-shadow: 0 0 0 2px var(--qc) inset; }
+.quad h3 { margin: 0 0 2px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+.quad .tag { font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.quad p { margin: 2px 0 0; font-size: 12px; color: var(--ink-2); }
+.kpi .k-value .qdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+table.perf th.now { color: var(--ink); }
+@media (max-width: 900px) { .regime-now { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

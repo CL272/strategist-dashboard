@@ -3,7 +3,7 @@ Series catalogue for the strategist dashboard.
 
 To ADD a market or indicator, add one line here and the next daily run picks it up.
   - Yahoo entries:  (id, yahoo_symbol, label, group, kind, unit)
-  - FRED entries:   (id, fred_series_id, label, group, kind, unit)
+  - FRED entries:   (id, fred_series_id, label, group, kind, unit[, start_date])
 
 kind tells the dashboard how to measure change:
   "price"  -> % returns          (equities, FX, commodities, ETFs)
@@ -12,6 +12,7 @@ kind tells the dashboard how to measure change:
 """
 
 START_DATE = "2005-01-01"
+MACRO_START = "1990-01-01"   # macro series need longer history for 10-year rolling z-scores
 
 # ---------------------------------------------------------------- Yahoo Finance
 YAHOO = [
@@ -108,4 +109,24 @@ FRED = [
     ("HY_OAS",      "BAMLH0A0HYM2","US HY spread (OAS)",          "Credit",     "yield", "%"),
     ("IG_OAS",      "BAMLC0A0CM",  "US IG spread (OAS)",          "Credit",     "yield", "%"),
     ("NFCI",        "NFCI",        "Chicago Fed financial conditions", "Credit", "level", "idx"),
+    ("STLFSI",      "STLFSI4",     "St. Louis Fed financial stress", "Credit",  "level", "idx"),
+    ("FWD5Y5Y",     "T5YIFR",      "5y5y forward inflation expectation", "Rates · US", "yield", "%"),
+
+    # ---- Regime model inputs (monthly macro, longer history for rolling z-scores)
+    # Growth
+    ("CFNAI",       "CFNAI",       "Chicago Fed National Activity Index", "Macro · Growth", "level", "idx", MACRO_START),
+    ("INDPRO",      "INDPRO",      "Industrial production",       "Macro · Growth", "level", "idx", MACRO_START),
+    ("PAYEMS",      "PAYEMS",      "Nonfarm payrolls",            "Macro · Growth", "level", "k", MACRO_START),
+    ("RETAIL_REAL", "RRSFS",       "Real retail sales",           "Macro · Growth", "level", "USD mn", MACRO_START),
+    ("CLAIMS",      "ICSA",        "Initial jobless claims",      "Macro · Growth", "level", "persons", MACRO_START),
+    ("UNRATE",      "UNRATE",      "Unemployment rate",           "Macro · Growth", "level", "%", MACRO_START),
+    # Inflation
+    ("CPI",         "CPIAUCSL",    "CPI (headline)",              "Macro · Inflation", "level", "idx", MACRO_START),
+    ("CORE_CPI",    "CPILFESL",    "Core CPI",                    "Macro · Inflation", "level", "idx", MACRO_START),
+    ("CORE_PCE",    "PCEPILFE",    "Core PCE price index",        "Macro · Inflation", "level", "idx", MACRO_START),
+    # Recession watch
+    ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
+    ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
+    ("USREC",       "USREC",       "NBER recession indicator",    "Macro · Recession", "level", "", MACRO_START),
+    ("CURVE_3m10y_LONG", "T10Y3M", "3m10y curve (long history)",  "Macro · Recession", "yield", "%", MACRO_START),
 ]

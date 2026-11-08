@@ -110,17 +110,17 @@ def fetch_yahoo(symbol: str) -> pd.Series | None:
     return s[s > 0] if len(s) else None
 
 
-def fetch_fred(series_id: str, api_key: str | None) -> pd.Series | None:
+def fetch_fred(series_id: str, api_key: str | None, start: str = START_DATE) -> pd.Series | None:
     if api_key:
         r = get("https://api.stlouisfed.org/fred/series/observations",
                 {"series_id": series_id, "api_key": api_key, "file_type": "json",
-                 "observation_start": START_DATE})
+                 "observation_start": start})
         if r is None:
             return None
         obs = r.json().get("observations", [])
         s = pd.Series({pd.Timestamp(o["date"]): o["value"] for o in obs})
     else:  # keyless fallback (public CSV download)
-        r = get("https://fred.stlouisfed.org/graph/fredgraph.csv", {"id": series_id, "cosd": START_DATE})
+        r = get("https://fred.stlouisfed.org/graph/fredgraph.csv", {"id": series_id, "cosd": start})
         if r is None:
             return None
         from io import StringIO
@@ -180,6 +180,108 @@ def build_derived(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
     for k, lab in (("HY_OAS", "US HY spread"), ("IG_OAS", "US IG spread")):
         if need(k):
             out[k + "_BP"] = (f[k] * 100, dict(label=lab, unit="bp", kind="level"))
+    out.update(build_regime(f))
+    return out
+
+
+# ------------------------------------------------------------------ regime model
+REGIMES = {1: "Goldilocks", 2: "Overheat", 3: "Stagflation", 4: "Slowdown"}
+
+
+def _monthly(s: pd.Series) -> pd.Series:
+    return s.resample("MS").mean()
+
+
+def _z(x: pd.Series, window: int = 120, min_periods: int = 60) -> pd.Series:
+    """Rolling 10-year z-score (only past data), clipped at ±3 so COVID doesn't dominate."""
+    m = x.rolling(window, min_periods=min_periods).mean()
+    sd = x.rolling(window, min_periods=min_periods).std()
+    return ((x - m) / sd).clip(-3, 3)
+
+
+def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
+    """
+    Growth x inflation regime (the 'Investment Clock' / 'GIP quad' family of models).
+
+    1. Each input becomes a year-on-year growth rate (CFNAI is used as a 3-month average level).
+    2. Each is z-scored against its own trailing 10 years, then averaged into a
+       Growth composite and an Inflation composite.
+    3. Momentum = change in the 3-month average of each composite over 3 months.
+    4. Growth momentum up/down x inflation momentum up/down -> 4 regimes.
+    """
+    out = {}
+    have = lambda k: k in f and f[k] is not None and len(f[k]) > 24
+    yoy = lambda s: (s / s.shift(12) - 1) * 100
+    g_in, i_in = {}, {}
+    if have("CFNAI"):
+        g_in["CFNAI"] = ("Chicago Fed activity index (3m avg)", _monthly(f["CFNAI"]).rolling(3).mean())
+    if have("INDPRO"):
+        g_in["INDPRO"] = ("Industrial production YoY", yoy(_monthly(f["INDPRO"])))
+    if have("PAYEMS"):
+        g_in["PAYEMS"] = ("Payrolls YoY", yoy(_monthly(f["PAYEMS"])))
+    if have("RETAIL_REAL"):
+        g_in["RETAIL_REAL"] = ("Real retail sales YoY", yoy(_monthly(f["RETAIL_REAL"])))
+    if have("CLAIMS"):
+        c = _monthly(f["CLAIMS"])
+        g_in["CLAIMS"] = ("Jobless claims YoY (inverted)", -100 * (c / c.shift(12)).apply(math.log))
+    if have("CPI"):
+        i_in["CPI"] = ("Headline CPI YoY", yoy(_monthly(f["CPI"])))
+    if have("CORE_CPI"):
+        cc = _monthly(f["CORE_CPI"])
+        i_in["CORE_CPI"] = ("Core CPI YoY", yoy(cc))
+        i_in["CORE_CPI_3M"] = ("Core CPI 3m annualised", ((cc / cc.shift(3)) ** 4 - 1) * 100)
+    if have("CORE_PCE"):
+        i_in["CORE_PCE"] = ("Core PCE YoY", yoy(_monthly(f["CORE_PCE"])))
+    if len(g_in) < 3 or len(i_in) < 2:
+        return out
+
+    def composite(inputs, prefix, side):
+        zs = {}
+        for k, (label, x) in inputs.items():
+            z = _z(x.dropna())
+            zs[k] = z
+            out[f"{prefix}_{k}"] = (z, dict(label=label, unit="z", kind="level", side=side))
+        df = pd.DataFrame(zs)
+        need = max(2, len(inputs) - 2)
+        comp = df.mean(axis=1, skipna=True).where(df.notna().sum(axis=1) >= need)
+        return comp.dropna()
+
+    G = composite(g_in, "RZG", "growth")
+    I = composite(i_in, "RZI", "inflation")
+    Gs, Is = G.rolling(3).mean(), I.rolling(3).mean()
+    Gm, Im = (Gs - Gs.shift(3)).dropna(), (Is - Is.shift(3)).dropna()
+    idx = Gm.index.intersection(Im.index)
+    Gm, Im = Gm.reindex(idx), Im.reindex(idx)
+    quad = pd.Series(4.0, index=idx)
+    quad[(Gm >= 0) & (Im < 0)] = 1
+    quad[(Gm >= 0) & (Im >= 0)] = 2
+    quad[(Gm < 0) & (Im >= 0)] = 3
+    note = "Monthly. Dated to the data month; most inputs are published 2-6 weeks after month end."
+    out["REG_G"] = (G, dict(label="Growth composite", unit="z", kind="level", note=note))
+    out["REG_I"] = (I, dict(label="Inflation composite", unit="z", kind="level", note=note))
+    out["REG_GM"] = (Gm, dict(label="Growth momentum", unit="z", kind="level", note=note))
+    out["REG_IM"] = (Im, dict(label="Inflation momentum", unit="z", kind="level", note=note))
+    out["REG_QUAD"] = (quad, dict(label="Regime", unit="", kind="level", note=note, names=REGIMES))
+
+    # NY Fed yield-curve recession model (Estrella & Mishkin probit), 12 months ahead
+    curve = f.get("CURVE_3m10y_LONG")
+    if curve is None or not len(curve):
+        curve = f.get("CURVE_3m10y")
+    if curve is not None and len(curve):
+        sp = _monthly(curve)
+        prob = sp.apply(lambda x: 50 * (1 + math.erf((-0.5333 - 0.6330 * x) / math.sqrt(2))) * 1.0)
+        out["REC_PROB_NYF"] = (prob, dict(label="Recession probability, 12m ahead (NY Fed curve model)", unit="%", kind="level",
+                               note="Probit on the monthly-average 10y-3m Treasury spread: P = Φ(−0.5333 − 0.6330 × spread)"))
+    if have("CLAIMS"):
+        out["CLAIMS_4WK"] = (f["CLAIMS"].rolling(4).mean() / 1000, dict(label="Initial jobless claims, 4-week avg", unit="k", kind="level"))
+    if have("CORE_CPI"):
+        cc = _monthly(f["CORE_CPI"])
+        out["CORE_CPI_YOY"] = (yoy(cc), dict(label="Core CPI YoY", unit="%", kind="level"))
+        out["CORE_CPI_3M"] = (((cc / cc.shift(3)) ** 4 - 1) * 100, dict(label="Core CPI 3m annualised", unit="%", kind="level"))
+    if have("CPI"):
+        out["CPI_YOY"] = (yoy(_monthly(f["CPI"])), dict(label="Headline CPI YoY", unit="%", kind="level"))
+    if have("CORE_PCE"):
+        out["CORE_PCE_YOY"] = (yoy(_monthly(f["CORE_PCE"])), dict(label="Core PCE YoY", unit="%", kind="level"))
     return out
 
 
@@ -228,9 +330,10 @@ def main() -> int:
     fred, fred_series = {}, {}
     print(f"FRED: {len(FRED)} series")
     fails_in_a_row = 0
-    for sid, code, label, group, kind, unit in FRED:
+    for sid, code, label, group, kind, unit, *rest in FRED:
+        start = rest[0] if rest else START_DATE
         # if FRED is unreachable, stop hammering it and keep previous data
-        s = None if fails_in_a_row >= 3 else fetch_fred(code, fred_key)
+        s = None if fails_in_a_row >= 3 else fetch_fred(code, fred_key, start)
         fails_in_a_row = 0 if s is not None else fails_in_a_row + 1
         meta = dict(label=label, group=group, kind=kind, unit=unit, source=f"FRED ({code})")
         if s is not None:
