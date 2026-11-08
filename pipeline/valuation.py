@@ -35,23 +35,42 @@ def _shiller_frame(raw: bytes) -> pd.DataFrame | None:
     return out if len(out) > 1000 else None
 
 
+def _shillerdata_urls() -> list[str]:
+    """Shiller now publishes at shillerdata.com; the file link lives on the home page."""
+    r = get("https://shillerdata.com/", tries=2)
+    if r is None:
+        return []
+    import re
+    links = re.findall(r"""https?://[^"' )<>]+""", r.text)
+    return [u.replace("&amp;", "&") for u in links if "ie_data" in u.lower() and ".xls" in u.lower()][:3]
+
+
 def shiller(status: dict) -> pd.DataFrame | None:
-    for url in SHILLER_URLS:
+    """Try every source and keep the one with the newest data (Yale's page stopped updating in 2023)."""
+    cands = []
+    for url in _shillerdata_urls() + SHILLER_URLS:
         r = get(url, tries=2)
-        if r is not None and r.content[:4] == b"\xd0\xcf\x11\xe0":    # legacy Excel signature
-            try:
-                df = _shiller_frame(r.content)
-                if df is not None:
-                    status["SHILLER"] = "ok"
-                    return df
-            except Exception as e:
-                DIAG.append(f"Shiller parse: {type(e).__name__}")
+        if r is None or r.content[:4] != b"\xd0\xcf\x11\xe0":    # legacy Excel signature
+            continue
+        try:
+            df = _shiller_frame(r.content)
+        except Exception as e:
+            DIAG.append(f"Shiller parse ({url.split('/')[2]}): {type(e).__name__}")
+            continue
+        if df is not None:
+            cands.append((df["CAPE"].dropna().index[-1], url.split("/")[2], df))
     p = ROOT / "legacy" / "ie_data.xls"
     if p.exists():
-        status["SHILLER"] = "stale (repo copy)"
-        return _shiller_frame(p.read_bytes())
-    status["SHILLER"] = "missing"
-    return None
+        df = _shiller_frame(p.read_bytes())
+        if df is not None:
+            cands.append((df["CAPE"].dropna().index[-1], "repo copy", df))
+    if not cands:
+        status["SHILLER"] = "missing"
+        return None
+    last, where, df = max(cands, key=lambda c: c[0])
+    status["SHILLER"] = "ok" if where != "repo copy" else "stale (repo copy)"
+    print("  Shiller sources: " + ", ".join(f"{w} to {d:%b %Y}" for d, w, _ in cands) + f" -> using {where}")
+    return df
 
 
 def acm(status: dict) -> pd.Series | None:
