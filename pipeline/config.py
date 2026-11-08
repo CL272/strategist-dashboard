@@ -141,8 +141,8 @@ FRED = [
     ("EUR_HY_OAS",  "BAMLHE00EHYIOAS", "Euro HY spread (OAS)",    "Credit",     "yield", "%"),
     ("ASIA_CORP_OAS","BAMLEMRACRPIASIAOAS", "Asia EM corporate spread (OAS)", "Credit", "yield", "%"),
     ("BAA_10Y",     "BAA10Y",      "Moody's Baa − 10Y Treasury",  "Credit",     "yield", "%", MACRO_START),
-    ("NFCI",        "NFCI",        "Chicago Fed financial conditions", "Credit", "level", "idx"),
-    ("STLFSI",      "STLFSI4",     "St. Louis Fed financial stress", "Credit",  "level", "idx"),
+    ("NFCI",        "NFCI",        "Chicago Fed financial conditions", "Credit", "level", "idx", MACRO_START),
+    ("STLFSI",      "STLFSI4",     "St. Louis Fed financial stress", "Credit",  "level", "idx", MACRO_START),
     ("FWD5Y5Y",     "T5YIFR",      "5y5y forward inflation expectation", "Rates · US", "yield", "%"),
 
     # ---- Regime model inputs (monthly macro, longer history for rolling z-scores)
@@ -181,6 +181,9 @@ FRED = [
     ("REER_INR",    "RBINBIS",     "Indian rupee REER",           "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_AUD",    "RBAUBIS",     "Australian dollar REER",      "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_IDR",    "RBIDBIS",     "Indonesian rupiah REER",      "Valuation · FX", "level", "idx", MACRO_START),
+    # Stress panel / peak signposts
+    ("FEDFUNDS",    "FEDFUNDS",    "Fed funds rate (monthly)",    "Rates · US", "yield", "%", MACRO_START),
+    ("SLOOS_CI",    "DRTSCILM",    "Banks tightening C&I lending standards (net %)", "Credit", "level", "%", MACRO_START),
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),

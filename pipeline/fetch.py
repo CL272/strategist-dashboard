@@ -565,6 +565,18 @@ def main() -> int:
             derived[sid] = {**meta, **pack(s)}
     except Exception as e:   # valuation inputs must never break the data refresh
         print(f"Valuation failed: {type(e).__name__}")
+    try:
+        import stress
+
+        def getter(sid):
+            for src in (derived, fred, yahoo):
+                if sid in src:
+                    return unpack(src[sid])
+            return fred_series.get(sid)
+        for sid, (s, meta) in stress.build(getter, status).items():
+            derived[sid] = {**meta, **pack(s)}
+    except Exception as e:   # the stress panel must never break the data refresh
+        print(f"Stress panel failed: {type(e).__name__}: {e}")
     write("derived.json", derived)
     print(f"Derived: {', '.join(derived) or 'none (FRED data missing)'}")
 

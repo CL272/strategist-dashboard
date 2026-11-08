@@ -2082,6 +2082,105 @@ function buildPosVol() {
 }
 function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist'].forEach(k => cards[k].render()); }
 
+// ------------------------------------------------------------------ STRESS PANEL & PEAK SIGNPOSTS
+let SIGN = null;
+state.stMode = 'composite';
+const STRESS_BLOCKS = ['STRESS_EQUITY_VOLATILITY', 'STRESS_RATES_VOLATILITY', 'STRESS_CREDIT', 'STRESS_FUNDING', 'STRESS_FINANCIAL_CONDITIONS', 'STRESS_DOLLAR_SQUEEZE', 'STRESS_EQUITY_DRAWDOWN'];
+const STRESS_SRC = 'Dashboard calculation: Yahoo Finance (^VIX, ^VXN, ^VVIX, ^MOVE, DX-Y.NYB, ^GSPC); FRED (BAA10Y, BAMLH0A0HYM2, BAMLC0A0CM, SOFR, EFFR, IORB, NFCI, STLFSI4)';
+function stressKpis() {
+  const box = $('#stKpis'); box.replaceChildren();
+  const tile = (label, valueNode, delta, foot, tk) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
+    el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', valueNode), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, state.to), b = asOf(S.STRESS_COMPOSITE, a.t - 28 * DAY), [st, lab] = stressBand(a.v);
+    tile('Stress composite', `${Math.round(a.v)}th pct`, `${lab} · 4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)} pts`, 'week of ' + nice(a.t), '--' + st);
+    const top = STRESS_BLOCKS.filter(id => has(id)).map(id => ({ id, a: asOf(S[id], state.to) })).filter(x => x.a).sort((x, y) => y.a.v - x.a.v)[0];
+    if (top) tile('Most stressed block', S[top.id].label, `${Math.round(top.a.v)}th percentile of its history`, ''); }
+  if (SIGN) { const n = SIGN.n_peaks, j = SIGN.columns.length - 1, avg = SIGN.share.slice(0, n).filter(x => x != null).reduce((a, b) => a + b, 0) / n;
+    tile(`Signposts triggered (${SIGN.columns[j]})`, `${SIGN.triggered[j]} of ${SIGN.evaluated[j]}`, `${fmtNum(SIGN.share[j], 0)}% of the rules that can be judged`, 'late-cycle checklist');
+    tile('Average at prior peaks', fmtNum(avg, 0) + '%', `now ${sign(SIGN.share[j] - avg)}${fmtNum(Math.abs(SIGN.share[j] - avg), 0)} pts vs that average`, SIGN.columns.slice(0, n).join(' · ')); }
+}
+function renderStressBlocks(c) {
+  const rows = STRESS_BLOCKS.filter(id => has(id)).map(id => { const a = asOf(S[id], state.to); return a && { name: S[id].label, v: a.v, t: a.t }; }).filter(Boolean).sort((a, b) => b.v - a.v);
+  if (!rows.length) return setEmpty(c, 'Waiting for data (next daily run).');
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 50, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${Math.round(p.value)}th percentile</b><br><span style="color:${tok('--ink-2')}">${esc(rows[p.dataIndex].name)}, week of ${esc(nice(rows[p.dataIndex].t))}</span>` };
+  o.xAxis = { type: 'value', min: 0, max: 100, axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(1), itemStyle: { color: tok('--' + stressBand(r.v)[0]), borderRadius: [0, 4, 4, 0] } })),
+    label: { show: true, position: 'right', color: tok('--ink-2'), fontSize: 11, formatter: p => `${Math.round(p.value)} · ${stressBand(p.value)[1]}` } }];
+  c.chartEl.style.height = Math.max(260, rows.length * 34 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Block', 'Percentile'], ...rows.map(r => [r.name, r.v.toFixed(1)])];
+  setNote(c, 'Each block = the average of its gauges, each scored as a literal percentile of its own history up to that week (100 = most stressed reading ever). Bands: Calm < 50, Elevated 50–80, High 80–95, Extreme ≥ 95.');
+}
+function renderStressHist(c) {
+  if (!has('STRESS_COMPOSITE')) return setEmpty(c, 'Waiting for data (next daily run).');
+  const list = state.stMode === 'composite' ? [{ name: 'Stress composite', data: pts(S.STRESS_COMPOSITE, state.from, state.to) }]
+    : STRESS_BLOCKS.filter(id => has(id)).map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) }));
+  drawLines(c, list, { fmt: v => fmtNum(v, 0), axisFmt: v => fmtNum(v, 0), endLabels: false, yExtra: { min: 0, max: 100, scale: false },
+    hlines: [{ y: 50, label: 'elevated' }, { y: 80, label: 'high' }, { y: 95, label: 'extreme' }], areas: recessionAreas(state.from, state.to) });
+}
+function renderSignGrid(c) {
+  const b = htmlBody(c);
+  if (!SIGN) { b.append(el('div', { class: 'empty', text: 'Signposts arrive with the next daily run.' })); return; }
+  const n = SIGN.n_peaks, tbl = el('table', { class: 'perf sign' });
+  const hr = el('tr', {}, el('th', { text: 'Signpost' }));
+  SIGN.columns.forEach((cname, j) => hr.append(el('th', { class: j === n ? 'sep' : '', text: cname })));
+  tbl.append(el('thead', {}, el('tr', {}, el('th', {}), el('th', { colspan: n, class: 'center', text: 'Prior S&P 500 peaks' }), el('th', { colspan: SIGN.columns.length - n, class: 'center sep', text: 'Latest months' })), hr));
+  const tb = el('tbody'); let g = null;
+  for (const r of SIGN.rows) {
+    if (r.group !== g) { g = r.group; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: SIGN.columns.length + 1, text: g }))); }
+    const tr = el('tr', { class: 'row', title: r.rule }, el('td', { text: r.label }));
+    r.cells.forEach((v, j) => tr.append(el('td', { class: 'cell ' + (v === 1 ? 'on' : v === 0 ? 'off' : 'na') + (j === n ? ' sep' : ''), text: v === 1 ? '✓' : v === 0 ? '·' : '–' })));
+    tb.append(tr);
+  }
+  const sr = el('tr', { class: 'grp' }, el('td', { text: '% triggered (of rules with data)' }));
+  SIGN.share.forEach((v, j) => sr.append(el('td', { class: 'center' + (j === n ? ' sep' : ''), text: v == null ? '–' : `${fmtNum(v, 0)}% (${SIGN.triggered[j]}/${SIGN.evaluated[j]})` })));
+  tb.append(sr); tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [['Signpost', ...SIGN.columns], ...SIGN.rows.map(r => [r.label, ...r.cells.map(v => v == null ? '' : v)]), ['% triggered', ...SIGN.share]];
+  setNote(c, '✓ triggered · “·” not triggered · “–” the rule’s inputs do not reach that month, so it is left out of that column’s denominator. Hover a row for its rule. Five peaks is a very small sample: this asks which conditions rhyme with past late cycles, not how likely a peak is.');
+}
+function renderSignShare(c) {
+  if (!has('SIGN_SHARE')) return setEmpty(c, 'Signposts arrive with the next daily run.');
+  const peaks = [['1990-07-01'], ['2000-03-01'], ['2007-10-01'], ['2020-02-01'], ['2022-01-01']].map(([d]) => Date.parse(d));
+  const n = SIGN ? SIGN.n_peaks : 5, avg = SIGN ? SIGN.share.slice(0, n).filter(x => x != null).reduce((a, b) => a + b, 0) / n : null;
+  drawLines(c, [{ name: '% of signposts triggered', data: pts(S.SIGN_SHARE, state.from, state.to), extra: { areaStyle: { color: hexA(col(0), 0.12) } } }],
+    { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, hlines: avg ? [{ y: +avg.toFixed(1), label: `average at prior peaks ${fmtNum(avg, 0)}%` }] : [], areas: recessionAreas(state.from, state.to) });
+  inst(c).setOption({ series: [{}, { type: 'line', data: [], markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: tok('--critical'), type: 'dotted', width: 1.2 },
+    data: peaks.filter(t => t >= state.from && t <= state.to).map(t => ({ xAxis: t })) } }] });
+  setNote(c, 'Dotted red lines mark the five S&P 500 peaks; grey = US recessions. Starts in 1985, once at least four rules can be judged.');
+}
+function renderSignRules(c) {
+  const b = htmlBody(c);
+  if (!SIGN) { b.append(el('div', { class: 'empty', text: 'Signposts arrive with the next daily run.' })); return; }
+  const tbl = el('table', { class: 'perf rules' }), j = SIGN.columns.length - 1;
+  tbl.append(el('thead', {}, el('tr', {}, ...['Signpost', `Now (${SIGN.columns[j]})`, 'Latest reading', 'Trigger rule', 'Source', 'Evaluable from'].map(h => el('th', { text: h })))));
+  const tb = el('tbody');
+  for (const r of SIGN.rows) { const v = r.cells[j];
+    tb.append(el('tr', { class: 'row' }, el('td', { text: r.label }), el('td', { text: v === 1 ? '✓ triggered' : v === 0 ? '· no' : '– no data' }),
+      el('td', { text: r.level || '–' }), el('td', { text: r.rule }), el('td', { class: 'muted', text: r.source }), el('td', { class: 'muted', text: r.first || 'not yet' }))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  b.append(el('h4', { text: 'What this deliberately does not attempt' }),
+    el('p', { class: 'muted small', text: 'Published sell-side peak checklists lean on licensed inputs: strategists’ equity allocation surveys, fund manager survey cash levels, Conference Board stock-price expectations, IBES long-term growth estimates, M&A deal counts, and banks’ own credit stress composites. There is no free equivalent, so those rows are left out rather than replaced with lookalikes that would quietly change what “% triggered” means. Every threshold here (top quartile, 1σ, 0.3pp, 40%) is a choice: move them and the picture moves.' }),
+    el('p', { class: 'muted small', text: 'These rules are this dashboard’s own, built from the design of the earlier Streamlit version (its exact rules were in a data/signposts.py file that has not been uploaded). If you upload that folder, the rows can be replaced with the original definitions.' }));
+  c.csv = [['Signpost', 'Now', 'Latest reading', 'Rule', 'Source', 'Evaluable from'], ...SIGN.rows.map(r => [r.label, r.cells[j], r.level || '', r.rule, r.source, r.first || ''])];
+}
+function buildStress() {
+  const g = $('#stGrid');
+  g.append(el('h3', { class: 'section', text: 'Stress panel' }));
+  makeCard(g, { key: 'st_blocks', title: 'Stress by block', range: false, source: STRESS_SRC, render: renderStressBlocks });
+  makeCard(g, { key: 'st_hist', title: 'Stress history', defaultRange: 'MAX', earliest: Date.UTC(2008, 0, 1), sub: 'Weekly, 0–100 (percentile of each gauge’s own history). Grey = US recessions.',
+    seg: { key: 'stMode', options: [['composite', 'Composite'], ['blocks', 'Blocks']] }, source: STRESS_SRC, render: renderStressHist });
+  g.append(el('h3', { class: 'section', text: 'Peak signposts: a late-cycle checklist' }));
+  makeCard(g, { key: 'sg_grid', title: 'Signposts now vs prior market peaks', wide: true, range: false,
+    sub: 'Which late-cycle conditions are in place now, against the months of the last five S&P 500 peaks.', source: 'Dashboard checklist from FRED (UNRATE, T10Y3M, FEDFUNDS, PCEPILFE, ICSA, SAHMREALTIME, BAA10Y, DRTSCILM, NFCI, WTISPLC), Shiller, Yahoo Finance (^GSPC) and the DIY leading index', render: renderSignGrid });
+  makeCard(g, { key: 'sg_share', title: 'Share of signposts triggered, month by month', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1985, 0, 1), source: 'Dashboard checklist (see rules below)', render: renderSignShare });
+  makeCard(g, { key: 'sg_rules', title: 'What each signpost tests', wide: true, range: false, source: 'Rules defined by this dashboard; data sources per row', render: renderSignRules });
+  for (const k of ['sg_grid', 'sg_rules']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderStress() { stressKpis(); ['st_blocks', 'st_hist', 'sg_grid', 'sg_share', 'sg_rules'].forEach(k => cards[k].render()); }
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
   'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors',
@@ -2390,10 +2489,10 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia & Singapore',
-  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility' };
+  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
@@ -2433,6 +2532,7 @@ async function init() {
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
   try { POS = await loadJSON('data/positioning.json'); } catch (e) { POS = null; }
+  try { SIGN = await loadJSON('data/signposts.json'); } catch (e) { SIGN = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -2465,7 +2565,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
