@@ -9,7 +9,8 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write   # to commit the credit-spread archive
+
   pages: write
   id-token: write
 
@@ -43,6 +44,16 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
         run: python pipeline/fetch.py
+
+      - name: Save credit-spread archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add archive
+          if ! git diff --cached --quiet; then
+            git commit -m "Archive ICE BofA spread history"
+            git pull --rebase origin main && git push origin HEAD:main
+          fi
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -21,10 +21,11 @@ import pandas as pd
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import FRED, START_DATE, YAHOO  # noqa: E402
+from config import ARCHIVE, FRED, START_DATE, YAHOO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "data"
+ARCHIVE_DIR = ROOT / "archive"
 UA = {"User-Agent": "Mozilla/5.0 (strategist-dashboard data pipeline)"}
 EPOCH = pd.Timestamp("1970-01-01")
 
@@ -170,6 +171,16 @@ def build_derived(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
         out["RRP_TN"] = (asof(f["RRP"], idx) / 1000, dict(label="Overnight reverse repo", unit="USD tn", kind="level"))
     if need("RESERVES"):
         out["RESERVES_TN"] = (f["RESERVES"] / 1e6, dict(label="Bank reserves", unit="USD tn", kind="level"))
+    if need("RESERVES", "GDP"):
+        idx = f["RESERVES"].index
+        out["RES_GDP"] = (f["RESERVES"] / 1000 / asof(f["GDP"], idx) * 100,
+                          dict(label="Reserves / nominal GDP", unit="%", kind="level",
+                               note="Weekly reserves over latest quarterly nominal GDP (SAAR)"))
+    if need("RESERVES", "BANK_ASSETS"):
+        idx = f["RESERVES"].index
+        out["RES_ASSETS"] = (f["RESERVES"] / 1000 / asof(f["BANK_ASSETS"], idx) * 100,
+                             dict(label="Reserves / bank assets", unit="%", kind="level",
+                                  note="Reserves over total assets of all US commercial banks"))
 
     if need("FED_ASSETS", "ECB_ASSETS", "BOJ_ASSETS", "FX_USDEUR", "FX_JPYUSD"):
         idx = f["FED_ASSETS"].index
@@ -194,7 +205,8 @@ def build_derived(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
                             dict(label="EFFR − IORB", unit="bp", kind="level"))
     if need("M2"):
         out["M2_YOY"] = (f["M2"].pct_change(12) * 100, dict(label="US M2 YoY", unit="%", kind="level"))
-    for k, lab in (("HY_OAS", "US HY spread"), ("IG_OAS", "US IG spread")):
+    for k, lab in (("HY_OAS", "US HY spread"), ("IG_OAS", "US IG spread"), ("EUR_HY_OAS", "Euro HY spread"),
+                   ("ASIA_CORP_OAS", "Asia EM corporate spread"), ("BAA_10Y", "Moody's Baa − 10Y")):
         if need(k):
             out[k + "_BP"] = (f[k] * 100, dict(label=lab, unit="bp", kind="level"))
     out.update(build_regime(f))
@@ -302,6 +314,28 @@ def build_regime(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dict]]:
     return out
 
 
+# ------------------------------------------------------------------ archive
+def merge_archive(sid: str, new: pd.Series | None, published: pd.Series | None) -> pd.Series | None:
+    """Append-only history: archive CSV + last published data + today's fetch (newest wins)."""
+    parts = []
+    path = ARCHIVE_DIR / f"{sid}.csv"
+    if path.exists():
+        a = pd.read_csv(path, parse_dates=["date"]).set_index("date")["value"]
+        parts.append(a)
+    if published is not None:
+        parts.append(published)
+    if new is not None:
+        parts.append(new)
+    if not parts:
+        return None
+    merged = pd.concat(parts)
+    merged = merged[~merged.index.duplicated(keep="last")].sort_index().dropna()
+    if new is not None:   # only rewrite the archive when we actually got fresh data
+        ARCHIVE_DIR.mkdir(exist_ok=True)
+        merged.rename("value").rename_axis("date").to_csv(path, date_format="%Y-%m-%d")
+    return merged
+
+
 # ------------------------------------------------------------------ main
 def load_existing(name: str) -> dict:
     p = OUT / name
@@ -353,6 +387,8 @@ def main() -> int:
         s = None if fails_in_a_row >= 3 else fetch_fred(code, fred_key, start)
         fails_in_a_row = 0 if s is not None else fails_in_a_row + 1
         meta = dict(label=label, group=group, kind=kind, unit=unit, source=f"FRED ({code})")
+        if sid in ARCHIVE:
+            s = merge_archive(sid, s, unpack(old[sid]) if sid in old else None)
         if s is not None:
             fred[sid] = {**meta, **pack(s)}
             fred_series[sid] = s

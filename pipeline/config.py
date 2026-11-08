@@ -91,6 +91,8 @@ FRED = [
     ("IORB",        "IORB",        "Interest on reserves (IORB)", "Liquidity", "yield", "%"),
     ("EFFR",        "EFFR",        "Effective fed funds",         "Liquidity", "yield", "%"),
     ("M2",          "M2SL",        "US M2 money supply",          "Liquidity", "level", "USD bn"),
+    ("GDP",         "GDP",         "US nominal GDP (SAAR)",       "Liquidity", "level", "USD bn"),
+    ("BANK_ASSETS", "TLAACBW027SBOG", "Commercial bank total assets", "Liquidity", "level", "USD bn"),
     # Other central banks
     ("ECB_ASSETS",  "ECBASSETSW",  "ECB total assets",            "Global CBs", "level", "EUR mn"),
     ("BOJ_ASSETS",  "JPNASSETS",   "BoJ total assets",            "Global CBs", "level", "JPY 100mn"),
@@ -108,6 +110,9 @@ FRED = [
     # Credit & financial conditions
     ("HY_OAS",      "BAMLH0A0HYM2","US HY spread (OAS)",          "Credit",     "yield", "%"),
     ("IG_OAS",      "BAMLC0A0CM",  "US IG spread (OAS)",          "Credit",     "yield", "%"),
+    ("EUR_HY_OAS",  "BAMLHE00EHYIOAS", "Euro HY spread (OAS)",    "Credit",     "yield", "%"),
+    ("ASIA_CORP_OAS","BAMLEMRACRPIASIAOAS", "Asia EM corporate spread (OAS)", "Credit", "yield", "%"),
+    ("BAA_10Y",     "BAA10Y",      "Moody's Baa − 10Y Treasury",  "Credit",     "yield", "%", MACRO_START),
     ("NFCI",        "NFCI",        "Chicago Fed financial conditions", "Credit", "level", "idx"),
     ("STLFSI",      "STLFSI4",     "St. Louis Fed financial stress", "Credit",  "level", "idx"),
     ("FWD5Y5Y",     "T5YIFR",      "5y5y forward inflation expectation", "Rates · US", "yield", "%"),
@@ -130,3 +135,8 @@ FRED = [
     ("USREC",       "USREC",       "NBER recession indicator",    "Macro · Recession", "level", "", MACRO_START),
     ("CURVE_3m10y_LONG", "T10Y3M", "3m10y curve (long history)",  "Macro · Recession", "yield", "%", MACRO_START),
 ]
+
+# FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.
+# These are archived in archive/<id>.csv (committed by the daily job) so history
+# is never lost again: each run merges what FRED returns into the archive.
+ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS"}

@@ -28,6 +28,14 @@ API keys live in **GitHub → Settings → Secrets and variables → Actions**, 
 
 Run locally and the pipeline reads the same names from environment variables or `.streamlit/secrets.toml` (git-ignored). It never prints them.
 
+## Credit-spread archive
+
+FRED cut the ICE BofA spread series to a rolling 3-year window in April 2026. The daily job merges each download into `archive/<series>.csv` and commits it, so history only grows from here. Use the Baa−10Y spread (1986→) for comparisons with 2008 or 2020.
+
+## Legacy
+
+`legacy/` holds the earlier Streamlit version (Macro Stress Monitor) for reference. It is not used by the live dashboard.
+
 ## Adding a market or indicator
 
 Add one line to `pipeline/config.py` (Yahoo ticker or FRED series id). The next run picks it up.
@@ -35,8 +43,9 @@ Add one line to `pipeline/config.py` (Yahoo ticker or FRED series id). The next 
 ## Roadmap
 
 1. ✅ Liquidity monitor, markets table, correlation lab
-2. ✅ Regime tab: growth × inflation quadrant, what worked in each regime, recession watch (Sahm rule, NY Fed curve model, claims, inflation)
-3. Cross-asset trend & momentum scorecard, financial-conditions composite
-4. Positioning (CFTC Commitments of Traders), volatility regimes, Fed path vs market pricing
-5. Asia & Singapore layer: SORA, MAS S$NEER, China credit impulse, Japan (e-Stat), Malaysia, ASEAN flows
-6. Idea log: thesis, entry, target, stop, catalyst, review date, and P&L tracking
+2. ✅ Credit-spread archive (FRED now keeps only 3 years of ICE BofA spreads), Baa−10y long history, Euro HY & Asia EM corporate spreads, reserve scarcity ratios
+3. ✅ Regime tab: growth × inflation quadrant, what worked in each regime, recession watch (Sahm rule, NY Fed curve model, claims, inflation)
+4. Cross-asset trend & momentum scorecard, financial-conditions composite
+5. Positioning (CFTC Commitments of Traders), volatility regimes, Fed path vs market pricing
+6. Asia & Singapore layer: SORA, MAS S$NEER, China credit impulse, Japan (e-Stat), Malaysia, ASEAN flows
+7. Idea log: thesis, entry, target, stop, catalyst, review date, and P&L tracking

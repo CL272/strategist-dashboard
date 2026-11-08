@@ -400,6 +400,32 @@ function simple(ids, fmt, axisFmt, opts = {}) {
     if (opts.note) setNote(c, opts.note);
   };
 }
+state.creditMode = 'us';
+function renderCredit(c) {
+  const sets = {
+    us: [['HY_OAS_BP', 'IG_OAS_BP'], 'US option-adjusted spreads over Treasuries, bp (ICE BofA).'],
+    global: [['HY_OAS_BP', 'EUR_HY_OAS_BP', 'ASIA_CORP_OAS_BP'], 'High yield in the US and euro area vs Asia EM corporates, bp (ICE BofA).'],
+    long: [['BAA_10Y_BP'], 'Moody\'s Baa corporate yield minus 10Y Treasury, bp. Full history back to 1986 (pick Max).'],
+  };
+  const [ids, sub] = sets[state.creditMode];
+  c.subEl.textContent = sub;
+  simple(ids, v => fmtNum(v, 0) + 'bp', v => fmtNum(v, 0) + 'bp')(c);
+  if (state.creditMode !== 'long' && has('HY_OAS_BP')) {
+    setNote(c, `FRED keeps only 3 years of ICE BofA spreads. This dashboard archives them from ${nice(S.HY_OAS_BP.t[0])} onwards; use Long history for stress comparisons with 2008 or 2020.`);
+  }
+}
+function renderScarcity(c) {
+  const ids = ['RES_GDP', 'RES_ASSETS'].filter(id => has(id));
+  if (!ids.length) return setEmpty(c, NO_FRED);
+  drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
+    { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%' });
+  const parts = ids.map(id => {
+    const s = S[id], a = asOf(s, state.to); if (!a) return '';
+    const hist = s.v.slice(0, a.i + 1).filter(x => x != null), below = hist.filter(x => x <= a.v).length;
+    return `${s.label} ${fmtNum(a.v, 1)}% (${Math.round(below / hist.length * 100)}th percentile since ${new Date(s.t[0]).getUTCFullYear()})`;
+  }).filter(Boolean);
+  setNote(c, parts.join(' · '));
+}
 function renderRates(c) {
   if (state.ratesMode === 'curve') {
     c.subEl.textContent = 'Yield curve spreads. Below zero = inverted.';
@@ -416,8 +442,11 @@ function buildLiquidity() {
   makeCard(g, { key: 'fund', title: 'Repo funding stress', sub: 'Overnight rates minus interest on reserve balances (IORB), bp.', source: 'FRED', render: renderFunding });
   makeCard(g, { key: 'gcb', title: 'Global central bank balance sheets', source: 'FRED (WALCL, ECBASSETSW, JPNASSETS, DEXUSEU, DEXJPUS)',
     seg: { key: 'gcbMode', options: [['level', 'Level'], ['yoy', 'YoY %']] }, render: renderGCB });
-  makeCard(g, { key: 'credit', title: 'US credit spreads', sub: 'ICE BofA option-adjusted spreads over Treasuries, bp.', source: 'FRED (ICE BofA)',
-    render: simple(['HY_OAS_BP', 'IG_OAS_BP'], v => fmtNum(v, 0) + 'bp', v => fmtNum(v, 0) + 'bp') });
+  makeCard(g, { key: 'credit', title: 'Credit spreads', source: 'FRED (ICE BofA, Moody\'s)',
+    seg: { key: 'creditMode', options: [['us', 'US'], ['global', 'Global'], ['long', 'Long history']] }, render: renderCredit });
+  makeCard(g, { key: 'scarcity', title: 'Reserve scarcity', source: 'FRED (WRESBAL, GDP, TLAACBW027SBOG)',
+    sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets. When these ratios fall, reserves move from abundant towards scarce, and repo spreads (above) tend to react.',
+    render: renderScarcity });
   makeCard(g, { key: 'nfci', title: 'Chicago Fed financial conditions (NFCI)', sub: 'Weekly. Below zero = looser than the long-run average.', source: 'FRED (NFCI)',
     render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 1), { zero: true }) });
   makeCard(g, { key: 'm2', title: 'US M2 money supply growth', sub: 'Year-on-year %, monthly.', source: 'FRED (M2SL)',
@@ -427,7 +456,7 @@ function buildLiquidity() {
 }
 function renderLiquidity() {
   liquidityKpis(); liquiditySignals();
-  ['netliq', 'comp', 'fund', 'gcb', 'credit', 'nfci', 'm2', 'rates'].forEach(k => cards[k].render());
+  ['netliq', 'comp', 'fund', 'scarcity', 'gcb', 'credit', 'nfci', 'm2', 'rates'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
