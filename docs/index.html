@@ -24,7 +24,8 @@
 </header>
 
 <nav class="tabs" role="tablist">
-  <button role="tab" data-tab="liquidity" aria-selected="true">Liquidity</button>
+  <button role="tab" data-tab="overview" aria-selected="true">Strategist View</button>
+  <button role="tab" data-tab="liquidity" aria-selected="false">Liquidity</button>
   <button role="tab" data-tab="regime" aria-selected="false">Regime</button>
   <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
   <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
@@ -43,7 +44,12 @@
 </section>
 
 <main>
-  <section id="tab-liquidity" class="tab-panel">
+  <section id="tab-overview" class="tab-panel">
+    <div class="kpis" id="ovKpis"></div>
+    <div class="grid" id="ovGrid"></div>
+  </section>
+
+  <section id="tab-liquidity" class="tab-panel" hidden>
     <div class="kpis" id="liqKpis"></div>
     <div class="signals" id="liqSignals"></div>
     <div class="grid" id="liqGrid"></div>

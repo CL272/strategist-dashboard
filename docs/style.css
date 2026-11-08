@@ -183,3 +183,17 @@ footer { padding: 8px 24px 24px; }
 .kpi .k-value .qdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 table.perf th.now { color: var(--ink); }
 @media (max-width: 900px) { .regime-now { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---- overview */
+.points { margin: 4px 0 0; padding-left: 18px; }
+.points li { margin: 4px 0; line-height: 1.5; }
+.fragile-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 6px 0 12px; }
+.fragile-head .big { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+.fragile-head .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.fragile-head .status .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--st); }
+.pbar { display: grid; grid-template-columns: 150px 1fr 32px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; }
+.pbar .pl { color: var(--ink-2); }
+.pbar .track { height: 8px; background: var(--wash); border-radius: 4px; overflow: hidden; }
+.pbar .fill { display: block; height: 100%; border-radius: 4px; }
+.pbar .pv { text-align: right; font-variant-numeric: tabular-nums; }
+table.perf td svg { vertical-align: middle; }

@@ -6,7 +6,7 @@ const S = {};                 // series store: id -> {id,label,group,kind,unit,s
 let META = {};
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const state = {
-  tab: 'liquidity', preset: '3Y', from: null, to: null, latest: null, earliest: Date.UTC(2005, 0, 1),
+  tab: 'overview', preset: '3Y', from: null, to: null, latest: null, earliest: Date.UTC(2005, 0, 1),
   liqMode: 'level', gcbMode: 'level', ratesMode: 'yields',
   mktSel: ['SPX', 'SX5E', 'NKY', 'CSI300', 'STI'], selSlot: {},
   perfSort: null,
@@ -457,6 +457,253 @@ function buildLiquidity() {
 function renderLiquidity() {
   liquidityKpis(); liquiditySignals();
   ['netliq', 'comp', 'fund', 'scarcity', 'gcb', 'credit', 'nfci', 'm2', 'rates'].forEach(k => cards[k].render());
+}
+
+// ------------------------------------------------------------------ OVERVIEW (Strategist View)
+const LOCAL_CCY = { SX5E: 'EUR', DAX: 'EUR', CAC: 'EUR', UKX: 'GBP', NKY: 'JPY', AS51: 'AUD', CSI300: 'CNY', SHCOMP: 'CNY',
+  HSI: 'HKD', HSCEI: 'HKD', STI: 'SGD', KLCI: 'MYR', JCI: 'IDR', KOSPI: 'KRW', TWSE: 'TWD', NIFTY: 'INR', IBOV: 'BRL' };
+const USD_PER = { EUR: ['EURUSD', 1], GBP: ['GBPUSD', 1], AUD: ['AUDUSD', 1], JPY: ['USDJPY', -1], CNY: ['USDCNY', -1], HKD: ['USDHKD', -1],
+  SGD: ['USDSGD', -1], MYR: ['USDMYR', -1], IDR: ['USDIDR', -1], KRW: ['USDKRW', -1], TWD: ['USDTWD', -1], INR: ['USDINR', -1], BRL: ['USDBRL', -1] };
+const OV_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV'];
+const OV_ROWS = [
+  ['Equities', OV_EQ.concat(['EEM'])],
+  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'HY_OAS', 'BAA_10Y']],
+  ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD']],
+  ['Commodities & crypto', ['GOLD', 'BRENT', 'COPPER', 'BTC']],
+  ['Volatility', ['VIX', 'MOVE']],
+];
+const STRESS = [  // [id, label, higher = more stress]
+  ['VIX', 'VIX (equity vol)'], ['MOVE', 'MOVE (rates vol)'], ['BAA_10Y_BP', 'Baa − 10Y spread'], ['HY_OAS_BP', 'US HY spread'],
+  ['NFCI', 'Chicago Fed NFCI'], ['STLFSI', 'St. Louis Fed stress'], ['SOFR_IORB', 'SOFR − IORB'],
+];
+state.ovCcy = 'local'; state.ovHorizon = 'W';
+const convCache = new Map();
+function usdPerUnit(ccy, t) {
+  if (ccy === 'USD') return 1;
+  const [id, dir] = USD_PER[ccy] || []; if (!id || !has(id)) return null;
+  const a = asOf(S[id], t); if (!a || t - a.t > 7 * DAY) return null;
+  return dir > 0 ? a.v : 1 / a.v;
+}
+function inCcy(id, target) {   // equity series expressed in target currency ('local' = unchanged); unlisted = USD
+  const ccy = LOCAL_CCY[id] || 'USD';
+  if (target === 'local' || ccy === target) return S[id];
+  const key = id + '@' + target;
+  if (convCache.has(key)) return convCache.get(key);
+  const s = S[id], t = [], v = [];
+  for (let i = 0; i < s.t.length; i++) {
+    const a = usdPerUnit(ccy, s.t[i]), b = target === 'USD' ? 1 : usdPerUnit(target, s.t[i]);
+    if (a != null && b != null) { t.push(s.t[i]); v.push(s.v[i] * a / b); }
+  }
+  const out = { ...s, id: key, t, v };
+  convCache.set(key, out); return out;
+}
+function ma(s, i, n) { if (i < n - 1) return null; let x = 0; for (let k = i - n + 1; k <= i; k++) x += s.v[k]; return x / n; }
+// z-score of the latest h-week change vs the previous 5 years of h-week changes
+function moveZ(id, h) {
+  const s = S[id], W = sampled(id, 'W');
+  const k = upperIdx(W.t, state.to) - 1; if (k < h + 110) return null;
+  const f = s.kind === 'price' ? (a, b) => Math.log(b / a) : (a, b) => b - a;
+  const now = f(W.v[k - h], W.v[k]);
+  const hist = []; for (let j = Math.max(h, k - 260); j < k; j++) hist.push(f(W.v[j - h], W.v[j]));
+  const m = hist.reduce((a, b) => a + b, 0) / hist.length, sd = Math.sqrt(hist.reduce((a, b) => a + (b - m) ** 2, 0) / (hist.length - 1));
+  if (!(sd > 0)) return null;
+  const disp = s.kind === 'price' ? (Math.exp(now) - 1) * 100 : s.kind === 'yield' ? now * 100 : now;
+  return { id, z: (now - m) / sd, chg: disp, t: W.t[k] };
+}
+function movers(h) {
+  const ids = Object.keys(S).filter(id => (S[id].source || '').startsWith('Yahoo') || PERF_FRED.concat(['EUR_HY_OAS', 'ASIA_CORP_OAS', 'BAA_10Y', 'FWD5Y5Y']).includes(id));
+  return ids.filter(id => has(id)).map(id => moveZ(id, h)).filter(Boolean).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+}
+function pctRank(s, to, years = 10) {
+  const a = asOf(s, to); if (!a) return null;
+  const lo = idxLE(s, addMonths(a.t, -12 * years)) + 1;
+  let n = 0, below = 0;
+  for (let i = Math.max(0, lo); i <= a.i; i++) { n++; if (s.v[i] <= a.v) below++; }
+  return n > 50 ? { p: below / n * 100, v: a.v, t: a.t, since: s.t[Math.max(0, lo)] } : null;
+}
+function stressRows() {
+  return STRESS.filter(([id]) => has(id)).map(([id, label]) => ({ id, label, ...pctRank(S[id], state.to) })).filter(r => r.p != null);
+}
+function stressBand(p) {
+  return p >= 95 ? ['critical', 'Extreme', '▲▲ '] : p >= 80 ? ['serious', 'High', '▲ '] : p >= 50 ? ['warning', 'Elevated', ''] : ['good', 'Calm', ''];
+}
+function htmlBody(c) {
+  c.chartEl.hidden = true; c.emptyEl.hidden = true;
+  let b = c.root.querySelector('.html-body');
+  if (!b) { b = el('div', { class: 'html-body' }); c.root.insertBefore(b, c.noteEl); }
+  b.replaceChildren(); return b;
+}
+function fmtMove(s, c) {
+  if (s.kind === 'price') return sign(c) + fmtNum(Math.abs(c), Math.abs(c) >= 10 ? 1 : 2) + '%';
+  if (s.kind === 'yield') return sign(c) + fmtNum(Math.abs(c), 0) + 'bp';
+  return sign(c) + fmtNum(Math.abs(c), 2);
+}
+function renderMoved(c) {
+  const h = state.ovHorizon === 'W' ? 1 : 4;
+  const list = movers(h).slice(0, 14);
+  if (!list.length) return setEmpty(c, 'Not enough history yet.');
+  c.subEl.textContent = `Biggest ${h === 1 ? '1-week' : '4-week'} moves to ${nice(list[0].t)}, ranked by how unusual they are: each move is measured in standard deviations (σ) of that asset's own ${h === 1 ? 'weekly' : '4-week'} moves over the past 5 years.`;
+  const rows = list.slice().reverse();
+  const o = baseOpt();
+  o.legend.show = false;
+  o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex];
+    return `<b>${esc(fmtMove(S[r.id], r.chg))}</b> <span style="color:${tok('--ink-2')}">${esc(S[r.id].label)}</span><br>${zf(r.z)}σ vs its 5-year history`; } };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), formatter: v => v + 'σ', fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', data: rows.map(r => `${S[r.id].label}  ${fmtMove(S[r.id], r.chg)}`), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.series = [{ type: 'bar', barWidth: '62%', data: rows.map(r => ({ value: +r.z.toFixed(2), itemStyle: { color: r.z >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.z >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
+    label: { show: true, position: 'right', formatter: p => zf(p.value) + 'σ', color: tok('--ink-2'), fontSize: 11 } }];
+  c.chartEl.style.height = Math.max(300, rows.length * 26 + 30) + 'px';
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Asset', 'Change', 'z-score'], ...list.map(r => [S[r.id].label, r.chg.toFixed(2), r.z.toFixed(2)])];
+  setNote(c, 'Blue = up, red = down (for yields and spreads, up = higher yield). A ±2σ move happens roughly 1 week in 20.');
+}
+function renderFragile(c) {
+  const rows = stressRows();
+  const b = htmlBody(c);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: NO_FRED })); c.csv = null; return; }
+  const comp = rows.reduce((a, r) => a + r.p, 0) / rows.length;
+  const [st, lab, icon] = stressBand(comp);
+  b.append(el('div', { class: 'fragile-head' },
+    el('span', { class: 'big', text: `${Math.round(comp)}th` }),
+    el('span', { class: 'status', style: `--st:${tok('--' + st)}` }, el('span', { class: 'dot' }), `${icon}${lab}`),
+    el('span', { class: 'muted small', text: `average percentile of ${rows.length} stress gauges vs their last 10 years` })));
+  for (const r of rows.sort((x, y) => y.p - x.p)) {
+    const [rs] = stressBand(r.p);
+    b.append(el('div', { class: 'pbar', title: `${r.label}: ${fmtNum(r.v, 2)} on ${nice(r.t)}, higher than ${Math.round(r.p)}% of readings since ${nice(r.since)}` },
+      el('span', { class: 'pl', text: r.label }),
+      el('span', { class: 'track' }, el('span', { class: 'fill', style: `width:${r.p.toFixed(1)}%;background:${tok('--' + rs)}` })),
+      el('span', { class: 'pv', text: `${Math.round(r.p)}` })));
+  }
+  c.csv = [['Gauge', 'Value', 'Percentile (10y)', 'As of'], ...rows.map(r => [r.label, r.v, r.p.toFixed(1), iso(r.t)])];
+  setNote(c, 'Percentile = share of the last 10 years with a lower reading (100 = most stressed). Bands: Calm < 50, Elevated 50–80, High 80–95, Extreme ≥ 95. HY spread history is short (FRED keeps 3 years).');
+}
+function sparkSVG(s, from, to) {
+  const p = pts(s, from, to); if (p.length < 2) return null;
+  const W = 84, H = 22, xs = p.map(d => d[0]), ys = p.map(d => d[1]);
+  const x0 = xs[0], x1 = xs[xs.length - 1], y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const d = p.map(([x, y]) => `${((x - x0) / (x1 - x0 || 1) * W).toFixed(1)},${(H - 2 - (y - y0) / (y1 - y0 || 1) * (H - 4)).toFixed(1)}`).join(' ');
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('aria-hidden', 'true');
+  const pl = document.createElementNS(ns, 'polyline');
+  pl.setAttribute('points', d); pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', tok('--ink-2')); pl.setAttribute('stroke-width', '1.5');
+  svg.append(pl); return svg;
+}
+function renderWhere(c) {
+  const b = htmlBody(c);
+  const tgt = state.ovCcy;
+  const cols = [['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
+    ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['12M', t => addMonths(t, -12)]];
+  const tbl = el('table', { class: 'perf' });
+  const hr = el('tr', {}, el('th', { text: 'Asset' }), el('th', { text: 'Last' }));
+  cols.forEach(([k]) => hr.append(el('th', { text: k })));
+  hr.append(el('th', { text: 'vs 200d', title: 'Distance from the 200-day moving average (prices only)' }), el('th', { text: '1W σ', title: 'This week’s move in standard deviations of its 5-year weekly moves' }), el('th', { text: '3M' }));
+  tbl.append(el('thead', {}, hr));
+  const tb = el('tbody'), csv = [['Group', 'Asset', 'Last', ...cols.map(c => c[0]), 'vs 200d %', '1W z']];
+  const pos = tok('--pos'), neg = tok('--neg');
+  const scale = { price: [2, 4, 8, 10, 15], yield: [10, 25, 50, 60, 80], level: [2, 4, 6, 6, 8] };
+  for (const [g, ids] of OV_ROWS) {
+    const ok = ids.filter(id => has(id)); if (!ok.length) continue;
+    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: cols.length + 5, text: g + (g === 'Equities' && tgt !== 'local' ? ` · in ${tgt}` : '') })));
+    for (const id of ok) {
+      const s0 = S[id], s = g === 'Equities' ? inCcy(id, tgt) : s0;
+      const a = asOf(s, state.to); if (!a) continue;
+      const tr = el('tr', { class: 'row', title: `${s0.source} · last ${nice(a.t)}` },
+        el('td', { text: s0.label + (s !== s0 ? ` (${tgt})` : '') }),
+        el('td', { text: s0.kind === 'yield' ? fmtNum(a.v, 2) + '%' : fmtVal(s0, a.v) }));
+      const row = [g, s0.label, a.v];
+      cols.forEach(([k, fn], j) => {
+        const bb = asOf(s, fn(a.t)), v = bb ? chg(s, bb.v, a.v) : null;
+        const sc = scale[s.kind][j] * (s.kind === 'level' ? Math.abs(a.v) / 100 : 1);
+        tr.append(el('td', { class: 'heat', text: fmtChg(s, v), style: v ? `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}` : '' }));
+        row.push(v == null ? '' : v.toFixed(2));
+      });
+      let d200 = null;
+      if (s.kind === 'price') { const m = ma(s, a.i, 200); if (m) d200 = (a.v / m - 1) * 100; }
+      tr.append(el('td', { text: d200 == null ? '–' : (d200 >= 0 ? '▲ ' : '▼ ') + sign(d200) + fmtNum(Math.abs(d200), 1) + '%' }));
+      const mz = moveZ(id, 1);
+      tr.append(el('td', { text: mz ? zf(mz.z) : '–', style: mz && Math.abs(mz.z) >= 2 ? 'font-weight:650' : '' }));
+      const sp = sparkSVG(s, addMonths(a.t, -3), a.t);
+      tr.append(el('td', {}, sp || ''));
+      row.push(d200 == null ? '' : d200.toFixed(2), mz ? mz.z.toFixed(2) : '');
+      csv.push(row); tb.append(tr);
+    }
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = csv;
+  setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency.' : `Equities converted to ${tgt} at daily FX; ${tgt === 'SGD' ? 'STI is unchanged' : 'US indices are unchanged'}.`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
+}
+function overviewKpis() {
+  const box = $('#ovKpis'); box.replaceChildren();
+  const tile = (label, value, delta, foot, statusTok) => box.append(el('div', { class: 'kpi' },
+    el('div', { class: 'k-label', text: label }),
+    el('div', { class: 'k-value' }, statusTok ? el('span', { class: 'qdot', style: `background:${tok(statusTok)}` }) : '', value),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, state.to); tile('Macro regime', QUADS[q.v].name, QUADS[q.v].tag, 'data month ' + monthLab(q.t), QUADS[q.v].tok); }
+  else tile('Macro regime', '–', 'needs FRED data', '');
+  if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, state.to), b = asOf(s, a.t - 91 * DAY);
+    tile('Fed net liquidity, 13w', fmtChg(s, a.v - b.v), `level ${fmtVal(s, a.v)}`, 'as of ' + nice(a.t)); }
+  else tile('Fed net liquidity, 13w', '–', 'needs FRED data', '');
+  const sr = stressRows();
+  if (sr.length) { const p = sr.reduce((a, r) => a + r.p, 0) / sr.length, [st, lab, icon] = stressBand(p);
+    tile('Stress composite', `${Math.round(p)}th pct`, `${icon}${lab}`, `${sr.length} gauges vs 10 years`, '--' + st); }
+  if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, state.to); tile('Recession odds, 12m', fmtNum(a.v, 0) + '%', 'NY Fed yield-curve model', monthLab(a.t)); }
+  const above = OV_EQ.filter(id => has(id)).map(id => { const s = S[id], a = asOf(s, state.to); const m = a && ma(s, a.i, 200); return m ? a.v > m : null; }).filter(x => x != null);
+  if (above.length) tile('Equity breadth', `${above.filter(Boolean).length} of ${above.length}`, 'global indices above their 200-day average', 'as of ' + nice(state.to));
+  if (has('DXY')) { const s = S.DXY, a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -1)); tile('US dollar (DXY), 1M', fmtChg(s, chg(s, b.v, a.v)), `level ${fmtNum(a.v, 1)}`, 'as of ' + nice(a.t)); }
+}
+function talkingPoints() {
+  const out = [], to = state.to;
+  const mv = movers(1).slice(0, 3);
+  if (mv.length) out.push(`Biggest moves this week (vs each asset’s 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
+  const eq = OV_EQ.filter(id => has(id)).map(id => { const s = S[id], a = asOf(s, to), b = asOf(s, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)); const m = ma(s, a.i, 200);
+    return { id, ytd: b ? chg(s, b.v, a.v) : null, up: m ? a.v > m : null }; }).filter(r => r.ytd != null).sort((a, b) => b.ytd - a.ytd);
+  if (eq.length) out.push(`Equities: ${eq.filter(r => r.up).length} of ${eq.length} major indices sit above their 200-day average. YTD leaders: ${eq.slice(0, 2).map(r => `${S[r.id].label} ${fmtChg(S[r.id], r.ytd)}`).join(', ')}; laggards: ${eq.slice(-2).reverse().map(r => `${S[r.id].label} ${fmtChg(S[r.id], r.ytd)}`).join(', ')} (local currency).`);
+  if (has('UST10Y')) { const s = S.UST10Y, a = asOf(s, to), b = asOf(s, addMonths(a.t, -1));
+    let t = `Rates: UST 10Y at ${fmtNum(a.v, 2)}% (${fmtChg(s, chg(s, b.v, a.v))} over 1M)`;
+    if (has('CURVE_2s10s')) t += `, 2s10s at ${fmtNum(asOf(S.CURVE_2s10s, to).v * 100, 0)}bp`;
+    if (has('REAL10Y')) t += `, 10Y real yield ${fmtNum(asOf(S.REAL10Y, to).v, 2)}%`;
+    out.push(t + '.'); }
+  if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, to), b = asOf(s, a.t - 91 * DAY);
+    let t = `Liquidity: Fed net liquidity ${a.v >= b.v ? 'up' : 'down'} ${fmtChg(s, Math.abs(a.v - b.v)).replace('+', '')} over 13 weeks to ${fmtVal(s, a.v)}`;
+    if (has('SOFR_IORB')) { const pp = pts(S.SOFR_IORB, to - 30 * DAY, to).map(p => p[1]); if (pp.length) t += `; SOFR averaged ${fmtNum(pp.reduce((x, y) => x + y, 0) / pp.length, 1)}bp vs IORB over the past month`; }
+    out.push(t + '.'); }
+  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, to), gm = asOf(S.REG_GM, to), im = asOf(S.REG_IM, to);
+    out.push(`Macro regime: ${QUADS[q.v].name} as of ${monthLab(q.t)} data. Growth momentum ${gm.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(gm.v)}), inflation momentum ${im.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(im.v)}).`); }
+  const sr = stressRows();
+  if (sr.length) { const p = sr.reduce((a, r) => a + r.p, 0) / sr.length, top = sr.slice().sort((a, b) => b.p - a.p)[0];
+    out.push(`Stress: composite at the ${Math.round(p)}th percentile of the last 10 years (${stressBand(p)[1].toLowerCase()}); highest gauge is ${top.label} at the ${Math.round(top.p)}th.`); }
+  if (has('DXY')) { const s = S.DXY, a = asOf(s, to), b = asOf(s, addMonths(a.t, -1));
+    let t = `USD: DXY ${fmtChg(s, chg(s, b.v, a.v))} over 1M`;
+    if (has('USDSGD')) { const u = S.USDSGD, ua = asOf(u, to), ub = asOf(u, addMonths(ua.t, -1)); t += `; USD/SGD ${fmtNum(ua.v, 4)} (${fmtChg(u, chg(u, ub.v, ua.v))})`; }
+    if (has('USDJPY')) t += `; USD/JPY ${fmtNum(asOf(S.USDJPY, to).v, 2)}`;
+    out.push(t + '.'); }
+  return out;
+}
+function renderPoints(c) {
+  const b = htmlBody(c), pts_ = talkingPoints();
+  const ul = el('ul', { class: 'points' }); pts_.forEach(p => ul.append(el('li', { text: p })));
+  b.append(ul);
+  c.csv = [['Talking point'], ...pts_.map(p => [p])];
+  c.copyText = `Market snapshot, ${nice(state.to)}\n` + pts_.map(p => '• ' + p).join('\n');
+  setNote(c, 'Generated from the data on this page, as of the “To” date. Facts only, no views; edit before sharing.');
+}
+function buildOverview() {
+  const g = $('#ovGrid');
+  const tp = makeCard(g, { key: 'points', title: 'Talking points', wide: true, source: 'FRED, Yahoo Finance', render: renderPoints });
+  const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
+    try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
+  tp.root.querySelector('.card-tools').prepend(copy);
+  makeCard(g, { key: 'moved', title: 'What moved', source: 'Yahoo Finance, FRED',
+    seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
+  makeCard(g, { key: 'fragile', title: 'How fragile', sub: 'Stress gauges ranked against their own last 10 years.', source: 'FRED, Yahoo Finance', render: renderFragile });
+  makeCard(g, { key: 'where', title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity returns as a USD or SGD investor.', source: 'Yahoo Finance, FRED',
+    seg: { key: 'ovCcy', options: [['local', 'Local'], ['USD', 'USD'], ['SGD', 'SGD']] }, render: renderWhere });
+  for (const k of ['points', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderOverview() {
+  overviewKpis();
+  ['points', 'moved', 'fragile', 'where'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
@@ -997,7 +1244,7 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ liquidity: renderLiquidity, regime: renderRegime, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, liquidity: renderLiquidity, regime: renderRegime, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 function setTab(t) {
   state.tab = t;
@@ -1054,7 +1301,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildLiquidity(); buildRegime(); buildMarkets(); buildCorrelation(); wire();
-  setTab(['liquidity', 'regime', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'liquidity');
+  buildOverview(); buildLiquidity(); buildRegime(); buildMarkets(); buildCorrelation(); wire();
+  setTab(['overview', 'liquidity', 'regime', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

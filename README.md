@@ -8,6 +8,7 @@ It is a plain web page, so it opens in any browser (including a locked-down work
 
 | Tab | What it shows |
 |---|---|
+| **Strategist View** (opens first) | Headline tiles (regime, net liquidity, stress composite, recession odds, equity breadth, USD). **Talking points**: auto-generated, factual and copyable. **What moved**: biggest 1-week or 4-week moves ranked in σ against each asset's own 5-year history. **How fragile**: stress gauges as percentiles of their last 10 years, plus a composite. **Where we are**: cross-asset grid with 1W–12M returns, distance from the 200-day average, weekly σ and 3-month sparklines; equities switch between local, USD and SGD terms. |
 | **Liquidity** | Fed net liquidity (Fed assets − TGA − reverse repo) vs S&P 500 (levels, 13-week and YoY change, with correlation). Balance-sheet components, repo funding stress (SOFR/EFFR − IORB), Fed + ECB + BoJ balance sheets in USD, HY/IG credit spreads, Chicago Fed NFCI, M2 growth, Treasury yields and curve. Headline tiles and automatic signals. |
 | **Regime** | Growth × inflation regime model ("Investment Clock" family). Growth inputs: Chicago Fed activity index, industrial production, payrolls, real retail sales, jobless claims. Inflation inputs: headline/core CPI, core CPI 3m annualised, core PCE. Each input is z-scored against its own last 10 years and averaged; the regime comes from the 3-month change in each composite (Goldilocks / Overheat / Stagflation / Slowdown). Shows the quadrant path, regime history behind any asset, a "what worked in each regime" table (investable 2-month lag or same month), and recession watch: Sahm rule, NY Fed yield-curve probability, Chauvet-Piger probability, claims, inflation. |
 | **Markets** | Performance table for about 60 markets (equities across US, Europe, Japan, China/HK, N. Asia, ASEAN incl. Singapore & Malaysia, India, Australia, Brazil; sectors; bonds & credit; US rates; FX; commodities; crypto; vol). Columns: 1D/1W/1M/3M/YTD/1Y and your chosen range. Tick any rows to chart them rebased to 100. |
@@ -42,6 +43,7 @@ Add one line to `pipeline/config.py` (Yahoo ticker or FRED series id). The next 
 
 ## Roadmap
 
+0. ✅ Strategist View front page
 1. ✅ Liquidity monitor, markets table, correlation lab
 2. ✅ Credit-spread archive (FRED now keeps only 3 years of ICE BofA spreads), Baa−10y long history, Euro HY & Asia EM corporate spreads, reserve scarcity ratios
 3. ✅ Regime tab: growth × inflation quadrant, what worked in each regime, recession watch (Sahm rule, NY Fed curve model, claims, inflation)
