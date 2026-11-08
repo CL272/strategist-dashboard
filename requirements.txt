@@ -1,11 +1,2 @@
-streamlit>=1.36
-plotly>=5.20
-pandas>=2.1
+pandas>=2.2,<4
 requests>=2.31
-yfinance>=0.2.60 # Yahoo now needs a cookie + crumb; a plain requests.get does not
-                 # send either, and the failure is silent - see data/equity.py
-pyarrow>=15.0
-openpyxl>=3.1
-xlrd>=2.0        # Shiller's ie_data.xls is the old .xls format
-lxml>=5.0        # pandas.read_html, for the SSGA characteristics tables
-pdfplumber>=0.11 # fallback: SSGA fact-sheet PDFs when the live page gives nothing
