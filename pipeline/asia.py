@@ -145,6 +145,16 @@ def build_asia(status: dict) -> dict[str, pd.Series]:
     keep("MY_OPR", fetch_opr(), dict(label="Malaysia OPR", group="Rates · Malaysia", kind="yield", unit="%",
                                      source="Bank Negara Malaysia API (opr)"))
 
+    # China & Japan (OECD, Bank of Japan, e-Stat)
+    import cnjp
+    got = cnjp.build(status)
+    expected = set(got) | {k for k in old if k.startswith(("CN_", "JP_", "CLI_"))}
+    for sid in sorted(expected):
+        s, meta = got.get(sid, (None, None))
+        if meta is None:
+            meta = {k: old[sid][k] for k in ("label", "group", "kind", "unit", "source") if k in old.get(sid, {})}
+        keep(sid, None if s is None else s.dropna(), meta)
+
     # derived: growth rates and inflation
     def yoy(s, k=12):
         return (s / s.shift(k) - 1) * 100

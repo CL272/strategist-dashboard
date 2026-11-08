@@ -524,7 +524,7 @@ const USD_PER = { EUR: ['EURUSD', 1], GBP: ['GBPUSD', 1], AUD: ['AUDUSD', 1], JP
 const OV_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV'];
 const OV_ROWS = [
   ['Equities', OV_EQ.concat(['EEM'])],
-  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'JGB10Y', 'EA10Y', 'SGS10Y', 'SORA3M', 'HY_OAS', 'BAA_10Y']],
+  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'JGB10Y', 'EA10Y', 'CN_10Y', 'SGS10Y', 'SORA3M', 'HY_OAS', 'BAA_10Y']],
   ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD']],
   ['Commodities & crypto', ['GOLD', 'BRENT', 'COPPER', 'BTC']],
   ['Volatility', ['VIX', 'MOVE']],
@@ -957,6 +957,7 @@ function buildRegime() {
     render: c => { if (!has('REG_G', 'REG_I')) return setEmpty(c, NO_FRED);
       drawLines(c, [{ name: 'Growth', data: pts(S.REG_G, state.from, state.to), color: col(0) }, { name: 'Inflation', data: pts(S.REG_I, state.from, state.to), color: col(1) }],
         { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, areas: recessionAreas(state.from, state.to) }); } });
+  makeCard(g, { key: 'cli', title: 'Global leading indicators', wide: true, sub: 'OECD composite leading indicators: they turn 6–9 months before activity. 100 = long-term trend.', render: renderCLI });
   const hist = makeCard(g, { key: 'reghist', title: 'Regime history', wide: true, tall: true, source: 'FRED, Yahoo Finance',
     seg: { key: 'regAsset', options: [['SPX', 'S&P 500'], ['NDX', 'Nasdaq'], ['TLT', 'Long UST'], ['GOLD', 'Gold'], ['COPPER', 'Copper'], ['DXY', 'USD']] }, render: renderRegimeHistory });
   makeCard(g, { key: 'regtable', range: false, title: 'What worked in each regime', wide: true, source: 'FRED, Yahoo Finance',
@@ -998,7 +999,7 @@ function buildRegime() {
 }
 function renderRegime() {
   regimeKpis();
-  ['quad', 'comp_gi', 'reghist', 'regtable', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
+  ['quad', 'comp_gi', 'cli', 'reghist', 'regtable', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ FIXED INCOME
@@ -1351,11 +1352,97 @@ function renderHeadlinesCard(c) {
   setSource(c, 'Public RSS feeds: ' + Object.entries(NEWS.feeds || {}).filter(([, v]) => v.startsWith('ok')).map(([k]) => k).join(', '));
 }
 
+// ------------------------------------------------------------------ CHINA & JAPAN
+state.cnConf = 'bci'; state.jpAct = 'output'; state.jpBoj = 'assets';
+function cnjpKpis() {
+  const box = $('#cnjpKpis'); box.replaceChildren();
+  const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  const lv = (id, label, fmt, dl) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to); if (!a) return; const b = asOf(s, addMonths(a.t, -3));
+    tile(label, fmt(a.v), b ? `3M ${dl(a.v - b.v)}` : '', (s.source || '').split(' (')[0] + ' · ' + monthLab(a.t)); };
+  const pp = d => sign(d) + fmtNum(Math.abs(d), 1) + 'pp', bp = d => sign(d) + fmtNum(Math.abs(d) * 100, 0) + 'bp', pt = d => sign(d) + fmtNum(Math.abs(d), 0) + 'pts';
+  lv('CN_CPI_YOY', 'China CPI YoY', v => fmtNum(v, 1) + '%', pp);
+  lv('CN_10Y', 'China 10Y yield', v => fmtNum(v, 2) + '%', bp);
+  lv('CN_EXP_YOY', 'China exports YoY', v => sign(v) + fmtNum(Math.abs(v), 1) + '%', pp);
+  lv('JP_CORE_YOY', 'Japan core CPI YoY', v => fmtNum(v, 1) + '%', pp);
+  lv('JP_TANKAN_LM', 'Tankan large manufacturers', v => sign(v) + fmtNum(Math.abs(v), 0), pt);
+  lv('JP_CALL', 'Japan call rate', v => fmtNum(v, 3) + '%', bp);
+}
+function idsCard(ids, fmt, axisFmt, opts = {}) {
+  return c => { const ok = ids.filter(id => has(id)); if (!ok.length) return setEmpty(c, opts.empty || 'Waiting for data.');
+    drawLines(c, ok.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i), extra: (opts.dashed || []).includes(id) ? { lineStyle: { width: 2, type: 'dashed', color: col(i) } } : {} })),
+      { fmt, axisFmt, endLabels: ok.length < 3, ...opts });
+    setSource(c, srcOf(ok)); if (opts.note) setNote(c, opts.note); };
+}
+function renderCnSpread(c) {
+  if (!has('UST10Y', 'CN_10Y', 'USDCNY')) return setEmpty(c, 'Waiting for data.');
+  const spread = pts(combine(S.CN_10Y, S.UST10Y, (cn, us) => (us - cn) * 100, {}, 40 * DAY), state.from, state.to);
+  const f = pts(S.USDCNY, state.from, state.to), nm = 'US − China 10Y spread';
+  const o = baseOpt();
+  o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
+  o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
+  o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
+  o.yAxis = [valAxis(v => fmtNum(v, 0) + 'bp', { gridIndex: 0 }), valAxis(v => fmtNum(v, 2), { gridIndex: 1 })];
+  o.tooltip.formatter = tipFormatter((v, n) => n === nm ? fmtNum(v, 0) + 'bp' : fmtNum(v, 4));
+  o.series = [{ ...line(nm, spread, col(0)), markLine: zeroLine() }, line('USD/CNY', f, col(1), { xAxisIndex: 1, yAxisIndex: 1 })];
+  inst(c).setOption(o, true);
+  c.csv = toCSV([{ name: nm + ' (bp)', data: spread }, { name: 'USD/CNY', data: f }]);
+  setSource(c, srcOf(['UST10Y', 'CN_10Y', 'USDCNY']) + '; spread calculated');
+  setNote(c, 'China 10Y is a monthly average (OECD); UST 10Y daily, matched to the month. A US yield advantage over China puts weakening pressure on the yuan.');
+}
+function buildCnJp() {
+  const g = $('#cnjpGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
+  g.append(el('h3', { class: 'section', text: 'China' }));
+  makeCard(g, { key: 'cn_infl', title: 'China: inflation and rates', sub: 'CPI year-on-year, 10Y government bond yield and 3M interbank rate, %. Monthly.',
+    render: idsCard(['CN_CPI_YOY', 'CN_10Y', 'CN_3M'], p2, p1, { zero: true }) });
+  makeCard(g, { key: 'cn_trade', title: 'China: trade', sub: 'Merchandise exports and imports, USD, seasonally adjusted, year-on-year %.',
+    render: idsCard(['CN_EXP_YOY', 'CN_IMP_YOY'], p1, a0, { zero: true }) });
+  makeCard(g, { key: 'cn_conf', title: 'China: confidence', seg: { key: 'cnConf', options: [['bci', 'Business (PMI)'], ['cci', 'Consumer']] },
+    render: c => { const b = state.cnConf === 'bci';
+      c.subEl.textContent = b ? 'OECD business confidence for China, built from the official NBS manufacturing PMI. 0 = long-run average.' : 'OECD consumer confidence for China (index, 100 = long-run average).';
+      idsCard([b ? 'CN_BCI' : 'CN_CCI'], v => fmtNum(v, 1), v => fmtNum(v, 0), b ? { zero: true } : { hlines: [{ y: 100, label: 'average' }] })(c); } });
+  makeCard(g, { key: 'cn_spread', title: 'US − China 10Y spread vs USD/CNY', tall: true, render: renderCnSpread });
+  g.append(el('h3', { class: 'section', text: 'Japan' }));
+  makeCard(g, { key: 'jp_infl', title: 'Japan: inflation', sub: 'CPI headline, core (ex fresh food, the BoJ focus) and core-core, plus producer prices; year-on-year %.',
+    render: idsCard(['JP_CPI_YOY', 'JP_CORE_YOY', 'JP_CORECORE_YOY', 'JP_PPI_YOY'], p1, a0, { zero: true, hlines: [{ y: 2, label: 'BoJ 2% target' }],
+      empty: 'Waiting for data.' }) });
+  makeCard(g, { key: 'jp_policy', title: 'Japan: policy rate and JGB yields', sub: 'Uncollateralised overnight call rate (BoJ policy rate), JGB 2Y and 10Y, %.',
+    render: idsCard(['JP_CALL', 'JGB2Y', 'JGB10Y'], v => fmtNum(v, 3) + '%', p1, { zero: true }) });
+  makeCard(g, { key: 'jp_tankan', title: 'Japan: Tankan business conditions', sub: 'BoJ Tankan diffusion index, large enterprises (% good − % poor). Dashed = companies’ own forecast for the next quarter.',
+    render: idsCard(['JP_TANKAN_LM', 'JP_TANKAN_LN', 'JP_TANKAN_LM_F', 'JP_TANKAN_LN_F'], v => sign(v) + fmtNum(Math.abs(v), 0), v => fmtNum(v, 0), { zero: true, dashed: ['JP_TANKAN_LM_F', 'JP_TANKAN_LN_F'] }) });
+  makeCard(g, { key: 'jp_act', title: 'Japan: activity', seg: { key: 'jpAct', options: [['output', 'Output & trade'], ['labour', 'Labour']] },
+    render: c => { const o = state.jpAct === 'output';
+      c.subEl.textContent = o ? 'Industrial production, exports (USD, SA) and retail sales volume, year-on-year %.' : 'Hourly earnings year-on-year % and the unemployment rate, %.';
+      idsCard(o ? ['JP_IP_YOY', 'JP_EXP_YOY', 'JP_RETAIL_YOY'] : ['JP_WAGES_YOY', 'JP_UNEMP'], p1, a0, { zero: true })(c); } });
+  makeCard(g, { key: 'jp_boj', title: 'Bank of Japan balance sheet', seg: { key: 'jpBoj', options: [['assets', 'Total assets'], ['mb', 'Monetary base YoY']] },
+    render: c => {
+      if (state.jpBoj === 'assets') {
+        c.subEl.textContent = 'Bank of Japan total assets, ¥ trillion (month-end).';
+        if (!has('JP_BOJ_ASSETS')) return setEmpty(c, 'Waiting for data.');
+        drawLines(c, [{ name: 'BoJ total assets', data: pts(S.JP_BOJ_ASSETS, state.from, state.to).map(([t, v]) => [t, v / 10000]) }], { fmt: v => '¥' + fmtNum(v, 0) + 'tn', axisFmt: v => '¥' + fmtNum(v, 0) + 'tn' });
+        setSource(c, srcOf(['JP_BOJ_ASSETS']));
+      } else { c.subEl.textContent = 'Monetary base, year-on-year %. Negative = the BoJ is shrinking its balance sheet.'; idsCard(['JP_MB_YOY'], p1, a0, { zero: true })(c); }
+    } });
+}
+function renderCnJp() {
+  cnjpKpis();
+  ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread', 'jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'].forEach(k => cards[k].render());
+}
+function renderCLI(c) {
+  const ids = ['CLI_USA', 'CLI_CHN', 'CLI_JPN', 'CLI_DEU', 'CLI_KOR', 'CLI_IND'].filter(id => has(id));
+  if (!ids.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, ids.map((id, i) => ({ name: S[id].label.replace(' leading indicator', ''), data: pts(S[id], state.from, state.to), color: col(i) })),
+    { fmt: v => fmtNum(v, 2), axisFmt: v => fmtNum(v, 1), endLabels: false, hlines: [{ y: 100, label: 'trend' }] });
+  setSource(c, 'OECD Composite Leading Indicators (amplitude adjusted)');
+  const rising = ids.filter(id => { const s = S[id], a = asOf(s, state.to), b = a && asOf(s, addMonths(a.t, -3)); return a && b && a.v > b.v; });
+  setNote(c, `Above 100 = growth above trend; the direction matters more than the level (rising = expanding momentum). Rising over the last 3 months: ${rising.length ? rising.map(id => S[id].label.replace(' leading indicator', '')).join(', ') : 'none'}.`);
+}
+
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
   'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · US sectors',
-  'Rates · US', 'Rates · Japan', 'Rates · Euro area', 'Rates · Singapore', 'Rates · Malaysia', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
-const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y', 'SORA3M', 'SGS2Y', 'SGS10Y', 'MY_OPR'];
+  'Rates · US', 'Rates · Japan', 'Rates · Euro area', 'Rates · Singapore', 'Rates · Malaysia', 'Rates · China', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
+const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y', 'SORA3M', 'SGS2Y', 'SGS10Y', 'MY_OPR', 'CN_10Y', 'JP_CALL'];
 const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
   ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['1Y', t => addMonths(t, -12)], ['Range', () => state.from]];
 function perfRows() {
@@ -1659,7 +1746,7 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
 function setTab(t) {
   state.tab = t;
@@ -1724,7 +1811,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildMarkets(); buildCorrelation(); applySources(); wire();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildMarkets(); buildCorrelation(); applySources(); wire();
+  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

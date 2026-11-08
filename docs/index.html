@@ -30,6 +30,7 @@
   <button role="tab" data-tab="regime" aria-selected="false">Regime</button>
   <button role="tab" data-tab="fixed" aria-selected="false">Fixed Income</button>
   <button role="tab" data-tab="asia" aria-selected="false">Asia &amp; Singapore</button>
+  <button role="tab" data-tab="cnjp" aria-selected="false">China &amp; Japan</button>
   <button role="tab" data-tab="markets" aria-selected="false">Markets</button>
   <button role="tab" data-tab="correlation" aria-selected="false">Correlation</button>
 </nav>
@@ -78,6 +79,11 @@
     <div class="grid" id="asiaGrid"></div>
   </section>
 
+  <section id="tab-cnjp" class="tab-panel" hidden>
+    <div class="kpis" id="cnjpKpis"></div>
+    <div class="grid" id="cnjpGrid"></div>
+  </section>
+
   <section id="tab-markets" class="tab-panel" hidden>
     <div class="grid" id="mktCharts"></div>
     <div class="card wide">
@@ -120,7 +126,7 @@
 </main>
 
 <footer class="muted small">
-  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
+  Public data only: FRED (St. Louis Fed), US Treasury, MOF Japan, ECB, SingStat/MAS, DOSM, Bank Negara, OECD, Bank of Japan, e-Stat, Yahoo Finance and public news RSS feeds, refreshed every weekday. For research use; not investment advice.
 </footer>
 
 <script src="vendor/echarts.min.js"></script>
