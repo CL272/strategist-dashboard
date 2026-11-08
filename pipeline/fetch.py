@@ -31,10 +31,18 @@ EPOCH = pd.Timestamp("1970-01-01")
 
 
 # ------------------------------------------------------------------ secrets
+def _clean(val: str) -> str:
+    """Accept a bare key, or a pasted line like  FRED_API_KEY = "abc123"."""
+    val = val.strip()
+    if "=" in val:
+        val = val.split("=", 1)[1]
+    return val.strip().strip('"').strip("'").strip()
+
+
 def get_secret(name: str) -> str | None:
     val = os.environ.get(name)
-    if val:
-        return val.strip()
+    if val and _clean(val):
+        return _clean(val)
     for p in (ROOT / ".streamlit" / "secrets.toml", Path.cwd() / ".streamlit" / "secrets.toml"):
         if p.exists():
             try:
@@ -42,7 +50,7 @@ def get_secret(name: str) -> str | None:
                 with open(p, "rb") as f:
                     data = tomllib.load(f)
                 if data.get(name):
-                    return str(data[name]).strip()
+                    return _clean(str(data[name]))
             except Exception:
                 pass
     return None
