@@ -457,6 +457,28 @@ def build_long_assets(f: dict[str, pd.Series]) -> dict[str, tuple[pd.Series, dic
     return out
 
 
+# ------------------------------------------------------------------ archive
+def merge_archive(sid: str, new: pd.Series | None, published: pd.Series | None) -> pd.Series | None:
+    """Append-only history: archive CSV + last published data + today's fetch (newest wins)."""
+    parts = []
+    path = ARCHIVE_DIR / f"{sid}.csv"
+    if path.exists():
+        a = pd.read_csv(path, parse_dates=["date"]).set_index("date")["value"]
+        parts.append(a)
+    if published is not None:
+        parts.append(published)
+    if new is not None:
+        parts.append(new)
+    if not parts:
+        return None
+    merged = pd.concat(parts)
+    merged = merged[~merged.index.duplicated(keep="last")].sort_index().dropna()
+    if new is not None:   # only rewrite the archive when we actually got fresh data
+        ARCHIVE_DIR.mkdir(exist_ok=True)
+        merged.rename("value").rename_axis("date").to_csv(path, date_format="%Y-%m-%d")
+    return merged
+
+
 # ------------------------------------------------------------------ main
 def load_existing(name: str) -> dict:
     p = OUT / name

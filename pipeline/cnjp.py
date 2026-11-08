@@ -255,10 +255,10 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
     app_id = get_secret("ESTAT_APP_ID")
     notes: list[str] = []
     if app_id:
-        names = {"JP_CPI_YOY": "Japan CPI YoY", "JP_CORE_YOY": "Japan core CPI YoY (ex fresh food)",
+        labels = {"JP_CPI_YOY": "Japan CPI YoY", "JP_CORE_YOY": "Japan core CPI YoY (ex fresh food)",
                  "JP_CORECORE_YOY": "Japan core-core CPI YoY (ex fresh food & energy)"}
         for k, s in estat_cpi(app_id, notes).items():
-            out[k] = (s, dict(label=names[k], unit="%", kind="level", group="Macro · Japan",
+            out[k] = (s, dict(label=labels[k], unit="%", kind="level", group="Macro · Japan",
                               source="Statistics Bureau of Japan via e-Stat (Consumer Price Index, national, monthly)"))
     else:
         notes.append("e-Stat: no ESTAT_APP_ID / ESTAT_API_KEY secret")
