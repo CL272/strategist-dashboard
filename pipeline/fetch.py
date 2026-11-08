@@ -31,18 +31,26 @@ EPOCH = pd.Timestamp("1970-01-01")
 
 
 # ------------------------------------------------------------------ secrets
-def _clean(val: str) -> str:
-    """Accept a bare key, or a pasted line like  FRED_API_KEY = "abc123"."""
-    val = val.strip()
+def _clean(val: str, name: str = "") -> str:
+    """Accept a bare key, a pasted line like  FRED_API_KEY = "abc123", or a whole pasted secrets.toml."""
+    lines = [ln for ln in val.strip().splitlines() if ln.strip()]
+    mine = [ln for ln in lines if name and ln.strip().upper().startswith(name)]
+    val = (mine or lines or [""])[0].strip()
     if "=" in val:
         val = val.split("=", 1)[1]
-    return val.strip().strip('"').strip("'").strip()
+    val = val.strip().strip('"').strip("'").strip()
+    if name == "FRED_API_KEY":   # FRED keys are exactly 32 lower-case letters/digits
+        import re
+        m = re.search(r"[A-Za-z0-9]{32}", val)
+        if m:
+            val = m.group(0).lower()
+    return val
 
 
 def get_secret(name: str) -> str | None:
     val = os.environ.get(name)
-    if val and _clean(val):
-        return _clean(val)
+    if val and _clean(val, name):
+        return _clean(val, name)
     for p in (ROOT / ".streamlit" / "secrets.toml", Path.cwd() / ".streamlit" / "secrets.toml"):
         if p.exists():
             try:
@@ -50,7 +58,7 @@ def get_secret(name: str) -> str | None:
                 with open(p, "rb") as f:
                     data = tomllib.load(f)
                 if data.get(name):
-                    return _clean(str(data[name]))
+                    return _clean(str(data[name]), name)
             except Exception:
                 pass
     return None
