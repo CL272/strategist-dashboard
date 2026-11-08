@@ -45,6 +45,22 @@ MY = [
     ("MY_UNEMP",    "lfs_month",    None,                "u_rate",  "Malaysia unemployment rate",  "%"),
     ("MY_EXPORTS",  "trade_sitc_1d", "overall@section",  "exports", "Malaysia exports",            "RM"),
     ("MY_GDP_YOY",  "gdp_qtr_real", "growth_yoy@series", "value",   "Malaysia real GDP YoY",       "%"),
+    ("MY_LEADING",  "economic_indicators", None,         "leading",    "Malaysia leading index (DOSM)",    "idx"),
+    ("MY_COINCIDENT", "economic_indicators", None,       "coincident", "Malaysia coincident index (DOSM)", "idx"),
+    ("MY_LAGGING",  "economic_indicators", None,         "lagging",    "Malaysia lagging index (DOSM)",    "idx"),
+    ("MY_LEAD_DIFF", "economic_indicators", None,        "leading_diffusion", "Malaysia leading index diffusion", "%"),
+    ("MY_PPI_YOY",  "ppi",          "growth_yoy@series", "index",   "Malaysia producer prices YoY",  "%"),
+    ("MY_RETAIL_YOY", "iowrt",      "growth_yoy@series", "volume",  "Malaysia wholesale & retail trade volume YoY", "%"),
+    ("MY_TRADE_BAL", "trade_headline", "abs@series",     "balance", "Malaysia trade balance",        "RM"),
+    ("MY_IMPORTS",  "trade_headline", "abs@series",      "imports", "Malaysia imports",              "RM"),
+    ("MY_M2",       "monetary_aggregates", "m2_total@measure", "value", "Malaysia M2",               "RM mn"),
+    ("MY_M3",       "monetary_aggregates", "m3_total@measure", "value", "Malaysia M3",               "RM mn"),
+]
+# lending and deposit rates (OpenDOSM interestrates, commercial banks): (id, rate code, label)
+MY_RATES = [
+    ("MY_ALR",  "walr",        "Malaysia average lending rate (weighted)"),
+    ("MY_BR",   "wabr",        "Malaysia base rate (weighted)"),
+    ("MY_FD12", "wafdr_12mo",  "Malaysia 12M fixed deposit rate (weighted)"),
 ]
 
 
@@ -142,13 +158,19 @@ def build_asia(status: dict) -> dict[str, pd.Series]:
         kind = "level"
         keep(sid, fetch_opendosm(ds, flt, col), dict(label=label, group="Macro · Malaysia", kind=kind, unit=unit,
                                                      source=f"DOSM via OpenDOSM ({ds})"))
+    for sid, code, label in MY_RATES:
+        keep(sid, fetch_opendosm("interestrates", f"{code}@rate,commercial@bank", "value"),
+             dict(label=label, group="Rates · Malaysia", kind="yield", unit="%",
+                  source=f"Bank Negara Malaysia via OpenDOSM (interestrates, {code})"))
     keep("MY_OPR", fetch_opr(), dict(label="Malaysia OPR", group="Rates · Malaysia", kind="yield", unit="%",
                                      source="Bank Negara Malaysia API (opr)"))
 
     # China & Japan (OECD, Bank of Japan, e-Stat)
     import cnjp
+    import rba
     got = cnjp.build(status)
-    expected = set(got) | {k for k in old if k.startswith(("CN_", "JP_", "CLI_"))}
+    got.update(rba.build(status))
+    expected = set(got) | {k for k in old if k.startswith(("CN_", "JP_", "CLI_", "KR_", "IN_", "ID_", "AU_"))}
     for sid in sorted(expected):
         s, meta = got.get(sid, (None, None))
         if meta is None:
@@ -175,10 +197,22 @@ def build_asia(status: dict) -> dict[str, pd.Series]:
     if "MY_EXPORTS" in series:
         der["MY_EXPORTS_YOY"] = (yoy(series["MY_EXPORTS"].rolling(3).sum()), "Malaysia exports, YoY (3-month sum)",
                                  "DOSM via OpenDOSM (trade_sitc_1d), YoY calculated")
+    if "MY_IMPORTS" in series:
+        der["MY_IMPORTS_YOY"] = (yoy(series["MY_IMPORTS"].rolling(3).sum()), "Malaysia imports, YoY (3-month sum)",
+                                 "DOSM via OpenDOSM (trade_headline), YoY calculated")
+    for k, lab in (("MY_M2", "Malaysia M2 growth YoY"), ("MY_M3", "Malaysia M3 growth YoY")):
+        if k in series:
+            der[k + "_YOY"] = (yoy(series[k]), lab, "Bank Negara Malaysia via OpenDOSM (monetary_aggregates), YoY calculated")
     for sid, (s, label, src) in der.items():
         s = s.dropna()
         if len(s):
             grp = "Macro · Singapore" if sid.startswith("SG") else "Macro · Malaysia"
             out[sid] = dict(label=label, group=grp, kind="level", unit="%", source=src, **pack(s))
+    if "MY_TRADE_BAL" in series:   # RM -> RM bn, 3-month average to steady the monthly swings
+        b = (series["MY_TRADE_BAL"] / 1e9).dropna()
+        out["MY_TRADE_BAL"] = {**out["MY_TRADE_BAL"], "unit": "RM bn", **pack(b)}
+        out["MY_TRADE_BAL_3M"] = dict(label="Malaysia trade balance (3-month avg)", group="Macro · Malaysia", kind="level",
+                                      unit="RM bn", source="DOSM via OpenDOSM (trade_headline), 3-month average",
+                                      **pack(b.rolling(3).mean().dropna()))
     write("asia.json", out)
     return series

@@ -25,6 +25,7 @@ YAHOO = [
     ("CAC",      "^FCHI",     "CAC 40",               "Equities · Europe",    "price", "pts"),
     ("UKX",      "^FTSE",     "FTSE 100",             "Equities · Europe",    "price", "pts"),
     ("NKY",      "^N225",     "Nikkei 225",           "Equities · Japan",     "price", "pts"),
+    ("TOPIX",    "1306.T",    "TOPIX (via 1306 ETF)", "Equities · Japan",     "price", "JPY"),
     ("AS51",     "^AXJO",     "ASX 200",              "Equities · Australia", "price", "pts"),
     # Equities - Asia / EM
     ("CSI300",   "510300.SS", "CSI 300 (510300 ETF)", "Equities · China/HK",  "price", "CNY"),
@@ -35,6 +36,8 @@ YAHOO = [
     ("STI",      "^STI",      "Straits Times",        "Equities · ASEAN",     "price", "pts"),
     ("KLCI",     "^KLSE",     "FBM KLCI",             "Equities · ASEAN",     "price", "pts"),
     ("JCI",      "^JKSE",     "Jakarta Composite",    "Equities · ASEAN",     "price", "pts"),
+    ("THD",      "THD",       "Thailand (MSCI ETF, USD)",    "Equities · ASEAN", "price", "USD"),
+    ("EPHE",     "EPHE",      "Philippines (MSCI ETF, USD)", "Equities · ASEAN", "price", "USD"),
     ("KOSPI",    "^KS11",     "KOSPI",                "Equities · N. Asia",   "price", "pts"),
     ("TWSE",     "^TWII",     "Taiwan Weighted",      "Equities · N. Asia",   "price", "pts"),
     ("NIFTY",    "^NSEI",     "Nifty 50",             "Equities · India",     "price", "pts"),

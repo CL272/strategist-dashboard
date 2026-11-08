@@ -37,8 +37,28 @@ KEI = [
     ("JP_WAGES_YOY","JPN", "H_EARN", "GR", None,  "GY", "Japan hourly earnings YoY",        "%",   "Macro · Japan"),
     ("JP_RETAIL_YOY","JPN","TOVM",   "GR", None,  "GY", "Japan retail sales volume YoY",    "%",   "Macro · Japan"),
     ("JP_EXP_YOY",  "JPN", "EX",     "GR", "_T",  "GY", "Japan exports YoY (USD, SA)",      "%",   "Macro · Japan"),
+    # Korea, India, Indonesia, Australia (OECD Main Economic Indicators)
+    ("KR_CPI_YOY",  "KOR", "CP",     "GR", None,  "GY", "Korea CPI YoY",                    "%",   "Macro · Korea"),
+    ("KR_EXP_YOY",  "KOR", "EX",     "GR", "_T",  "GY", "Korea exports YoY (USD, SA)",      "%",   "Macro · Korea"),
+    ("KR_IP_YOY",   "KOR", "PRVM",   "GR", "BTE", "GY", "Korea industrial production YoY",  "%",   "Macro · Korea"),
+    ("KR_UNEMP",    "KOR", "UNEMP",  "PT_LF", None, None, "Korea unemployment rate",        "%",   "Macro · Korea"),
+    ("KR_BCI",      "KOR", "BCICP",  "PB", None,  None, "Korea business confidence",        "idx", "Macro · Korea"),
+    ("KR_10Y",      "KOR", "IRLT",   "PA", None,  None, "Korea 10Y government bond yield",  "%",   "Rates · Korea"),
+    ("KR_3M",       "KOR", "IR3TIB", "PA", None,  None, "Korea 3M interbank rate",          "%",   "Rates · Korea"),
+    ("IN_CPI_YOY",  "IND", "CP",     "GR", None,  "GY", "India CPI YoY",                    "%",   "Macro · India"),
+    ("IN_EXP_YOY",  "IND", "EX",     "GR", "_T",  "GY", "India exports YoY (USD, SA)",      "%",   "Macro · India"),
+    ("IN_IP_YOY",   "IND", "PRVM",   "GR", "BTE", "GY", "India industrial production YoY",  "%",   "Macro · India"),
+    ("IN_10Y",      "IND", "IRLT",   "PA", None,  None, "India 10Y government bond yield",  "%",   "Rates · India"),
+    ("IN_3M",       "IND", "IR3TIB", "PA", None,  None, "India 3M interbank rate",          "%",   "Rates · India"),
+    ("ID_CPI_YOY",  "IDN", "CP",     "GR", None,  "GY", "Indonesia CPI YoY",                "%",   "Macro · Indonesia"),
+    ("ID_EXP_YOY",  "IDN", "EX",     "GR", "_T",  "GY", "Indonesia exports YoY (USD, SA)",  "%",   "Macro · Indonesia"),
+    ("ID_IP_YOY",   "IDN", "PRVM",   "GR", "C",   "GY", "Indonesia manufacturing output YoY", "%", "Macro · Indonesia"),
+    ("ID_CCI",      "IDN", "CCICP",  "PB", None,  None, "Indonesia consumer confidence",    "idx", "Macro · Indonesia"),
+    ("AU_EXP_YOY",  "AUS", "EX",     "GR", "_T",  "GY", "Australia exports YoY (USD, SA)",  "%",   "Macro · Australia"),
+    ("AU_CCI",      "AUS", "CCICP",  "PB", None,  None, "Australia consumer confidence",    "idx", "Macro · Australia"),
 ]
-CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India"}
+CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
+             "AUS": "Australia", "IDN": "Indonesia"}
 
 # Bank of Japan: (id, db, code, label, unit, group)
 BOJ_SERIES = [
@@ -230,7 +250,7 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
     out: dict[str, tuple[pd.Series, dict]] = {}
     print("Asia: China & Japan (OECD)")
     measures = "+".join(sorted({m for _, _, m, *_ in KEI}))
-    kei = oecd_frame("OECD.SDD.STES,DSD_KEI@DF_KEI,", f"CHN+JPN.M.{measures}....")
+    kei = oecd_frame("OECD.SDD.STES,DSD_KEI@DF_KEI,", f"{'+'.join(sorted({a for _, a, *_ in KEI}))}.M.{measures}....")
     for sid, area, meas, unit, act, tr, label, uout, group in KEI:
         s = _pick(kei, area, meas, unit, act, tr) if kei is not None else None
         if s is not None and len(s) > 12:

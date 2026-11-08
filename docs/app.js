@@ -111,7 +111,14 @@ function pearson(a, b) {
 function makeCard(parent, o) {
   const c = { ...o, inst: null, csv: null };
   const tools = el('div', { class: 'card-tools' });
-  if (o.seg) {
+  if (o.seg && o.seg.select) {   // compact drop-down (e.g. currency choice)
+    const sel = el('select', { class: 'mini-select', 'aria-label': o.seg.label || 'Option', title: o.seg.label || '' });
+    for (const [val, lab] of o.seg.options) sel.append(el('option', { value: val, text: lab }));
+    sel.value = state[o.seg.key];
+    sel.addEventListener('change', () => { state[o.seg.key] = sel.value; (o.seg.onchange || c.render)(); });
+    c.segSel = sel;
+    tools.append(o.seg.prefix ? el('label', { class: 'mini-label' }, el('span', { class: 'muted small', text: o.seg.prefix }), sel) : sel);
+  } else if (o.seg) {
     const seg = el('div', { class: 'seg', role: 'group' });
     for (const [val, lab] of o.seg.options) {
       const b = el('button', { type: 'button', text: lab, class: val === state[o.seg.key] ? 'on' : '' });
@@ -124,7 +131,8 @@ function makeCard(parent, o) {
     }
     tools.append(seg);
   }
-  tools.append(
+  c.yBtn = el('button', { class: 'ghost', type: 'button', text: '↕ Y', title: 'Set the y-axis range by hand', onclick: () => toggleYPanel(c) });
+  tools.append(c.yBtn,
     el('button', { class: 'ghost', type: 'button', text: '⤢', title: 'Focus (enlarge for screenshots)', onclick: () => { c.root.classList.toggle('focus'); setTimeout(() => c.inst && c.inst.resize(), 0); } }),
     el('button', { class: 'ghost', type: 'button', text: 'PNG', title: 'Download chart as image', onclick: () => exportPNG(c) }),
     el('button', { class: 'ghost', type: 'button', text: 'CSV', title: 'Download chart data', onclick: () => c.csv && downloadCSV(c.csv, c.title) }),
@@ -138,8 +146,8 @@ function makeCard(parent, o) {
   c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = follow the top date bar
   c.rangeEl = o.range === false ? null : buildCardRange(c);
   c.root = el('div', { class: 'card' + (o.wide ? ' wide' : '') + (o.tall ? ' tall' : '') },
-    el('div', { class: 'card-head' }, el('div', {}, c.titleEl, c.subEl), tools),
-    c.chartEl, c.emptyEl, c.rangeEl, c.noteEl, c.srcEl);
+    el('div', { class: 'card-head' }, el('div', {}, c.titleEl), tools), c.subEl,
+    c.chartEl, c.emptyEl, c.yPanel = el('div', { class: 'y-panel', hidden: true }), c.rangeEl, c.noteEl, c.srcEl);
   parent.append(c.root);
   setSource(c, o.source || '');
   c.render = () => {
@@ -147,12 +155,68 @@ function makeCard(parent, o) {
     if (c.range) [state.from, state.to] = resolveRange(c.range);
     if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
-    try { o.render(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
+    try { o.render(c); applyYRange(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
     finally { [state.from, state.to] = keep; }
+    c.yBtn.hidden = !valueAxes(c).length;
     if (c.rangeEl) syncCardRange(c);
   };
   cards[o.key] = c;
   return c;
+}
+// ---- y-axis: hand-set min / max per axis (left, right), kept until reset
+function valueAxes(c) {   // [{i, name, extent:[lo,hi]}] for the chart's numeric y axes
+  if (!c.inst || c.chartEl.hidden) return [];
+  const opt = c.inst.getOption(), out = [];
+  (opt.yAxis || []).forEach((ax, i) => {
+    if (ax.type !== 'value') return;
+    let ext = null;
+    try { ext = c.inst.getModel().getComponent('yAxis', i).axis.scale.getExtent(); } catch (e) { /* not drawn yet */ }
+    const name = (opt.yAxis.length > 1 ? (ax.position === 'right' ? 'Right' : i === 0 ? 'Left' : 'Lower') : 'Y') + ' axis';
+    out.push({ i, name, ext });
+  });
+  return out;
+}
+function applyYRange(c) {
+  if (!c.yRange || !c.inst || c.chartEl.hidden) return;
+  const n = (c.inst.getOption().yAxis || []).length;
+  const patch = [];
+  for (let i = 0; i < n; i++) {
+    const r = c.yRange[i];
+    const q = {}; if (r && r.min != null) q.min = r.min; if (r && r.max != null) q.max = r.max;
+    patch.push(q);
+  }
+  c.inst.setOption({ yAxis: patch });
+  c.yBtn.classList.toggle('on', Object.values(c.yRange).some(r => r && (r.min != null || r.max != null)));
+}
+function toggleYPanel(c) {
+  if (!c.yPanel.hidden) { c.yPanel.hidden = true; return; }
+  const axes = valueAxes(c);
+  c.yPanel.replaceChildren();
+  if (!axes.length) { c.yPanel.append(el('span', { class: 'muted small', text: 'This view has no numeric y-axis to adjust.' })); c.yPanel.hidden = false; return; }
+  const inputs = [];
+  const dec = v => Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 1 ? 2 : 4;
+  for (const a of axes) {
+    const cur = (c.yRange && c.yRange[a.i]) || {};
+    const lo = el('input', { type: 'number', step: 'any', 'aria-label': a.name + ' minimum', placeholder: a.ext ? (+a.ext[0].toFixed(dec(a.ext[0]))).toString() : 'auto' });
+    const hi = el('input', { type: 'number', step: 'any', 'aria-label': a.name + ' maximum', placeholder: a.ext ? (+a.ext[1].toFixed(dec(a.ext[1]))).toString() : 'auto' });
+    if (cur.min != null) lo.value = cur.min; if (cur.max != null) hi.value = cur.max;
+    inputs.push([a.i, lo, hi]);
+    c.yPanel.append(el('span', { class: 'y-axis' }, el('b', { class: 'small', text: a.name }), el('span', { class: 'muted small', text: 'min' }), lo, el('span', { class: 'muted small', text: 'max' }), hi));
+  }
+  const apply = () => {
+    c.yRange = {};
+    for (const [i, lo, hi] of inputs) {
+      const a = lo.value === '' ? null : +lo.value, b = hi.value === '' ? null : +hi.value;
+      if (a != null && b != null && a >= b) continue;
+      c.yRange[i] = { min: a, max: b };
+    }
+    c.render();
+  };
+  inputs.forEach(([, lo, hi]) => [lo, hi].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') apply(); })));
+  c.yPanel.append(el('button', { type: 'button', text: 'Apply', onclick: apply }),
+    el('button', { type: 'button', class: 'ghost', text: 'Auto', title: 'Back to automatic scaling', onclick: () => { c.yRange = null; c.yBtn.classList.remove('on'); c.yPanel.hidden = true; c.render(); } }),
+    el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range.' }));
+  c.yPanel.hidden = false;
 }
 function setSource(c, txt) { c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; }
 function srcOf(ids) {   // merge "Provider (detail)" sources: Yahoo Finance (A), Yahoo Finance (B) -> Yahoo Finance (A, B)
@@ -160,7 +224,7 @@ function srcOf(ids) {   // merge "Provider (detail)" sources: Yahoo Finance (A),
   for (const id of ids) {
     const src = S[id] && S[id].source; if (!src) continue;
     const m = src.match(/^(.*?)\s*\((.*)\)\s*(.*)$/);
-    const prov = m ? m[1] + (m[3] ? ' ' + m[3] : '') : src, det = m ? m[2] : '';
+    const prov = m ? m[1] + (m[3] ? (/^[,;.]/.test(m[3]) ? '' : ' ') + m[3] : '') : src, det = m ? m[2] : '';
     if (!by.has(prov)) by.set(prov, []);
     if (det && !by.get(prov).includes(det)) by.get(prov).push(det);
   }
@@ -260,7 +324,7 @@ function tipFormatter(fmt) {
 }
 // direct end-labels for 2-4 line series
 function withEndLabels(series) {
-  if (series.length < 2 || series.length > 4) return 0;
+  if (series.length < 2 || series.length > 4 || series.some(s => s.name.length > 26)) return 0;
   let maxLen = 0;
   for (const s of series) {
     s.endLabel = { show: true, formatter: p => p.seriesName, color: tok('--ink-2'), fontSize: 11, distance: 6 };
@@ -277,12 +341,13 @@ function drawPair(c, A, B, { fmtA, fmtB, axisA, axisB, zeroA = false, zeroB = fa
   if (zeroA) sa.markLine = zeroLine();
   if (zeroB) sb.markLine = zeroLine();
   const tint = (axis, color) => { axis.axisLabel = { ...axis.axisLabel, color }; axis.axisLine = { show: true, lineStyle: { color, width: 2 } }; return axis; };
+  const top = 12 + 22 * legendRows(c, [A.name, B.name]);
   if (overlay) {
-    o.grid = { left: 8, right: 8, top: 34, bottom: 8, containLabel: true };
+    o.grid = { left: 8, right: 8, top, bottom: 8, containLabel: true };
     o.xAxis = timeAxis();
     o.yAxis = [tint(valAxis(axisA), ca), tint(valAxis(axisB, { position: 'right', splitLine: { show: false } }), cb)];
   } else {
-    o.grid = [{ left: 8, right: 16, top: 34, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
+    o.grid = [{ left: 8, right: 16, top, height: '40%', containLabel: true }, { left: 8, right: 16, top: '58%', bottom: 8, containLabel: true }];
     o.axisPointer = { link: [{ xAxisIndex: 'all' }] };
     o.xAxis = [timeAxis({ gridIndex: 0, axisLabel: { show: false } }), timeAxis({ gridIndex: 1 })];
     o.yAxis = [valAxis(axisA, { gridIndex: 0 }), valAxis(axisB, { gridIndex: 1 })];
@@ -316,7 +381,21 @@ function setZoomable(c, o) {
     setTimeout(() => c.render(), 0);
   });
 }
+function legendRows(c, names) {   // how many lines the legend wraps onto at this card width
+  const w = (c.chartEl.clientWidth || 600) - 16; let rows = 1, x = 0;
+  for (const n of names) { const iw = n.length * 6.6 + 30; if (x > 0 && x + iw > w) { rows++; x = iw; } else x += iw; }
+  return rows;
+}
+function endsTooClose(list) {   // end labels collide when the last values sit close together
+  const last = list.map(s => s.data.length ? s.data[s.data.length - 1][1] : null).filter(v => v != null);
+  const all = list.flatMap(s => s.data.map(p => p[1])).filter(v => v != null);
+  if (last.length < 2 || !all.length) return false;
+  const span = Math.max(...all) - Math.min(...all) || 1;
+  last.sort((a, b) => a - b);
+  return last.some((v, i) => i > 0 && (v - last[i - 1]) / span < 0.07);
+}
 function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null } = {}) {
+  if (endLabels && endsTooClose(list)) endLabels = false;
   const series = list.map((s, i) => line(s.name, s.data, s.color || col(i), s.extra || {}));
   if ((zero || hlines.length) && series.length) {
     const ml = zeroLine();
@@ -333,7 +412,7 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   const pad = endLabels ? withEndLabels(series) : 0;
   o.grid.right = 16 + pad;
   o.legend.show = series.length > 1;
-  o.grid.top = series.length > 1 ? 34 : 14;
+  o.grid.top = series.length > 1 ? 12 + 22 * legendRows(c, list.map(s => s.name)) : 14;
   o.tooltip.formatter = tipFormatter(fmt);
   o.xAxis = timeAxis();
   o.yAxis = valAxis(axisFmt || (v => fmtNum(v, autoDec(v))), yExtra);
@@ -512,17 +591,64 @@ function renderCredit(c) {
     setNote(c, `FRED keeps only 3 years of ICE BofA spreads. This dashboard archives them from ${nice(S.HY_OAS_BP.t[0])} onwards; use Long history for stress comparisons with 2008 or 2020.`);
   }
 }
+// stress thresholds from the earlier Streamlit version (legacy/pages/01_liquidity.py)
+const SCARCITY = {
+  RES_GDP: { band: [10, 11], name: 'Waller band', who: 'Fed Governor Waller: reserves of about 10–11% of GDP mark the edge of "ample" (2025 speeches)' },
+  RES_ASSETS: { band: [8.5, 9], name: 'Acharya threshold', who: 'Acharya et al. (NY Fed / NYU, 2022–24): repo and funding spreads start to react when reserves fall to about 8.5–9% of bank assets' },
+};
+function scarcityStatus(v, [lo, hi]) { return v > hi ? ['ample', '--good'] : v >= lo ? ['approaching scarcity', '--serious'] : ['scarce', '--critical']; }
+state.m2Mode = 'spx';
+function monthlyYoY(s) {   // month-end values -> YoY % series stamped at month start
+  const me = monthEnds(s), keys = [...me.keys()].sort((a, b) => a - b), t = [], v = [];
+  for (const k of keys) { const p = me.get(addMonths(k, -12)); if (p) { t.push(k); v.push((me.get(k) / p - 1) * 100); } }
+  return { t, v };
+}
+let spxYoY = null;
+function renderM2(c) {
+  if (!has('M2_YOY')) return setEmpty(c, NO_FRED);
+  const pct = v => fmtNum(v, 1) + '%';
+  if (state.m2Mode === 'm2' || !has('SPX')) {
+    c.subEl.textContent = 'Year-on-year %, monthly.';
+    setSource(c, 'Federal Reserve via FRED (M2SL); YoY calculated');
+    return simple(['M2_YOY'], pct, pct, { zero: true })(c);
+  }
+  const base = has('LH_SPX') ? S.LH_SPX : S.SPX;
+  spxYoY = spxYoY || { ...monthlyYoY(base), label: 'S&P 500 YoY', unit: '%', kind: 'level' };
+  const lag = state.m2Mode === 'lead' ? 6 : 0;
+  const m2 = S.M2_YOY, shifted = lag ? { t: m2.t.map(t => addMonths(t, lag)), v: m2.v } : m2;
+  drawPair(c, { name: lag ? 'M2 YoY, moved forward 6 months' : 'M2 YoY', data: pts(shifted, state.from, state.to + lag * 31 * DAY) },
+    { name: 'S&P 500 YoY (price)', data: pts(spxYoY, state.from, state.to) }, { fmtA: pct, fmtB: pct, axisA: pct, axisB: pct, zeroA: true, zeroB: true });
+  if (lag) inst(c).setOption({ xAxis: c.pairMode === 'stack' ? [{ max: state.to + lag * 31 * DAY }, { max: state.to + lag * 31 * DAY }] : { max: state.to + lag * 31 * DAY } });
+  c.subEl.textContent = lag ? 'M2 growth shifted 6 months ahead, to test whether money growth leads equity returns. Left axis M2, right axis S&P 500, both YoY %.'
+    : 'Year-on-year %, monthly: money supply growth (left axis) against S&P 500 price change (right axis).';
+  setSource(c, 'Federal Reserve via FRED (M2SL); S&P 500 from Yahoo Finance (^GSPC); YoY calculated');
+  // correlation of the two monthly YoY series over the visible range
+  const a = [], b = [];
+  for (let i = 0; i < shifted.t.length; i++) { const t = shifted.t[i]; if (t < state.from || t > state.to) continue; const j = idxLE(spxYoY, t); if (j >= 0 && spxYoY.t[j] === t) { a.push(shifted.v[i]); b.push(spxYoY.v[j]); } }
+  const r = pearson(a, b), la = asOf(m2, state.to), lb = asOf(spxYoY, state.to);
+  setNote(c, `Latest: M2 ${la ? pct(la.v) : '–'} YoY (${la ? monthLab(la.t) : ''}), S&P 500 ${lb ? sign(lb.v) + fmtNum(Math.abs(lb.v), 1) + '%' : '–'} YoY.` +
+    (r != null ? ` Correlation over this range${lag ? ' with the 6-month lead' : ''}: ${fmtCorr(r)} (${a.length} months). ` : ' ') +
+    'Faster money growth tends to support asset prices, but the link is loose and changes over time; the 2020–22 surge and contraction is the extreme case.');
+}
 function renderScarcity(c) {
   const ids = ['RES_GDP', 'RES_ASSETS'].filter(id => has(id));
   if (!ids.length) return setEmpty(c, NO_FRED);
-  drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
-    { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%' });
+  const list = ids.map((id, i) => {
+    const color = col(i), { band, name } = SCARCITY[id];
+    return { name: S[id].label, data: pts(S[id], state.from, state.to), color, extra: {
+      markArea: { silent: true, itemStyle: { color: hexA(color, 0.14) }, data: [[{ yAxis: band[0], name: `${name} ${band[0]}–${band[1]}%`,
+        label: { color, fontSize: 11, position: 'insideLeft', fontWeight: 600 } }, { yAxis: band[1] }]] } } };
+  });
+  const lowest = Math.min(...ids.map(id => SCARCITY[id].band[0]));
+  drawLines(c, list, { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', yExtra: { min: v => Math.floor(Math.min(v.min, lowest - 0.5)) } });
   const parts = ids.map(id => {
     const s = S[id], a = asOf(s, state.to); if (!a) return '';
+    const { band, name } = SCARCITY[id], [st] = scarcityStatus(a.v, band);
     const hist = s.v.slice(0, a.i + 1).filter(x => x != null), below = hist.filter(x => x <= a.v).length;
-    return `${s.label} ${fmtNum(a.v, 1)}% (${Math.round(below / hist.length * 100)}th percentile since ${new Date(s.t[0]).getUTCFullYear()})`;
+    const where = a.v > band[1] ? fmtNum(a.v - band[1], 1) + ' pts above' : a.v >= band[0] ? 'inside' : fmtNum(band[0] - a.v, 1) + ' pts below';
+    return `${s.label} ${fmtNum(a.v, 1)}%: ${st.toUpperCase()} (${where} the ${name} of ${band[0]}–${band[1]}%; ${Math.round(below / hist.length * 100)}th percentile since ${new Date(s.t[0]).getUTCFullYear()})`;
   }).filter(Boolean);
-  setNote(c, parts.join(' · '));
+  setNote(c, parts.join(' · ') + '. Shaded bands = where stress starts: above the band reserves are ample, inside it they are approaching scarcity, below it they are scarce. ' + ids.map(id => SCARCITY[id].who).join('. ') + '.');
 }
 function renderRates(c) {
   if (state.ratesMode === 'curve') {
@@ -545,12 +671,12 @@ function buildLiquidity() {
   makeCard(g, { key: 'credit', title: 'Credit spreads', source: 'FRED (ICE BofA, Moody\'s)',
     seg: { key: 'creditMode', options: [['us', 'US'], ['global', 'Global'], ['long', 'Long history']] }, render: renderCredit });
   makeCard(g, { key: 'scarcity', title: 'Reserve scarcity', source: 'FRED (WRESBAL, GDP, TLAACBW027SBOG)',
-    sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets. When these ratios fall, reserves move from abundant towards scarce, and repo spreads (above) tend to react.',
+    sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets, with the levels where stress starts shaded. Into the bands, reserves move from ample towards scarce and repo spreads (above) tend to react.',
     render: renderScarcity });
   makeCard(g, { key: 'nfci', title: 'Chicago Fed financial conditions (NFCI)', sub: 'Weekly. Below zero = looser than the long-run average.', source: 'FRED (NFCI)',
     render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 2), { zero: true }) });
-  makeCard(g, { key: 'm2', title: 'US M2 money supply growth', sub: 'Year-on-year %, monthly.', source: 'FRED (M2SL)',
-    render: simple(['M2_YOY'], v => fmtNum(v, 1) + '%', v => fmtNum(v, 1) + '%', { zero: true }) });
+  makeCard(g, { key: 'm2', title: 'US M2 vs S&P 500', source: 'FRED (M2SL); Yahoo Finance (^GSPC)',
+    seg: { key: 'm2Mode', options: [['spx', 'vs S&P'], ['lead', '6m lead'], ['m2', 'M2']] }, render: renderM2 });
   makeCard(g, { key: 'rates', title: 'US Treasury yields', source: 'FRED',
     seg: { key: 'ratesMode', options: [['yields', 'Yields'], ['curve', 'Curve']] }, render: renderRates });
 }
@@ -560,11 +686,15 @@ function renderLiquidity() {
 }
 
 // ------------------------------------------------------------------ OVERVIEW (Strategist View)
-const LOCAL_CCY = { SX5E: 'EUR', DAX: 'EUR', CAC: 'EUR', UKX: 'GBP', NKY: 'JPY', AS51: 'AUD', CSI300: 'CNY', SHCOMP: 'CNY',
+const LOCAL_CCY = { SX5E: 'EUR', DAX: 'EUR', CAC: 'EUR', UKX: 'GBP', NKY: 'JPY', TOPIX: 'JPY', AS51: 'AUD', CSI300: 'CNY', SHCOMP: 'CNY',
   HSI: 'HKD', HSCEI: 'HKD', STI: 'SGD', KLCI: 'MYR', JCI: 'IDR', KOSPI: 'KRW', TWSE: 'TWD', NIFTY: 'INR', IBOV: 'BRL' };
 const USD_PER = { EUR: ['EURUSD', 1], GBP: ['GBPUSD', 1], AUD: ['AUDUSD', 1], JPY: ['USDJPY', -1], CNY: ['USDCNY', -1], HKD: ['USDHKD', -1],
-  SGD: ['USDSGD', -1], MYR: ['USDMYR', -1], IDR: ['USDIDR', -1], KRW: ['USDKRW', -1], TWD: ['USDTWD', -1], INR: ['USDINR', -1], BRL: ['USDBRL', -1] };
-const OV_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV'];
+  SGD: ['USDSGD', -1], MYR: ['USDMYR', -1], IDR: ['USDIDR', -1], KRW: ['USDKRW', -1], TWD: ['USDTWD', -1], INR: ['USDINR', -1], BRL: ['USDBRL', -1],
+  THB: ['USDTHB', -1], PHP: ['USDPHP', -1] };
+const CCY_CHOICES = [['local', 'Local currency'], ['USD', 'in USD'], ['SGD', 'in SGD'], ['MYR', 'in MYR'], ['EUR', 'in EUR'], ['GBP', 'in GBP'], ['JPY', 'in JPY'], ['AUD', 'in AUD']];
+// prices that can be re-expressed in another currency: equities, commodities, crypto and USD ETFs (not FX pairs, yields or vol)
+const convertible = id => S[id] && S[id].kind === 'price' && !/^FX/.test(S[id].group || '') && S[id].unit !== 'USD tn';
+const OV_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'TOPIX', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV'];
 const OV_ROWS = [
   ['Equities', OV_EQ.concat(['EEM'])],
   ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'JGB10Y', 'EA10Y', 'CN_10Y', 'SGS10Y', 'SORA3M', 'HY_OAS', 'BAA_10Y']],
@@ -704,9 +834,10 @@ function renderWhere(c) {
   const scale = { price: [2, 4, 8, 10, 15], yield: [10, 25, 50, 60, 80], level: [2, 4, 6, 6, 8] };
   for (const [g, ids] of OV_ROWS) {
     const ok = ids.filter(id => has(id)); if (!ok.length) continue;
-    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: cols.length + 5, text: g + (g === 'Equities' && tgt !== 'local' ? ` · in ${tgt}` : '') })));
+    const conv = g === 'Equities' || g.startsWith('Commodities');
+    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: cols.length + 5, text: g + (conv && tgt !== 'local' ? ` · in ${tgt}` : '') })));
     for (const id of ok) {
-      const s0 = S[id], s = g === 'Equities' ? inCcy(id, tgt) : s0;
+      const s0 = S[id], s = conv && convertible(id) ? inCcy(id, tgt) : s0;
       const a = asOf(s, state.to); if (!a) continue;
       const tr = el('tr', { class: 'row', title: `${s0.source} · last ${nice(a.t)}` },
         el('td', { text: s0.label + (s !== s0 ? ` (${tgt})` : '') }),
@@ -731,7 +862,7 @@ function renderWhere(c) {
   }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = csv;
-  setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency.' : `Equities converted to ${tgt} at daily FX; ${tgt === 'SGD' ? 'STI is unchanged' : 'US indices are unchanged'}.`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
+  setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency, commodities and crypto in USD.' : `Equities, commodities and crypto converted to ${tgt} at daily FX (markets already priced in ${tgt} are unchanged).`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
 }
 function overviewKpis() {
   const box = $('#ovKpis'); box.replaceChildren();
@@ -796,11 +927,11 @@ function buildOverview() {
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
   makeCard(g, { key: 'fragile', range: false, title: 'Market stress gauges', sub: 'Market-priced stress gauges ranked against their own last 10 years. The full composite is on the Stress & Signposts page.', source: 'FRED, Yahoo Finance', render: renderFragile });
-  makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity returns as a USD or SGD investor.', source: 'Yahoo Finance, FRED',
-    seg: { key: 'ovCcy', options: [['local', 'Local'], ['USD', 'USD'], ['SGD', 'SGD']] }, render: renderWhere });
+  makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity and commodity returns as a USD, SGD, MYR, EUR, GBP, JPY or AUD investor.', source: 'Yahoo Finance, FRED',
+    seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
   for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "m2": "Federal Reserve via FRED (M2SL); YoY calculated", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
+const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
 function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
@@ -1431,22 +1562,130 @@ function regionKpis() {
     el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
   const yv = (id, label) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to); if (!a) return; const b = asOf(s, addMonths(a.t, -3));
     tile(label, fmtNum(a.v, 2) + '%', b ? `3M ${fmtChg(s, chg(s, b.v, a.v))}` : '', (s.source || '').split(' (')[0] + ' · ' + monthLab(a.t)); };
+  if (has('MY_OPR')) { const a = asOf(S.MY_OPR, state.to); tile('Malaysia OPR', fmtNum(a.v, 2) + '%', has('MY_CPI_YOY') ? `CPI ${fmtNum(asOf(S.MY_CPI_YOY, state.to).v, 1)}% YoY` : '', 'Bank Negara · ' + monthLab(a.t)); }
+  if (has('USDMYR')) { const s = S.USDMYR, a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -1)); tile('USD/MYR', fmtNum(a.v, 4), `1M ${fmtChg(s, chg(s, b.v, a.v))}`, 'Yahoo Finance · ' + nice(a.t)); }
+  if (has('KLCI')) { const s = S.KLCI, a = asOf(s, state.to), b = asOf(s, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)); tile('FBM KLCI', fmtNum(a.v, 0), b ? `YTD ${fmtChg(s, chg(s, b.v, a.v))}` : '', 'Yahoo Finance · ' + nice(a.t)); }
+  if (has('MY_LEADING')) { const y = yoyOf('MY_LEADING'), a = asOf(y, state.to); if (a) tile('Malaysia leading index', sign(a.v) + fmtNum(Math.abs(a.v), 1) + '% YoY', has('MY_LEAD_DIFF') ? `diffusion ${fmtNum(asOf(S.MY_LEAD_DIFF, state.to).v, 0)}%` : '', 'DOSM · ' + monthLab(a.t)); }
   yv('SORA3M', '3M compounded SORA'); yv('SGS10Y', 'SGS 10Y yield');
   if (has('UST10Y', 'SGS10Y')) { const g = asOf(S.SGS10Y, state.to), u = asOf(S.UST10Y, g.t + 31 * DAY); tile('UST − SGS 10Y', fmtNum((u.v - g.v) * 100, 0) + 'bp', 'US yield premium', 'month-end ' + monthLab(g.t)); }
   if (has('USDSGD')) { const s = S.USDSGD, a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -1)); tile('USD/SGD', fmtNum(a.v, 4), `1M ${fmtChg(s, chg(s, b.v, a.v))}`, 'Yahoo Finance · ' + nice(a.t)); }
   const sn = sneerProxy(); if (sn && sn.t.length > 30) { const i = idxLE(sn, state.to); const pace = (Math.pow(sn.v[i] / sn.v[i - 26], 2) - 1) * 100;
     tile('S$NEER proxy pace', sign(pace) + fmtNum(Math.abs(pace), 1) + '% a yr', '26-week change, annualised', 'dashboard estimate'); }
   if (has('SG_CORE_YOY')) { const a = asOf(S.SG_CORE_YOY, state.to); tile('MAS core inflation', fmtNum(a.v, 1) + '%', has('SG_CPI_YOY') ? `headline ${fmtNum(asOf(S.SG_CPI_YOY, state.to).v, 1)}%` : '', 'SingStat · ' + monthLab(a.t)); }
-  if (has('MY_OPR')) { const a = asOf(S.MY_OPR, state.to); tile('Malaysia OPR', fmtNum(a.v, 2) + '%', has('MY_CPI_YOY') ? `CPI ${fmtNum(asOf(S.MY_CPI_YOY, state.to).v, 1)}% YoY` : '', 'Bank Negara · ' + monthLab(a.t)); }
+  if (has('AU_CASH')) { const a = asOf(S.AU_CASH, state.to); tile('RBA cash rate', fmtNum(a.v, 2) + '%', has('AU_TRIM_YOY') ? `trimmed-mean CPI ${fmtNum(asOf(S.AU_TRIM_YOY, state.to).v, 1)}%` : '', 'RBA · ' + monthLab(a.t)); }
+  yv('AU_10Y', 'Australia 10Y yield');
 }
 function seriesCard(ids, fmt, axisFmt, opts = {}) {
   return c => { const ok = ids.filter(id => has(id)); if (!ok.length) return setEmpty(c, 'Waiting for data.');
     drawLines(c, ok.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })), { fmt, axisFmt, endLabels: ok.length < 3, ...opts });
     setSource(c, srcOf(ok)); if (opts.note) setNote(c, opts.note); };
 }
+const pct1 = v => fmtNum(v, 1) + '%', pct2 = v => fmtNum(v, 2) + '%', pct0 = v => fmtNum(v, 0) + '%';
+function yoyOf(id, k = 12) {   // YoY % of a monthly index series (cached)
+  const key = id + '_YOYc'; if (S[key]) return S[key];
+  const s = S[id], t = [], v = [];
+  for (let i = k; i < s.t.length; i++) if (s.v[i - k]) { t.push(s.t[i]); v.push((s.v[i] / s.v[i - k] - 1) * 100); }
+  return (S[key] = { ...s, id: key, label: s.label.replace(/ \(DOSM\)$/, '') + ' YoY', unit: '%', t, v });
+}
+// MYR against the currencies Malaysian clients care about: + = ringgit stronger
+const MYR_VS = [['USD', 'US dollar'], ['SGD', 'Singapore dollar'], ['EUR', 'Euro'], ['GBP', 'Pound'], ['JPY', 'Yen'], ['AUD', 'Australian dollar'], ['CNY', 'Chinese yuan']];
+function myrCross(ccy) {   // value of 1 MYR in ccy, daily
+  const key = 'MYR_IN_' + ccy; if (S[key]) return S[key];
+  const base = S.USDMYR, t = [], v = [];
+  if (!base) return null;
+  for (const x of base.t) { const a = usdPerUnit('MYR', x), b = usdPerUnit(ccy, x); if (a != null && b != null) { t.push(x); v.push(a / b); } }
+  return (S[key] = { id: key, label: `MYR in ${ccy}`, unit: ccy, kind: 'price', source: 'Cross rates calculated from Yahoo Finance (MYR=X and USD crosses)', t, v });
+}
+function renderMyrFx(c) {
+  if (!has('USDMYR')) return setEmpty(c, 'Waiting for FX data.');
+  const list = [];
+  MYR_VS.forEach(([ccy, name], i) => {
+    const s = ccy === 'USD' ? { t: S.USDMYR.t, v: S.USDMYR.v.map(x => 1 / x) } : myrCross(ccy); if (!s || !s.t.length) return;
+    const p = pts(s, state.from, state.to), b = asOf(s, state.from) || (p[0] && { v: p[0][1] }); if (!b) return;
+    list.push({ name: 'vs ' + name, data: p.map(([t, v]) => [t, v / b.v * 100]), color: col(i) });
+  });
+  drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100, label: '' }], endLabels: false });
+  const last = list.map(l => [l.name, l.data.length ? l.data[l.data.length - 1][1] - 100 : null]).filter(x => x[1] != null).sort((a, b) => b[1] - a[1]);
+  setNote(c, `Ringgit value in each currency, 100 on ${nice(state.from)}; up = MYR stronger. Over this range: ${last.map(([n, v]) => `${n.replace('vs ', '')} ${sign(v)}${fmtNum(Math.abs(v), 1)}%`).join(', ')}.`);
+  setSource(c, 'Yahoo Finance (MYR=X, SGD=X, EURUSD=X, GBPUSD=X, JPY=X, AUDUSD=X, CNY=X); cross rates calculated');
+}
+function renderMyrTable(c) {
+  if (!has('USDMYR')) return setEmpty(c, 'Waiting for FX data.');
+  const b = htmlBody(c);
+  const cols = [['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)], ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['1Y', t => addMonths(t, -12)]];
+  const tbl = el('table', { class: 'perf' }), hr = el('tr', {}, el('th', { text: 'Rate' }), el('th', { text: 'Last' }));
+  cols.forEach(([k]) => hr.append(el('th', { text: k }))); tbl.append(el('thead', {}, hr));
+  const tb = el('tbody'), csv = [['Rate', 'Last', ...cols.map(x => x[0])]], pos = tok('--pos'), neg = tok('--neg');
+  for (const [ccy] of MYR_VS) {
+    // quote as MYR per unit of foreign currency (how Malaysians read it), change shown as MYR strength
+    const s = ccy === 'USD' ? S.USDMYR : (() => { const x = myrCross(ccy); return x && { ...x, v: x.v.map(y => 1 / y) }; })();
+    if (!s || !s.t.length) continue;
+    const a = asOf(s, state.to); if (!a) continue;
+    const label = `${ccy}/MYR` + (ccy === 'JPY' ? ' (per 100)' : ''), mult = ccy === 'JPY' ? 100 : 1;
+    const tr = el('tr', { class: 'row' }, el('td', { text: label }), el('td', { text: fmtNum(a.v * mult, 4) })), row = [label, (a.v * mult).toFixed(4)];
+    for (const [, fn] of cols) {
+      const p = asOf(s, fn(a.t)), v = p ? (p.v / a.v - 1) * 100 : null;   // + = MYR stronger
+      tr.append(el('td', { class: 'heat', text: v == null ? '–' : sign(v) + fmtNum(Math.abs(v), 1) + '%', style: v ? `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / 5) * 0.42)}` : '' }));
+      row.push(v == null ? '' : v.toFixed(2));
+    }
+    tb.append(tr); csv.push(row);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = csv;
+  setNote(c, `Ringgit per unit of each currency, as of ${nice(state.to)}. Changes are MYR strength: green = the ringgit gained against that currency.`);
+}
+function renderAuDiff(c) {
+  if (!has('AU_2Y', 'UST2Y', 'AUDUSD')) return setEmpty(c, 'Waiting for data.');
+  const d = combine(S.AU_2Y, S.UST2Y, (a, b) => (a - b) * 100, {}, 5 * DAY);
+  drawPair(c, { name: 'Australia − US 2Y yield (bp)', data: pts(d, state.from, state.to) }, { name: 'AUD/USD', data: pts(S.AUDUSD, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 0) + 'bp', fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 2), zeroA: true });
+  const a = asOf(d, state.to);
+  setNote(c, `Short-rate gap between Australia and the US against the Aussie dollar. A wider gap in Australia's favour usually supports AUD.${a ? ` Latest gap ${sign(a.v)}${fmtNum(Math.abs(a.v), 0)}bp.` : ''}`);
+  setSource(c, 'Reserve Bank of Australia (F2, FCMYGBAG2D); US Treasury / FRED (2Y); Yahoo Finance (AUDUSD=X)');
+}
+function bandCard(ids, fmt, axisFmt, band, label) {   // lines plus a shaded target band
+  return c => {
+    seriesCard(ids, fmt, axisFmt, { zero: true })(c);
+    if (!c.inst || c.chartEl.hidden) return;
+    c.inst.setOption({ series: [{ markArea: { silent: true, itemStyle: { color: hexA(tok('--good'), 0.12) }, data: [[{ yAxis: band[0], name: label, label: { color: tok('--muted'), fontSize: 11, position: 'insideTopLeft' } }, { yAxis: band[1] }]] } }] });
+  };
+}
+const segCard = (key, modes) => c => {   // modes: {mode: [ids, sub, {opts}]}
+  const [ids, sub, opts = {}] = modes[state[key]];
+  c.subEl.textContent = sub; seriesCard(ids, opts.fmt || pct1, opts.axisFmt || pct0, { zero: opts.zero !== false, ...opts })(c);
+};
 function buildAsia() {
   const g = $('#asiaGrid');
-  const pct2 = v => fmtNum(v, 2) + '%', pct1 = v => fmtNum(v, 1) + '%';
+  // ---------------- Malaysia
+  g.append(el('h3', { class: 'section', text: 'Malaysia' }));
+  makeCard(g, { key: 'myrfx', title: 'Ringgit vs major currencies', wide: true, sub: 'MYR against USD, SGD, EUR, GBP, JPY, AUD and CNY.', render: renderMyrFx });
+  makeCard(g, { key: 'myrtbl', title: 'Ringgit cross rates', range: false, sub: 'MYR per unit of each currency, and how far the ringgit has moved.', source: 'Yahoo Finance (MYR=X and USD crosses); cross rates calculated', render: renderMyrTable });
+  makeCard(g, { key: 'myrates', title: 'Malaysia: OPR and inflation', sub: 'Overnight Policy Rate and CPI (headline and core), year-on-year %.', render: seriesCard(['MY_OPR', 'MY_CPI_YOY', 'MY_CORE_YOY'], pct2, pct1, { zero: true }) });
+  makeCard(g, { key: 'mylend', title: 'Malaysia: bank lending and deposit rates', sub: 'Commercial banks, weighted averages, against the OPR.', render: seriesCard(['MY_OPR', 'MY_BR', 'MY_ALR', 'MY_FD12'], pct2, pct1, { endLabels: false }) });
+  state.myLead = 'yoy';
+  makeCard(g, { key: 'mylead', title: 'Malaysia: leading indicators (DOSM)', seg: { key: 'myLead', options: [['yoy', 'Growth'], ['level', 'Index'], ['diff', 'Diffusion']] },
+    render: c => {
+      const m = state.myLead;
+      if (m === 'diff') { c.subEl.textContent = 'Share of leading-index components rising, %. Above 50 = broad improvement.';
+        seriesCard(['MY_LEAD_DIFF'], pct0, pct0)(c); if (c.inst && !c.chartEl.hidden) c.inst.setOption({ series: [{ markLine: { silent: true, symbol: 'none', data: [{ yAxis: 50, lineStyle: { color: tok('--muted'), type: 'dashed' }, label: { formatter: '50', color: tok('--muted') } }] } }] }); return; }
+      if (m === 'level') { c.subEl.textContent = 'Leading, coincident and lagging indices (2015 = 100).'; return seriesCard(['MY_LEADING', 'MY_COINCIDENT', 'MY_LAGGING'], v => fmtNum(v, 1), v => fmtNum(v, 0))(c); }
+      c.subEl.textContent = 'Year-on-year %. The leading index tends to turn about 4–6 months before the economy (coincident index).';
+      if (!has('MY_LEADING', 'MY_COINCIDENT')) return setEmpty(c, 'Waiting for data.');
+      const A = yoyOf('MY_LEADING'), B = yoyOf('MY_COINCIDENT');
+      drawLines(c, [{ name: 'Leading index YoY', data: pts(A, state.from, state.to) }, { name: 'Coincident index YoY', data: pts(B, state.from, state.to) }], { fmt: pct1, axisFmt: pct0, zero: true });
+      setSource(c, 'DOSM via OpenDOSM (economic_indicators); YoY calculated');
+    } });
+  state.myMode = 'infl';
+  makeCard(g, { key: 'mygrowth', title: 'Malaysia: activity', seg: { key: 'myMode', options: [['infl', 'Production'], ['retail', 'Retail'], ['gdp', 'GDP'], ['jobs', 'Jobs']] },
+    render: segCard('myMode', { infl: [['MY_IPI_YOY'], 'Industrial production, year-on-year %.'], retail: [['MY_RETAIL_YOY'], 'Wholesale & retail trade volume, year-on-year %.'],
+      gdp: [['MY_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'], jobs: [['MY_UNEMP'], 'Unemployment rate, monthly.', { zero: false, fmt: pct1, axisFmt: pct1 }] }) });
+  state.myTrade = 'growth';
+  makeCard(g, { key: 'mytrade', title: 'Malaysia: trade', seg: { key: 'myTrade', options: [['growth', 'Exports & imports'], ['bal', 'Trade balance']] },
+    render: segCard('myTrade', { growth: [['MY_EXPORTS_YOY', 'MY_IMPORTS_YOY'], 'Year-on-year % of 3-month sums (RM).'],
+      bal: [['MY_TRADE_BAL', 'MY_TRADE_BAL_3M'], 'Exports minus imports, RM billion: monthly and 3-month average.', { fmt: v => 'RM ' + fmtNum(v, 1) + 'bn', axisFmt: v => fmtNum(v, 0) }] }) });
+  makeCard(g, { key: 'myprices', title: 'Malaysia: price pressure', sub: 'Consumer and producer prices, year-on-year %.', render: seriesCard(['MY_CPI_YOY', 'MY_CORE_YOY', 'MY_PPI_YOY'], pct1, pct0, { zero: true }) });
+  makeCard(g, { key: 'mymoney', title: 'Malaysia: money supply', sub: 'Broad money (M2, M3), year-on-year %.', render: seriesCard(['MY_M2_YOY', 'MY_M3_YOY'], pct1, pct0, { zero: true }) });
+  // ---------------- Singapore
   g.append(el('h3', { class: 'section', text: 'Singapore' }));
   makeCard(g, { key: 'sgrates', title: 'Singapore rates', sub: 'SORA, 3M compounded SORA and SGS yields, monthly (end of period).', render: seriesCard(['SORA', 'SORA3M', 'SGS2Y', 'SGS10Y'], pct2, pct1) });
   makeCard(g, { key: 'sgust', title: 'SGS vs US Treasury 10Y', sub: 'Singapore government 10Y (monthly) against UST 10Y (daily).', render: c => {
@@ -1458,27 +1697,44 @@ function buildAsia() {
     source: 'Dashboard estimate from Yahoo Finance FX (SGD=X, CNY=X, MYR=X, EURUSD=X, TWD=X, JPY=X, IDR=X, KRW=X, HKD=X, THB=X, INR=X, AUDUSD=X, PHP=X, GBPUSD=X)', render: renderSneer });
   makeCard(g, { key: 'sginfl', title: 'Singapore inflation', sub: 'Headline CPI and MAS core inflation, year-on-year %.', render: seriesCard(['SG_CPI_YOY', 'SG_CORE_YOY'], pct1, pct1, { zero: true }) });
   makeCard(g, { key: 'sggrowth', title: 'Singapore activity', seg: { key: 'sgGrowth', options: [['nodx', 'NODX'], ['gdp', 'GDP'], ['jobs', 'Unemployment']] },
-    render: c => {
-      const m = { nodx: [['SG_NODX_YOY', 'SG_NODX_CN_YOY', 'SG_NODX_US_YOY'], 'Non-oil domestic exports, YoY % of 3-month sums: total, to China, to the US.'],
-        gdp: [['SG_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'], jobs: [['SG_UNEMP'], 'Unemployment rate, seasonally adjusted (quarterly).'] }[state.sgGrowth];
-      c.subEl.textContent = m[1]; seriesCard(m[0], pct1, v => fmtNum(v, 0) + '%', { zero: state.sgGrowth !== 'jobs' })(c); } });
+    render: segCard('sgGrowth', { nodx: [['SG_NODX_YOY', 'SG_NODX_CN_YOY', 'SG_NODX_US_YOY'], 'Non-oil domestic exports, YoY % of 3-month sums: total, to China, to the US.'],
+      gdp: [['SG_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'], jobs: [['SG_UNEMP'], 'Unemployment rate, seasonally adjusted (quarterly).', { zero: false, fmt: pct1, axisFmt: pct1 }] }) });
+  // ---------------- Australia
+  g.append(el('h3', { class: 'section', text: 'Australia' }));
+  makeCard(g, { key: 'aurates', title: 'Australia: RBA cash rate and bond yields', sub: 'Cash rate target, 3M bank bills, 2Y and 10Y government bonds.', render: seriesCard(['AU_CASH', 'AU_3M', 'AU_2Y', 'AU_10Y'], pct2, pct1, { endLabels: false }) });
+  makeCard(g, { key: 'auinfl', title: 'Australia: inflation vs RBA target', sub: 'Headline and trimmed-mean CPI, year-on-year % (quarterly). Shaded: the RBA 2–3% target band.', render: bandCard(['AU_CPI_YOY', 'AU_TRIM_YOY'], pct1, pct0, [2, 3], 'RBA target 2–3%') });
+  makeCard(g, { key: 'audiff', title: 'AUD/USD vs the Australia − US 2Y gap', wide: true, render: renderAuDiff });
+  state.auMode = 'jobs';
+  makeCard(g, { key: 'augrowth', title: 'Australia: activity and credit', seg: { key: 'auMode', options: [['jobs', 'Jobs'], ['gdp', 'GDP'], ['credit', 'Credit'], ['ext', 'Trade']] },
+    render: segCard('auMode', { jobs: [['AU_UNEMP', 'AU_EMP_YOY'], 'Unemployment rate (SA) and employment growth YoY, %.'], gdp: [['AU_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'],
+      credit: [['AU_CREDIT_YOY', 'AU_HOUSING_YOY', 'AU_BROAD_YOY'], 'Total credit, housing credit and broad money, 12-month growth %.'],
+      ext: [['AU_EXP_YOY'], 'Exports in USD, year-on-year %. Australia is a large commodity exporter, so this tracks iron ore, coal and LNG demand from Asia.'] }) });
+  makeCard(g, { key: 'autot', title: 'Australia: terms of trade and the AUD', sub: 'Export prices relative to import prices (quarterly) and the trade-weighted AUD.', render: c => {
+    if (!has('AU_TOT')) return setEmpty(c, 'Waiting for data.');
+    if (has('AU_TWI')) drawPair(c, { name: 'Terms of trade', data: pts(S.AU_TOT, state.from, state.to) }, { name: 'AUD trade-weighted index', data: pts(S.AU_TWI, state.from, state.to) },
+      { fmtA: v => fmtNum(v, 1), fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+    else seriesCard(['AU_TOT'], v => fmtNum(v, 1), v => fmtNum(v, 0))(c);
+    setSource(c, srcOf(['AU_TOT', 'AU_TWI'])); } });
+  // ---------------- Asia ex-Japan / China comparisons
+  g.append(el('h3', { class: 'section', text: 'Across Asia' }));
+  makeCard(g, { key: 'ax_cpi', title: 'Inflation across Asia-Pacific', sub: 'Headline CPI, year-on-year %.', render: seriesCard(['MY_CPI_YOY', 'SG_CPI_YOY', 'AU_CPI_YOY', 'KR_CPI_YOY', 'IN_CPI_YOY', 'ID_CPI_YOY', 'CN_CPI_YOY', 'JP_CPI_YOY'], pct1, pct0, { zero: true, endLabels: false }) });
+  makeCard(g, { key: 'ax_exp', title: 'Exports across Asia-Pacific', sub: 'Year-on-year %. Korea is the global trade bellwether: it reports first each month.', render: seriesCard(['KR_EXP_YOY', 'CN_EXP_YOY', 'JP_EXP_YOY', 'MY_EXPORTS_YOY', 'SG_NODX_YOY', 'IN_EXP_YOY', 'ID_EXP_YOY', 'AU_EXP_YOY'], pct1, pct0, { zero: true, endLabels: false }) });
+  makeCard(g, { key: 'ax_10y', title: '10-year government bond yields', sub: 'Monthly (OECD, MAS) and daily (RBA, US Treasury, MOF Japan).', render: seriesCard(['UST10Y', 'AU_10Y', 'KR_10Y', 'IN_10Y', 'CN_10Y', 'SGS10Y', 'JGB10Y'], pct2, pct1, { endLabels: false }) });
+  makeCard(g, { key: 'ax_short', title: 'Policy and short rates', sub: 'Policy rates and 3-month money-market rates, %.', render: seriesCard(['MY_OPR', 'SORA3M', 'AU_CASH', 'KR_3M', 'IN_3M', 'CN_3M', 'JP_CALL'], pct2, pct1, { endLabels: false }) });
+  makeCard(g, { key: 'ax_ip', title: 'Industrial production', sub: 'Year-on-year %.', render: seriesCard(['MY_IPI_YOY', 'KR_IP_YOY', 'IN_IP_YOY', 'ID_IP_YOY', 'JP_IP_YOY'], pct1, pct0, { zero: true, endLabels: false }) });
+  makeCard(g, { key: 'ax_conf', title: 'Business and consumer confidence', sub: 'Survey balances (optimists minus pessimists, %) as published by the OECD. Above 0 = more optimists.',
+    render: seriesCard(['KR_BCI', 'CN_BCI', 'AU_CCI', 'ID_CCI'], v => fmtNum(v, 1), v => fmtNum(v, 0), { endLabels: false, zero: true }) });
+  // ---------------- FX
   g.append(el('h3', { class: 'section', text: 'Asian currencies' }));
   makeCard(g, { key: 'asiafx', title: 'Asian FX vs USD', render: renderAsiaFx });
   makeCard(g, { key: 'asiaidx', title: 'Asia FX index vs USD', sub: 'Broad Asian currency strength against the dollar.', render: renderAsiaIdx });
-  g.append(el('h3', { class: 'section', text: 'Malaysia' }));
-  makeCard(g, { key: 'myrates', title: 'Malaysia: OPR and inflation', sub: 'Overnight Policy Rate and CPI (headline and core), year-on-year %.', render: seriesCard(['MY_OPR', 'MY_CPI_YOY', 'MY_CORE_YOY'], pct2, pct1, { zero: true }) });
-  makeCard(g, { key: 'mygrowth', title: 'Malaysia: activity', seg: { key: 'myMode', options: [['infl', 'Production & exports'], ['gdp', 'GDP'], ['jobs', 'Unemployment']] },
-    render: c => {
-      const m = { infl: [['MY_IPI_YOY', 'MY_EXPORTS_YOY'], 'Industrial production YoY % and exports YoY % (3-month sums).'], gdp: [['MY_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'],
-        jobs: [['MY_UNEMP'], 'Unemployment rate, monthly.'] }[state.myMode];
-      c.subEl.textContent = m[1]; seriesCard(m[0], pct1, v => fmtNum(v, 0) + '%', { zero: state.myMode !== 'jobs' })(c); } });
 }
+const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
+  'aurates', 'auinfl', 'audiff', 'augrowth', 'autot', 'ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf', 'asiafx', 'asiaidx'];
 function renderAsia() {
   regionKpis();
-  ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth', 'asiafx', 'asiaidx', 'myrates', 'mygrowth'].forEach(k => cards[k].render());
+  ASIA_CARDS.forEach(k => cards[k].render());
 }
-
-// ------------------------------------------------------------------ NEWS
 let NEWS = null;
 state.newsCat = 'All'; state.newsQ = '';
 async function loadNews() {
@@ -1596,7 +1852,7 @@ function renderCnJp() {
   ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread', 'jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'].forEach(k => cards[k].render());
 }
 function renderCLI(c) {
-  const ids = ['CLI_USA', 'CLI_CHN', 'CLI_JPN', 'CLI_DEU', 'CLI_KOR', 'CLI_IND'].filter(id => has(id));
+  const ids = ['CLI_USA', 'CLI_CHN', 'CLI_JPN', 'CLI_DEU', 'CLI_KOR', 'CLI_IND', 'CLI_AUS', 'CLI_IDN'].filter(id => has(id));
   if (!ids.length) return setEmpty(c, 'Waiting for data.');
   drawLines(c, ids.map((id, i) => ({ name: S[id].label.replace(' leading indicator', ''), data: pts(S[id], state.from, state.to), color: col(i) })),
     { fmt: v => fmtNum(v, 2), axisFmt: v => fmtNum(v, 1), endLabels: false, hlines: [{ y: 100, label: 'trend' }] });
@@ -1944,8 +2200,8 @@ function posvolKpis() {
   const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
     el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
   if (has('VIX')) { const p = pctRank(S.VIX, state.to, 10); if (p) tile('VIX', fmtNum(p.v, 1), `${Math.round(p.p)}th percentile (10y)`, 'as of ' + nice(p.t)); }
-  if (has('VIX', 'VIX3M')) { const a = asOf(S.VIX, state.to), b = asOf(S.VIX3M, state.to), r = a.v / b.v;
-    tile('VIX / VIX 3M', fmtNum(r, 2), r >= 1 ? '⚠ inverted: near-term stress priced above 3-month' : 'normal (contango): calm near term', nice(a.t)); }
+  if (has('VIX', 'VIX3M')) { const a = asOf(S.VIX, state.to), b = asOf(S.VIX3M, state.to), r = b.v / a.v;
+    tile('VIX 3M / VIX', fmtNum(r, 2), r <= 1 ? '⚠ below 1, inverted: near-term stress priced above 3-month' : 'above 1, normal (contango): calm near term', nice(a.t)); }
   if (has('VIX', 'SPX')) { rvCache = rvCache || realizedVol('SPX'); const a = asOf(S.VIX, state.to), r = asOf(rvCache, state.to);
     if (r) tile('VIX − realised vol', sign(a.v - r.v) + fmtNum(Math.abs(a.v - r.v), 1) + ' pts', `S&P 500 realised (1m) ${fmtNum(r.v, 1)}%`, 'insurance premium'); }
   if (has('MOVE')) { const p = pctRank(S.MOVE, state.to, 10); if (p) tile('MOVE (rates vol)', fmtNum(p.v, 0), `${Math.round(p.p)}th percentile (10y)`, nice(p.t)); }
@@ -1968,18 +2224,18 @@ function renderVolTS(c) {
 }
 function renderVolRatio(c) {
   if (!has('VIX', 'VIX3M', 'SPX')) return setEmpty(c, 'Waiting for data (next daily run).');
-  const r = combine(S.VIX, S.VIX3M, (a, b) => a / b, {}, 4 * DAY);
-  drawPair(c, { name: 'VIX / VIX 3M', data: pts(r, state.from, state.to) }, { name: 'S&P 500', data: pts(S.SPX, state.from, state.to) },
+  const r = combine(S.VIX3M, S.VIX, (a, b) => a / b, {}, 4 * DAY);   // inverted ratio: falls with the S&P 500 in stress
+  drawPair(c, { name: 'VIX 3M / VIX', data: pts(r, state.from, state.to) }, { name: 'S&P 500', data: pts(S.SPX, state.from, state.to) },
     { fmtA: v => fmtNum(v, 2), fmtB: v => fmtNum(v, 0), axisA: v => fmtNum(v, 2), axisB: v => fmtNum(v, 0) });
-  inst(c).setOption({ series: [{ markLine: { silent: true, symbol: 'none', data: [{ yAxis: 1, lineStyle: { color: tok('--critical'), type: 'dashed' }, label: { formatter: 'inverted above 1.0', color: tok('--muted'), fontSize: 11 } }] } }] });
+  inst(c).setOption({ series: [{ markLine: { silent: true, symbol: 'none', data: [{ yAxis: 1, lineStyle: { color: tok('--critical'), type: 'dashed' }, label: { formatter: 'stress below 1.0 (inverted curve)', color: tok('--muted'), fontSize: 11, position: 'insideStartBottom' } }] } }] });
   // what happened next: S&P 500 1m and 3m returns after the ratio first crosses above 1 (since 2007)
   const fwd = (t, m) => { const a = asOf(S.SPX, t), b = asOf(S.SPX, addMonths(t, m)); return a && b && b.t > a.t + 20 * DAY ? b.v / a.v - 1 : null; };
   const ev = []; let lastEv = -Infinity;
-  for (let i = 1; i < r.t.length; i++) if (r.v[i] >= 1 && r.v[i - 1] < 1 && r.t[i] - lastEv > 60 * DAY) { ev.push(r.t[i]); lastEv = r.t[i]; }
+  for (let i = 1; i < r.t.length; i++) if (r.v[i] <= 1 && r.v[i - 1] > 1 && r.t[i] - lastEv > 60 * DAY) { ev.push(r.t[i]); lastEv = r.t[i]; }
   const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length * 100 : null;
   const f1 = ev.map(t => fwd(t, 1)).filter(x => x != null), f3 = ev.map(t => fwd(t, 3)).filter(x => x != null);
   const all1 = [], all3 = []; for (let i = 0; i < S.SPX.t.length; i += 21) { const t = S.SPX.t[i]; if (t < r.t[0]) continue; const a = fwd(t, 1), b = fwd(t, 3); if (a != null) all1.push(a); if (b != null) all3.push(b); }
-  setNote(c, `Above 1.0 = inverted term structure (stress). Since ${new Date(r.t[0]).getUTCFullYear()}, the ratio has crossed above 1 on ${ev.length} separate occasions. Average S&P 500 return afterwards: ${fmtNum(avg(f1), 1)}% over 1 month and ${fmtNum(avg(f3), 1)}% over 3 months, against ${fmtNum(avg(all1), 1)}% and ${fmtNum(avg(all3), 1)}% for all periods. Small sample: a tendency, not a rule.`);
+  setNote(c, `Shown as VIX 3M ÷ VIX so it moves with the S&P 500. Above 1.0 = normal upward-sloping vol curve (calm). Below 1.0 = inverted: near-term fear priced above 3-month (stress). Since ${new Date(r.t[0]).getUTCFullYear()}, the ratio has dropped below 1 on ${ev.length} separate occasions. Average S&P 500 return afterwards: ${fmtNum(avg(f1), 1)}% over 1 month and ${fmtNum(avg(f3), 1)}% over 3 months, against ${fmtNum(avg(all1), 1)}% and ${fmtNum(avg(all3), 1)}% for all periods. Small sample: a tendency, not a rule.`);
   setSource(c, srcOf(['VIX', 'VIX3M', 'SPX']) + '; ratio and statistics calculated');
 }
 function renderIvRv(c) {
@@ -2070,7 +2326,7 @@ function buildPosVol() {
   g.append(el('h3', { class: 'section', text: 'Volatility' }));
   makeCard(g, { key: 'vol_ts', title: 'VIX term structure', range: false, sub: 'Implied S&P 500 volatility for 9 days, 30 days, 3 months and 6 months ahead.', source: 'Cboe via Yahoo Finance (^VIX9D, ^VIX, ^VIX3M, ^VIX6M)', render: renderVolTS });
   makeCard(g, { key: 'vol_x', title: 'Cross-asset implied volatility', range: false, render: renderVolX });
-  makeCard(g, { key: 'vol_ratio', title: 'Stress gauge: VIX / VIX 3-month', wide: true, sub: 'Ratio of 30-day to 3-month implied volatility, against the S&P 500.', render: renderVolRatio });
+  makeCard(g, { key: 'vol_ratio', title: 'Stress gauge: VIX 3-month / VIX', wide: true, sub: 'Ratio of 3-month to 30-day implied volatility, against the S&P 500. Falls when near-term fear jumps.', render: renderVolRatio });
   makeCard(g, { key: 'vol_ivrv', title: 'Implied vs realised volatility', wide: true, sub: 'VIX against the S&P 500’s actual volatility over the last month, annualised %.', render: renderIvRv });
   g.append(el('h3', { class: 'section', text: 'Positioning (CFTC Commitments of Traders)' }));
   makeCard(g, { key: 'pos_table', title: 'Speculative positioning', wide: true, range: false, source: COT_SRC, render: renderPosTable });
@@ -2243,10 +2499,12 @@ const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan'
 const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y', 'SORA3M', 'SGS2Y', 'SGS10Y', 'MY_OPR', 'CN_10Y', 'JP_CALL'];
 const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
   ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['1Y', t => addMonths(t, -12)], ['Range', () => state.from]];
+state.mktCcy = 'local';
+const mktSeries = id => state.mktCcy !== 'local' && convertible(id) ? inCcy(id, state.mktCcy) : S[id];
 function perfRows() {
   const ids = Object.keys(S).filter(id => S[id].source && S[id].source.startsWith('Yahoo')).concat(PERF_FRED.filter(id => has(id)));
   return ids.filter(id => has(id)).map(id => {
-    const s = S[id], a = asOf(s, state.to);
+    const s = mktSeries(id), a = asOf(s, state.to);
     if (!a) return null;
     const r = { id, s, last: a.v, t: a.t };
     for (const [k, fn] of PERIODS) {
@@ -2311,7 +2569,7 @@ function renderPerfTable() {
     }
   }
   tbl.append(tb);
-  $('#perfNote').textContent = `Changes to ${nice(state.to)}. “Range” runs from ${nice(state.from)}. Prices in % (ETFs include dividends); yields and spreads in bp; VIX/MOVE in points. Tick a row to chart it.`;
+  $('#perfNote').textContent = `Changes to ${nice(state.to)}. “Range” runs from ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Prices in local currency' : `Equities, ETFs, commodities and crypto in ${state.mktCcy} (FX pairs unchanged)`}, % (ETFs include dividends); yields and spreads in bp; VIX/MOVE in points. Tick a row to chart it.`;
   $('#perfCsv').onclick = () => downloadCSV([['Asset', 'Group', 'Last', ...cols], ...rows.map(r => [r.s.label, r.s.group, r.last, ...cols.map(k => r[k] == null ? '' : r[k].toFixed(2))])], 'cross-asset-performance');
 }
 function hexA(hex, a) {
@@ -2325,11 +2583,11 @@ function renderMktCharts() {
   if (!pr.length) setEmpty(c1, 'Tick assets in the table below to compare them.');
   else {
     const list = pr.map(id => {
-      const s = S[id], p = pts(s, state.from, state.to), b = asOf(s, state.from) || (p[0] && { v: p[0][1] });
+      const s = mktSeries(id), p = pts(s, state.from, state.to), b = asOf(s, state.from) || (p[0] && { v: p[0][1] });
       return { name: s.label, data: b ? p.map(([t, v]) => [t, v / b.v * 100]) : [], color: col(state.selSlot[id]) };
     });
     drawLines(c1, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
-    c1.subEl.textContent = `Each series = 100 on ${nice(state.from)}. Local currency; ETFs in USD with dividends.`;
+    c1.subEl.textContent = `Each series = 100 on ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Local currency; ETFs in USD with dividends.' : `Converted to ${state.mktCcy} at daily FX; FX pairs unchanged.`}`;
     setSource(c1, srcOf(pr));
   }
   c2.root.hidden = !yl.length;
@@ -2341,9 +2599,15 @@ function renderMktCharts() {
 }
 function buildMarkets() {
   const g = $('#mktCharts');
-  makeCard(g, { key: 'rebased', title: 'Relative performance', wide: true, source: 'Yahoo Finance, FRED', render: renderMktCharts });
+  makeCard(g, { key: 'rebased', title: 'Relative performance', wide: true, source: 'Yahoo Finance, FRED', render: renderMktCharts,
+    seg: { key: 'mktCcy', select: true, label: 'Currency', options: CCY_CHOICES, onchange: () => { syncMktCcy(); renderMarkets(); } } });
+  const sel = el('select', { class: 'mini-select', id: 'perfCcy', 'aria-label': 'Currency' });
+  CCY_CHOICES.forEach(([v, l]) => sel.append(el('option', { value: v, text: l })));
+  sel.addEventListener('change', () => { state.mktCcy = sel.value; syncMktCcy(); renderMarkets(); });
+  $('#perfCsv').before(sel);
   makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
+function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); renderPerfTable(); }
 
 // ------------------------------------------------------------------ CORRELATION
@@ -2370,8 +2634,11 @@ function sampled(id, freq) {
   corrCache.set(key, out); return out;
 }
 const isLogKind = id => S[id].kind === 'price' && S[id].unit !== 'USD tn';
+// bond-return convention: a fall in a yield or spread counts as a positive return (−Δyield), except curve slopes
+const flipsSign = id => corrSettings().yields === 'bond' && S[id].kind === 'yield' && !/^CURVE_|_SLOPE|^SOFR_/.test(id);
 function pairReturns(a, b, freq) {
-  const key = a + '~' + b + '|' + freq;
+  const fa = flipsSign(a), fb = flipsSign(b);
+  const key = a + '~' + b + '|' + freq + (fa ? '-a' : '') + (fb ? '-b' : '');
   if (corrCache.has(key)) return corrCache.get(key);
   const A = sampled(a, freq), B = sampled(b, freq);
   const t = [], ra = [], rb = [];
@@ -2383,8 +2650,8 @@ function pairReturns(a, b, freq) {
       const va = A.v[i], vb = B.v[j];
       if (pa != null) {
         t.push(A.t[i]);
-        ra.push(la ? Math.log(va / pa) : va - pa);
-        rb.push(lb ? Math.log(vb / pb) : vb - pb);
+        ra.push(la ? Math.log(va / pa) : fa ? pa - va : va - pa);
+        rb.push(lb ? Math.log(vb / pb) : fb ? pb - vb : vb - pb);
       }
       pa = va; pb = vb; i++; j++;
     }
@@ -2411,7 +2678,7 @@ function avgCorr(P, end, months, years = 3) {
   return k >= 12 ? s / k : null;
 }
 function corrSettings() {
-  return { uni: $('#corrUniverse').value, months: +$('#corrWindow').value, freq: $('#corrFreq').value, show: $('#corrShow').value };
+  return { uni: $('#corrUniverse').value, months: +$('#corrWindow').value, freq: $('#corrFreq').value, show: $('#corrShow').value, yields: $('#corrYields').value };
 }
 function renderCorrMatrix(c) {
   const { uni, months, freq, show } = corrSettings();
@@ -2420,7 +2687,7 @@ function renderCorrMatrix(c) {
   const wLab = $('#corrWindow').selectedOptions[0].text;
   c.titleEl.textContent = show === 'now' ? `Correlation matrix: ${uni}` : `Correlation change vs 3Y average: ${uni}`;
   setSource(c, srcOf(ids) + '; correlations calculated');
-  c.subEl.textContent = `${freq === 'D' ? 'Daily' : 'Weekly'} returns, ${wLab} window ending ${nice(state.to)}.` + (show === 'chg' ? ' Blue = more positive than usual.' : '');
+  c.subEl.textContent = `${freq === 'D' ? 'Daily' : 'Weekly'} returns, ${wLab} window ending ${nice(state.to)}.` + (corrSettings().yields === 'bond' ? ' Yields and spreads as bond returns (a fall in yield = positive), so stocks vs yields reads as stocks vs bonds.' : ' Yields and spreads as changes in level.') + (show === 'chg' ? ' Blue = more positive than usual.' : '');
   const data = [], rows = [['', ...ids]];
   const shifts = [];
   for (let y = 0; y < ids.length; y++) {
@@ -2504,9 +2771,14 @@ function renderPair(c) {
   inst(c).setOption({ series: [{ markLine: { silent: true, symbol: 'none', data: [{ yAxis: 0, lineStyle: { color: tok('--axis'), type: 'solid' }, label: { show: false } },
     { yAxis: +mean.toFixed(3), lineStyle: { color: tok('--muted'), type: 'dashed' }, label: { formatter: `avg ${fmtCorr(mean)}`, color: tok('--muted'), position: 'insideEndTop', fontSize: 11 } }] } }] });
   let hint = '';
-  const yieldish = id => S[id].kind === 'yield';
-  if ((yieldish(a) && S[b].kind === 'price' && S[b].group && S[b].group.startsWith('Equities')) || (yieldish(b) && S[a].kind === 'price' && S[a].group && S[a].group.startsWith('Equities')))
-    hint = ' Equities vs yield changes: positive means stocks and yields rise together, so bonds are hedging equities. Negative means bonds and stocks are selling off together, as in 2022.';
+  const yieldish = id => S[id].kind === 'yield' && !/^CURVE_/.test(id), eq = id => S[id].kind === 'price' && S[id].group && S[id].group.startsWith('Equities');
+  if ((yieldish(a) && eq(b)) || (yieldish(b) && eq(a))) {
+    hint = flipsSign(a) || flipsSign(b)
+      ? ' Read as stocks vs bonds (bond return = fall in yield). Positive: they gain and lose together, so bonds do not diversify equities (as in 2022). Negative: bonds rally when stocks fall, so they hedge.'
+      : ' Read as stocks vs yield changes. Positive: stocks and yields rise together, so bonds rally when stocks fall (they hedge). Negative: stocks fall as yields rise, as in 2022.';
+  }
+  const conv = [a, b].filter(flipsSign);
+  if (conv.length) c.subEl.textContent += ` ${conv.map(id => S[id].label).join(' and ')} shown as bond return (−Δyield).`;
   setNote(c, `Latest ${fmtCorr(data[data.length - 1][1])}, range average ${fmtCorr(mean)}.` + hint);
 }
 function buildCorrelation() {
@@ -2522,7 +2794,7 @@ function buildCorrelation() {
   p.selA.addEventListener('change', () => { state.corrA = p.selA.value; p.render(); });
   p.selB.addEventListener('change', () => { state.corrB = p.selB.value; p.render(); });
   p.root.querySelector('.card-head').after(el('div', { class: 'pairsel' }, p.selA, el('span', { class: 'muted', text: 'vs' }), p.selB));
-  ['#corrUniverse', '#corrWindow', '#corrFreq', '#corrShow'].forEach(s => $(s).addEventListener('change', renderCorrelation));
+  ['#corrUniverse', '#corrWindow', '#corrFreq', '#corrShow', '#corrYields'].forEach(s => $(s).addEventListener('change', renderCorrelation));
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
@@ -2546,7 +2818,7 @@ function renderTab() {
   syncFilterUI();
   ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia & Singapore',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;

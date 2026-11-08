@@ -29,7 +29,7 @@
     <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
     <button role="tab" data-tab="stress" aria-selected="false"><span class="ic">⚠</span>Stress &amp; Signposts</button>
     <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
-    <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia &amp; Singapore</button>
+    <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia Pacific</button>
     <button role="tab" data-tab="cnjp" aria-selected="false"><span class="ic">◑</span>China &amp; Japan</button>
     <div class="nav-group">Markets</div>
     <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
@@ -155,8 +155,12 @@
         <option value="now">Correlation now</option>
         <option value="chg">Change vs 3Y average</option>
       </select></label>
+      <label>Yields as <select id="corrYields">
+        <option value="bond" selected>Bond returns (−Δ yield)</option>
+        <option value="level">Yield changes (+Δ)</option>
+      </select></label>
     </div>
-    <p class="muted small hint">Correlations use returns (% change for prices, bp change for yields and spreads) in the window ending on the “To” date. Asian and US markets close at different times, so daily figures understate their link. Use Weekly for pairs across regions.</p>
+    <p class="muted small hint">Correlations use returns: % change for prices; for yields and spreads, the bp change with its sign flipped by default so a fall in yield counts as a gain, as it is for a bondholder (switch with “Yields as”). Positive stocks vs yields then means stocks and bonds move together. Each figure covers the window ending on the “To” date. Asian and US markets close at different times, so daily figures understate their link. Use Weekly for pairs across regions.</p>
     <div class="grid">
       <div class="card" id="corrMatrixCard"></div>
       <div class="card" id="corrShiftsCard"></div>
