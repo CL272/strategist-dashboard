@@ -151,6 +151,7 @@ function makeCard(parent, o) {
   parent.append(c.root);
   setSource(c, o.source || '');
   c.render = () => {
+    if (!subActive(c.root)) return;   // drawn when its sub-tab is opened
     const keep = [state.from, state.to];
     if (c.range) [state.from, state.to] = resolveRange(c.range);
     if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
@@ -671,7 +672,7 @@ function buildLiquidity() {
   makeCard(g, { key: 'credit', title: 'Credit spreads', source: 'FRED (ICE BofA, Moody\'s)',
     seg: { key: 'creditMode', options: [['us', 'US'], ['global', 'Global'], ['long', 'Long history']] }, render: renderCredit });
   makeCard(g, { key: 'scarcity', title: 'Reserve scarcity', source: 'FRED (WRESBAL, GDP, TLAACBW027SBOG)',
-    sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets, with the levels where stress starts shaded. Into the bands, reserves move from ample towards scarce and repo spreads (above) tend to react.',
+    sub: 'Bank reserves as a share of nominal GDP and of commercial bank assets, with the levels where stress starts shaded. Into the bands, reserves move from ample towards scarce and repo spreads (Repo funding stress chart) tend to react.',
     render: renderScarcity });
   makeCard(g, { key: 'nfci', title: 'Chicago Fed financial conditions (NFCI)', sub: 'Weekly. Below zero = looser than the long-run average.', source: 'FRED (NFCI)',
     render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 2), { zero: true }) });
@@ -1731,8 +1732,13 @@ function buildAsia() {
 }
 const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
   'aurates', 'auinfl', 'audiff', 'augrowth', 'autot', 'ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf', 'asiafx', 'asiaidx'];
+const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'], Singapore: ['3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
+  Australia: ['RBA cash rate', 'Australia 10Y yield'] };
+const ASIA_KPI_MIX = ['Malaysia OPR', 'USD/MYR', '3M compounded SORA', 'USD/SGD', 'RBA cash rate', 'Australia 10Y yield'];
 function renderAsia() {
   regionKpis();
+  const sub = SUBTABS.asia[state.sub.asia || 0][0];
+  filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? sub : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
   ASIA_CARDS.forEach(k => cards[k].render());
 }
 let NEWS = null;
@@ -1850,6 +1856,7 @@ function buildCnJp() {
 function renderCnJp() {
   cnjpKpis();
   ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread', 'jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'].forEach(k => cards[k].render());
+  filterKpis('#cnjpKpis', l => l.startsWith('China') ? 'China' : 'Japan');
 }
 function renderCLI(c) {
   const ids = ['CLI_USA', 'CLI_CHN', 'CLI_JPN', 'CLI_DEU', 'CLI_KOR', 'CLI_IND', 'CLI_AUS', 'CLI_IDN'].filter(id => has(id));
@@ -2528,8 +2535,14 @@ function toggleSel(id, on) {
   }
   renderMktCharts(); return true;
 }
+const PERF_CLASSES = ['Equities', 'Rates & credit', 'FX', 'Commodities & crypto', 'Volatility', 'All'];
+const perfClass = g => /^Equities/.test(g) ? 'Equities' : /^(Rates|Credit|Bonds)/.test(g) ? 'Rates & credit' : /^FX/.test(g) ? 'FX'
+  : /^(Commodities|Crypto)/.test(g) ? 'Commodities & crypto' : /^Volatility/.test(g) ? 'Volatility' : 'All';
+state.perfClass = 'Equities';
 function renderPerfTable() {
-  const rows = perfRows();
+  const rows = perfRows().filter(r => state.perfClass === 'All' || perfClass(r.s.group) === state.perfClass);
+  const nav = $('#perfNav');
+  if (nav) nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.textContent === state.perfClass));
   const tbl = $('#perfTable'); tbl.replaceChildren();
   const cols = PERIODS.map(p => p[0]);
   const hdr = el('tr', {}, el('th', { text: 'Asset' }), el('th', { text: 'Last' }));
@@ -2605,6 +2618,10 @@ function buildMarkets() {
   CCY_CHOICES.forEach(([v, l]) => sel.append(el('option', { value: v, text: l })));
   sel.addEventListener('change', () => { state.mktCcy = sel.value; syncMktCcy(); renderMarkets(); });
   $('#perfCsv').before(sel);
+  // the performance table is split by asset class, like the sub-tabs on other pages
+  const nav = el('div', { class: 'subtabs', id: 'perfNav', role: 'tablist', 'aria-label': 'Asset class' });
+  PERF_CLASSES.forEach(k => nav.append(el('button', { type: 'button', role: 'tab', text: k, onclick: () => { state.perfClass = k; renderPerfTable(); } })));
+  $('#mktCharts').before(nav);
   makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
@@ -2732,7 +2749,7 @@ function renderShifts(shifts) {
   let ul = c.root.querySelector('.shifts'); if (!ul) { ul = el('ul', { class: 'shifts' }); c.root.insertBefore(ul, c.noteEl); }
   ul.replaceChildren();
   shifts.sort((p, q) => Math.abs(q.d) - Math.abs(p.d)).slice(0, 10).forEach(s => {
-    ul.append(el('li', { title: 'Click to chart the rolling correlation', onclick: () => { state.corrA = s.a; state.corrB = s.b; syncPairSelects(); cards.pair.render(); cards.pair.root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+    ul.append(el('li', { title: 'Click to chart the rolling correlation', onclick: () => { state.corrA = s.a; state.corrB = s.b; setSub('correlation', 1); } },
       el('span', { text: `${S[s.a].label} vs ${S[s.b].label}` }),
       el('span', { class: 'num', text: `${fmtCorr(s.now)} now · ${fmtCorr(s.avg)} avg` }),
       el('b', { class: 'num', text: (s.d > 0 ? '+' : '−') + Math.abs(s.d).toFixed(2) })));
@@ -2798,6 +2815,62 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
+// ------------------------------------------------------------------ sub-tabs
+// Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
+const SUBTABS = {
+  overview: [['Today', ['points', 'headlines', 'moved', 'fragile']], ['Where we are', ['where']]],
+  liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
+  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef']],
+    ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
+  fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
+  asia: [['Malaysia', ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
+    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],
+    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['asiafx', 'asiaidx']]],
+  cnjp: [['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread']], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj']]],
+  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']]],
+  valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
+  posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']]],
+  stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr', 'st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
+  correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']]],
+};
+state.sub = {};
+function subActive(node) {
+  const g = node.dataset && node.dataset.sub; if (g == null) return true;
+  return (state.sub[node.dataset.subtab] || 0) === +g;
+}
+function buildSubtabs() {
+  for (const [tab, groups] of Object.entries(SUBTABS)) {
+    const panel = $('#tab-' + tab); if (!panel) continue;
+    const nodes = groups.map(([, keys]) => keys.map(k => k[0] === '#' ? $(k) : cards[k] && cards[k].root).filter(Boolean));
+    const first = nodes.flat()[0]; if (!first) continue;
+    // section headings are replaced by the sub-tab bar
+    panel.querySelectorAll('.grid > h3.section').forEach(h => h.remove());
+    const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Sections' });
+    (first.parentElement.classList.contains('grid') ? first.parentElement : first).before(nav);
+    groups.forEach(([label], i) => {
+      nav.append(el('button', { type: 'button', role: 'tab', text: label, 'data-i': i, onclick: () => setSub(tab, i) }));
+      for (const n of nodes[i]) {
+        n.dataset.sub = i; n.dataset.subtab = tab;
+        if (n.parentElement.classList.contains('grid')) n.parentElement.append(n);   // regroup in sub-tab order
+      }
+    });
+    syncSub(tab);
+  }
+}
+function syncSub(tab) {
+  const panel = $('#tab-' + tab), cur = state.sub[tab] || 0;
+  panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
+  panel.querySelectorAll('[data-sub]').forEach(n => { if (n.dataset.subtab === tab) n.hidden = +n.dataset.sub !== cur; });
+}
+function setSub(tab, i) {
+  state.sub[tab] = i; syncSub(tab);
+  if (state.tab === tab) { renderTab(); window.scrollTo({ top: 0 }); }
+}
+function filterKpis(boxSel, groupOf) {   // show only the KPI tiles that belong to the open sub-tab
+  const tab = $(boxSel).closest('.tab-panel').id.slice(4), groups = SUBTABS[tab], sub = groups[state.sub[tab] || 0][0];
+  $(boxSel).querySelectorAll('.kpi').forEach(k => { const g = groupOf(k.querySelector('.k-label').textContent); k.hidden = !(g === sub || g === '*'); });
+}
+
 // ------------------------------------------------------------------ range, tabs, theme
 function applyPreset(p) {
   state.preset = p;
@@ -2811,7 +2884,7 @@ function syncFilterUI() {
   $('#fromDate').value = iso(state.from); $('#toDate').value = iso(state.to);
   $('#fromDate').max = $('#toDate').max = iso(state.latest);
   $('#fromDate').min = $('#toDate').min = iso(state.earliest);
-  const h = new URLSearchParams({ tab: state.tab, ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
+  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab] } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
   history.replaceState(null, '', '#' + h.toString());
 }
 function renderTab() {
@@ -2827,13 +2900,19 @@ function setTab(t) {
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
   $('.filters').hidden = t === 'news';
+  setFiltersHeight();
   renderTab();
 }
 function isDark() {
   const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 }
+function setFiltersHeight() {   // the sub-tab bar sticks just under the date bar
+  const f = $('.filters'), sticky = f && getComputedStyle(f).position === 'sticky';
+  document.documentElement.style.setProperty('--filters-h', (sticky && !f.hidden ? f.offsetHeight : 0) + 'px');
+}
 function wire() {
+  window.addEventListener('resize', setFiltersHeight);
   document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => { applyPreset(b.dataset.p); renderTab(); }));
   const onDate = () => {
     const f = Date.parse($('#fromDate').value), t = Date.parse($('#toDate').value);
@@ -2894,6 +2973,8 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  if (h.get('tab') && +h.get('sub') > 0 && SUBTABS[h.get('tab')] && +h.get('sub') < SUBTABS[h.get('tab')].length) state.sub[h.get('tab')] = +h.get('sub');
+  buildSubtabs();
   setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
