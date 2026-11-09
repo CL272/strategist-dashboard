@@ -2850,6 +2850,171 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
+// ------------------------------------------------------------------ FED PATH vs MARKET PRICING
+let FP = null;
+const bp = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 0) + 'bp';
+const yEnd = y => Date.UTC(+y, 11, 31);
+function fpSnap(name) { return FP && FP.snapshots && FP.snapshots[name]; }
+function fpYearEnd(snap, year) {   // market rate after the last FOMC meeting of `year`, or null if not priced
+  if (!snap) return null;
+  const rows = snap.path.filter(r => r.d.startsWith(year));
+  return rows.length && rows[rows.length - 1].d >= `${year}-12-01` ? rows[rows.length - 1].after : null;
+}
+function fpKpis() {
+  const box = $('#fpKpis'); box.replaceChildren();
+  const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
+    el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (!FP) return;
+  const [lo, hi] = FP.target || [];
+  if (lo != null) tile('Fed funds target', `${fmtNum(lo, 2)}–${fmtNum(hi, 2)}%`, FP.effr != null ? `effective ${fmtNum(FP.effr, 2)}%` : '', 'FRED (DFEDTARL/U, EFFR)');
+  const now = fpSnap('now'), ago = fpSnap('1M ago');
+  if (now && now.path.length) {
+    const n = now.path[0];
+    tile('Next FOMC: ' + dShort(dayMs(n.d)), n.odds.replace(' ~100%', ''), `priced change ${bp(n.chg * 100)}`, 'fed funds futures');
+    const yr = new Date(dayMs(now.path[now.path.length - 1].d)).getUTCFullYear(), m = fpYearEnd(now, String(yr)), a = fpYearEnd(ago, String(yr));
+    if (m != null) tile(`Priced by end-${yr}`, bp((m - now.effr) * 100), a != null ? `${bp((m - a) * 100)} vs a month ago` : '', `implied rate ${fmtNum(m, 2)}%`);
+    const med = FP.dots && FP.dots.median && FP.dots.median[String(yr)];
+    if (m != null && med != null) tile(`Market vs Fed, end-${yr}`, bp((m - med) * 100), `market ${fmtNum(m, 2)}% vs Fed median ${fmtNum(med, 2)}%`, FP.sep_date ? `dots from the ${monthLab(dayMs(FP.sep_date))} SEP` : 'Fed SEP');
+  }
+  if (FP.dots && FP.dots.longer_run != null) tile('Fed longer-run rate', fmtNum(FP.dots.longer_run, 2) + '%', 'median “neutral” estimate', 'Fed SEP via FRED');
+}
+function renderFpPath(c) {
+  const now = fpSnap('now');
+  if (!now) return setEmpty(c, 'Waiting for the fed funds futures (next full refresh).');
+  const today = sgToday(), start = addMonths(today, -12), d = FP.dots || {};
+  const years = Object.keys(d.median || {}).sort();
+  const end = Math.max(yEnd(years.length ? years[years.length - 1] : new Date(today).getUTCFullYear() + 1) + 60 * DAY, dayMs(now.path[now.path.length - 1].d) + 60 * DAY);
+  const step = (snap) => { const pts = [[dayMs(snap.asof), snap.effr]]; for (const r of snap.path) pts.push([dayMs(r.d) + DAY, r.after]); return pts; };
+  const series = [];
+  const o = baseOpt();
+  const hist = has('EFFR') ? pts(S.EFFR, start, today) : [];
+  series.push(line('Effective fed funds (actual)', hist, tok('--ink-2'), { step: 'end' }));
+  series.push(line('Market path now', step(now), col(0), { step: 'end', lineStyle: { width: 3, color: col(0) } }));
+  for (const [nm, dash] of [['1M ago', 'dashed'], ['3M ago', 'dotted']]) {
+    const sn = fpSnap(nm); if (sn && sn.path.length) series.push(line('Market path ' + nm, step(sn), col(nm === '1M ago' ? 1 : 2), { step: 'end', lineStyle: { width: 1.5, type: dash, color: col(nm === '1M ago' ? 1 : 2) } }));
+  }
+  if (years.length) {
+    const fed = col(3);
+    const lo = d.ct_lo || d.range_lo || {}, hi = d.ct_hi || d.range_hi || {};
+    series.push({ name: 'Fed range (central tendency)', type: 'custom', z: 3, data: years.filter(y => lo[y] != null && hi[y] != null).map(y => [yEnd(y), lo[y], hi[y]]),
+      renderItem: (params, api) => { const a = api.coord([api.value(0), api.value(1)]), b = api.coord([api.value(0), api.value(2)]);
+        return { type: 'group', children: [{ type: 'line', shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: fed, lineWidth: 2 } },
+          { type: 'line', shape: { x1: a[0] - 6, y1: a[1], x2: a[0] + 6, y2: a[1] }, style: { stroke: fed, lineWidth: 2 } },
+          { type: 'line', shape: { x1: b[0] - 6, y1: b[1], x2: b[0] + 6, y2: b[1] }, style: { stroke: fed, lineWidth: 2 } }] }; },
+      itemStyle: { color: fed }, encode: { x: 0, y: [1, 2] }, tooltip: { show: false } });
+    series.push({ name: 'Fed median (dots)', type: 'scatter', z: 4, symbol: 'diamond', symbolSize: 14, itemStyle: { color: fed, borderColor: tok('--surface'), borderWidth: 1.5 },
+      data: years.map(y => [yEnd(y), d.median[y]]), label: { show: true, position: 'right', formatter: p => fmtNum(p.value[1], 2) + '%', color: fed, fontSize: 11, fontWeight: 600 } });
+  }
+  if (d.longer_run != null) series[0].markLine = { silent: true, symbol: 'none', data: [{ yAxis: d.longer_run, lineStyle: { color: col(3), type: 'dashed' },
+    label: { formatter: `Fed longer-run ${fmtNum(d.longer_run, 2)}%`, color: col(3), position: 'insideEndTop', fontSize: 11 } }] };
+  series[0].markArea = { silent: true, itemStyle: { color: hexA(tok('--muted'), 0.08) }, data: [[{ xAxis: today, name: 'priced by the market →', label: { color: tok('--muted'), fontSize: 11, position: 'insideTopLeft' } }, { xAxis: end }]] };
+  o.legend.show = true; o.grid.top = 12 + 22 * legendRows(c, series.map(x => x.name));
+  o.xAxis = timeAxis({ min: start, max: end });
+  o.yAxis = valAxis(v => fmtNum(v, 2) + '%');
+  o.tooltip.formatter = tipFormatter((v, n) => fmtNum(v, 2) + '%');
+  o.series = series;
+  const ch = inst(c); ch.setOption(o, true);
+  c.csv = [['Meeting', 'Market now', 'Market 1M ago', 'Market 3M ago'], ...now.path.map(r => [r.d, r.after.toFixed(3),
+    ...['1M ago', '3M ago'].map(nm => { const x = (fpSnap(nm) || { path: [] }).path.find(q => q.d === r.d); return x ? x.after.toFixed(3) : ''; })]),
+    [], ['Fed SEP year', 'Median', 'Central tendency low', 'Central tendency high'], ...years.map(y => [y, d.median[y], (d.ct_lo || {})[y] ?? '', (d.ct_hi || {})[y] ?? ''])];
+  const yr = years.find(y => fpYearEnd(now, y) != null && y > String(new Date(today).getUTCFullYear()));
+  setNote(c, `The market path is the effective fed funds rate the futures imply after each FOMC meeting (steps); the diamonds are the Fed’s median year-end projection, with the central tendency as a bar.` +
+    (yr ? ` End-${yr}: market ${fmtNum(fpYearEnd(now, yr), 2)}% vs Fed ${fmtNum(d.median[yr], 2)}%, so the market is ${fpYearEnd(now, yr) > d.median[yr] ? 'more hawkish' : 'more dovish'} than the Fed by ${fmtNum(Math.abs(fpYearEnd(now, yr) - d.median[yr]) * 100, 0)}bp.` : '') +
+    ' Futures run to December ' + now.path[now.path.length - 1].d.slice(0, 4) + '; beyond that only the Fed’s projections are shown.');
+}
+function renderFpYears(c) {
+  const now = fpSnap('now'), d = (FP && FP.dots) || {};
+  if (!now) return setEmpty(c, 'Waiting for data.');
+  const years = [...new Set([...Object.keys(d.median || {}), ...now.path.map(r => r.d.slice(0, 4))])].sort();
+  const mk = years.map(y => fpYearEnd(now, y)), fed = years.map(y => d.median ? d.median[y] ?? null : null), ago = years.map(y => fpYearEnd(fpSnap('1M ago'), y));
+  const o = baseOpt(); o.legend.show = true;
+  o.xAxis = { type: 'category', data: years.map(y => 'End-' + y), axisLabel: { color: tok('--ink-2') }, axisLine: { lineStyle: { color: tok('--axis') } }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 1) + '%', { scale: false, min: 0 });
+  o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => v == null ? 'not priced' : fmtNum(v, 2) + '%' };
+  const lab = { show: true, position: 'top', fontSize: 11, color: tok('--ink-2'), formatter: p => p.value == null ? '' : fmtNum(p.value, 2) };
+  o.series = [{ name: 'Market now', type: 'bar', data: mk, itemStyle: { color: col(0), borderRadius: [3, 3, 0, 0] }, label: lab, barGap: '10%' },
+    { name: 'Market 1M ago', type: 'bar', data: ago, itemStyle: { color: hexA(col(1), 0.75), borderRadius: [3, 3, 0, 0] }, label: lab },
+    { name: 'Fed median', type: 'bar', data: fed, itemStyle: { color: col(3), borderRadius: [3, 3, 0, 0] }, label: lab }];
+  const ch = inst(c); ch.setOption(o, true);
+  c.csv = [['Year end', 'Market now', 'Market 1M ago', 'Fed median'], ...years.map((y, i) => [y, mk[i] ?? '', ago[i] ?? '', fed[i] ?? ''])];
+  setNote(c, years.map((y, i) => mk[i] != null && fed[i] != null ? `End-${y}: market ${bp((mk[i] - fed[i]) * 100)} vs the Fed` : null).filter(Boolean).join(' · ') + (years.length ? '.' : '') +
+    ' Market = expected effective rate after the last meeting of the year; Fed = median of the target-range midpoints the FOMC participants project.');
+}
+function renderFpTable(c) {
+  const b = htmlBody(c), now = fpSnap('now');
+  if (!now) { b.append(el('div', { class: 'empty', text: 'Waiting for the fed funds futures.' })); return; }
+  const a1 = fpSnap('1M ago'), a3 = fpSnap('3M ago'), find = (s, d) => s && s.path.find(r => r.d === d);
+  const tbl = el('table', { class: 'perf' });
+  const heads = ['FOMC decision', 'Time (SGT)', 'Expected rate after', 'Priced change', 'Market reading', 'From today', 'vs 1M ago', 'vs 3M ago'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads], pos = tok('--pos'), neg = tok('--neg');
+  for (const r of now.path) {
+    const x1 = find(a1, r.d), x3 = find(a3, r.d), t = dayMs(r.d);
+    const sep = (FP.sep_meetings || []).includes(r.d);
+    const heat = v => v == null ? '' : `background:${hexA(v > 0 ? neg : pos, Math.min(1, Math.abs(v) / 50) * 0.4)}`;
+    const cells = [dLong(t) + ' ' + new Date(t).getUTCFullYear() + (sep ? ' · with projections' : ''), r.sgt || '', fmtNum(r.after, 2) + '%',
+      [bp(r.chg * 100), heat(r.chg * 100)], r.odds, [bp(r.cum * 100), heat(r.cum * 100)],
+      x1 ? [bp((r.after - x1.after) * 100), heat((r.after - x1.after) * 100)] : '–', x3 ? [bp((r.after - x3.after) * 100), heat((r.after - x3.after) * 100)] : '–'];
+    tb.append(el('tr', { class: 'row' }, ...cells.map(x => Array.isArray(x) ? el('td', { class: 'heat', style: x[1], text: x[0] }) : el('td', { text: x }))));
+    csv.push(cells.map(x => Array.isArray(x) ? x[0] : x));
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = csv;
+  setNote(c, `Priced change: expected rate after the meeting minus before it. Market reading turns that into odds the CME FedWatch way (e.g. +20bp ≈ 80% chance of a 25bp hike). From today: cumulative change from the effective rate now (${fmtNum(now.effr, 2)}%). vs 1M / 3M ago: how much the expected rate after that meeting has moved; red = priced more hawkishly (higher), blue = more dovishly (lower). Futures prices as of the last close before ${FP.generated}.`);
+}
+function renderFpBars(c) {
+  const now = fpSnap('now'); if (!now) return setEmpty(c, 'Waiting for data.');
+  const names = ['now', '1M ago', '3M ago'].filter(n => fpSnap(n));
+  const labels = now.path.map(r => dShort(dayMs(r.d)) + ' ' + String(new Date(dayMs(r.d)).getUTCFullYear()).slice(2));
+  const o = baseOpt(); o.legend.show = true;
+  o.grid.right = 32;
+  o.xAxis = { type: 'category', data: labels, boundaryGap: false, axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { lineStyle: { color: tok('--axis') } }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 2) + '%');
+  o.tooltip = { ...o.tooltip, trigger: 'axis', valueFormatter: v => v == null ? '–' : fmtNum(v, 2) + '%' };
+  o.tooltip.axisPointer = { type: 'line', lineStyle: { color: tok('--muted') } };
+  o.series = names.map((n, i) => ({ name: n === 'now' ? 'Priced now' : 'Priced ' + n, type: 'line', symbol: 'circle', symbolSize: i ? 6 : 8, color: col(i),
+    lineStyle: { width: i ? 1.5 : 2.5, type: ['solid', 'dashed', 'dotted'][i], color: col(i) }, itemStyle: { color: col(i) },
+    data: now.path.map(r => { const x = fpSnap(n).path.find(q => q.d === r.d); return x ? +x.after.toFixed(3) : null; }) }));
+  o.series[0].markLine = { silent: true, symbol: 'none', data: [{ yAxis: now.effr, lineStyle: { color: tok('--muted'), type: 'dashed' }, label: { formatter: `today ${fmtNum(now.effr, 2)}%`, color: tok('--muted'), position: 'insideEndTop', fontSize: 11 } }] };
+  const ch = inst(c); ch.setOption(o, true);
+  c.csv = [['Meeting', ...names], ...now.path.map(r => [r.d, ...names.map(n => { const x = fpSnap(n).path.find(q => q.d === r.d); return x ? x.after.toFixed(3) : ''; })])];
+  setNote(c, 'Expected effective fed funds rate after each meeting, as priced today, a month ago and three months ago. Older snapshots start from the first futures contract still trading.');
+}
+function renderFpHist(c) {
+  if (!FP || !FP.contracts) return setEmpty(c, 'Waiting for data.');
+  const ks = Object.keys(FP.contracts).filter(k => k.endsWith('-12') || k.endsWith('-06')).sort();
+  const list = ks.map((k, i) => { const x = FP.contracts[k], s = { t: x.d.map(dayMs), v: x.v };
+    return { name: `${MONTHS[+k.slice(5) - 1]} ${k.slice(0, 4)} contract`, data: pts(s, state.from, state.to), color: col(i) }; });
+  if (has('EFFR')) list.push({ name: 'Effective fed funds (actual)', data: pts(S.EFFR, state.from, state.to), color: tok('--ink-2'), extra: { step: 'end' } });
+  drawLines(c, list, { fmt: v => fmtNum(v, 3) + '%', axisFmt: v => fmtNum(v, 2) + '%', endLabels: false });
+  setSource(c, 'CBOT 30-day fed funds futures via Yahoo Finance (' + ks.map(k => FP.contracts[k].sym).join(', ') + '); FRED (EFFR)');
+  setNote(c, 'Each line is 100 minus the futures price: the average fed funds rate the market expects in that month, day by day. Rising = the market pricing a higher path (hawkish), falling = dovish. Contract history covers about the last year.');
+}
+function renderFp2y(c) {
+  if (!has('UST2Y', 'EFFR')) return setEmpty(c, NO_FRED);
+  const sp = combine(S.UST2Y, S.EFFR, (a, b) => (a - b) * 100, {}, 7 * DAY);
+  drawLines(c, [{ name: '2Y Treasury yield − effective fed funds (bp)', data: pts(sp, state.from, state.to) }],
+    { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, areas: recessionAreas(state.from, state.to) });
+  const a = asOf(sp, state.to);
+  setNote(c, `A simple, long-history read of what the market expects over the next two years: below zero = cuts priced, above zero = hikes priced (plus a small term premium). Latest ${a ? bp(a.v) : '–'}. Grey = US recessions: the spread typically turns deeply negative before and during easing cycles.`);
+}
+function buildFedPath() {
+  const g = $('#fpGrid');
+  makeCard(g, { key: 'fp_path', range: false, title: 'Fed funds path: market pricing vs the Fed’s projections', wide: true, tall: true,
+    source: 'CBOT 30-day fed funds futures via Yahoo Finance; Federal Reserve Summary of Economic Projections via FRED (FEDTARMD, FEDTARCTH, FEDTARCTL, FEDTARMDLR); FRED (EFFR)', render: renderFpPath });
+  makeCard(g, { key: 'fp_years', range: false, title: 'Year-end rate: market vs Fed median', wide: true,
+    source: 'Fed funds futures via Yahoo Finance; Fed SEP via FRED (FEDTARMD)', render: renderFpYears });
+  makeCard(g, { key: 'fp_table', range: false, title: 'Meeting by meeting', wide: true, sub: 'What the fed funds futures imply for each FOMC decision.',
+    source: 'CBOT 30-day fed funds futures via Yahoo Finance; FOMC calendar (federalreserve.gov); odds calculated the CME FedWatch way', render: renderFpTable });
+  makeCard(g, { key: 'fp_bars', range: false, title: 'Expected rate after each meeting: now vs 1 and 3 months ago', wide: true,
+    source: 'CBOT 30-day fed funds futures via Yahoo Finance', render: renderFpBars });
+  makeCard(g, { key: 'fp_hist', title: 'How the expected path has moved', wide: true, defaultRange: '1Y', render: renderFpHist });
+  makeCard(g, { key: 'fp_2y', title: 'Market expectations, long history: 2Y Treasury minus fed funds', wide: true, defaultRange: 'MAX',
+    source: 'FRED (DGS2, EFFR); recession shading NBER (USREC)', render: renderFp2y });
+  for (const k of ['fp_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderFedPath() { fpKpis(); ['fp_path', 'fp_years', 'fp_table', 'fp_bars', 'fp_hist', 'fp_2y'].forEach(k => cards[k].render()); }
+
 // ------------------------------------------------------------------ ECONOMIC CALENDAR
 let CAL = null;
 const CAL_VIEWS = [['This week', 'this'], ['Next week', 'next'], ['Later', 'later'], ['Recent results', 'past']];
@@ -2984,6 +3149,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'headlines', 'moved', 'fragile', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
+  fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef']],
     ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
@@ -3053,9 +3219,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -3105,6 +3271,7 @@ async function init() {
   try { SIGN = await loadJSON('data/signposts.json'); } catch (e) { SIGN = null; }
   try { STR = await loadJSON('data/stress.json'); } catch (e) { STR = null; }
   try { CAL = await loadJSON('data/calendar.json'); } catch (e) { CAL = null; }
+  try { FP = await loadJSON('data/fedpath.json'); } catch (e) { FP = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -3137,11 +3304,11 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); buildFedPath(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
   buildCalendar();
-  setTab(['overview', 'news', 'calendar', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'news', 'calendar', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

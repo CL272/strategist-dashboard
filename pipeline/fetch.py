@@ -591,6 +591,11 @@ def main() -> int:
         econcal.build(fred_key, asia_series, status)
     except Exception as e:   # the calendar must never break the data refresh
         print(f"Calendar failed: {type(e).__name__}: {e}")
+    try:
+        import fedpath
+        fedpath.build(fred_key, fred_series, status)
+    except Exception as e:   # the Fed-path page must never break the data refresh
+        print(f"Fed path failed: {type(e).__name__}: {e}")
     if _self is not sys.modules.get("__main__"):
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
 

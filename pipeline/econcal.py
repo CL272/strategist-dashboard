@@ -118,7 +118,7 @@ SEP = "with Summary of Economic Projections"
 MEETINGS = [
     # (region, event, decision date, local time (tz, HH:MM) or None, detail, source, policy-rate (source, id) or None)
     *[("US", "FOMC decision", d, ("ET", "14:00"), x, FOMC, ("fred", "DFEDTARU")) for d, x in [
-        ("2026-10-28", ""), ("2026-12-09", SEP), ("2027-01-27", ""), ("2027-03-17", SEP), ("2027-04-28", ""), ("2027-06-09", SEP),
+        ("2026-09-16", SEP), ("2026-10-28", ""), ("2026-12-09", SEP), ("2027-01-27", ""), ("2027-03-17", SEP), ("2027-04-28", ""), ("2027-06-09", SEP),
         ("2027-07-28", ""), ("2027-09-15", SEP), ("2027-10-27", ""), ("2027-12-08", SEP)]],
     *[("Euro area", "ECB decision", d, ("CET", "14:15"), "", ECB, ("fred", "ECBDFR")) for d in [
         "2026-10-29", "2026-12-17", "2027-02-04", "2027-03-18", "2027-04-29", "2027-06-10", "2027-07-22", "2027-09-09", "2027-10-28", "2027-12-16"]],
