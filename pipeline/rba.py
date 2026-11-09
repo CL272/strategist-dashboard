@@ -36,7 +36,9 @@ SERIES = [
     ("AU_BROAD_YOY",  "d1",   "DGFABM12",     "Australia broad money growth YoY",       "%",   "Macro · Australia"),
     ("AU_TWI",        "f11.1","FXRTWI",       "AUD trade-weighted index (May 1970=100)", "idx", "FX · Australia"),
 ]
-TABLE_NAMES = {"f1.1": "F1.1", "f2": "F2", "g1": "G1", "h5": "H5", "h1": "H1", "d1": "D1", "f11.1": "F11.1"}
+# daily versions (table F1, from 2011) spliced onto the monthly history, so a decision shows the day after it is made
+DAILY = {"AU_CASH": "FIRMMCRTD", "AU_3M": "FIRMMBAB90D"}
+TABLE_NAMES = {"f1": "F1", "f1.1": "F1.1", "f2": "F2", "g1": "G1", "h5": "H5", "h1": "H1", "d1": "D1", "f11.1": "F11.1"}
 
 
 def rba_table(t: str) -> dict[str, pd.Series] | None:
@@ -79,9 +81,13 @@ def rba_table(t: str) -> dict[str, pd.Series] | None:
 def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
     print("Asia: Australia (RBA)")
     out: dict[str, tuple[pd.Series, dict]] = {}
-    tables = {t: rba_table(t) for t in dict.fromkeys(t for _, t, *_ in SERIES)}
+    tables = {t: rba_table(t) for t in dict.fromkeys(["f1"] + [t for _, t, *_ in SERIES])}
     for sid, t, code, label, unit, group in SERIES:
         s = (tables.get(t) or {}).get(code)
+        d = (tables.get("f1") or {}).get(DAILY.get(sid, ""))
+        if d is not None and len(d):
+            s = d if s is None else pd.concat([s[s.index < d.index[0]], d])
+            code, t = f"{DAILY[sid]}, with {code} before {d.index[0]:%Y}", "f1"
         if s is not None:
             s = s[s.index >= "2000-01-01"]
             kind = "yield" if group.startswith("Rates") else "level"

@@ -127,9 +127,9 @@ def fetch_opr() -> pd.Series | None:
     if len(pts) < 5:
         return None
     s = pd.Series(pts).sort_index()
-    # expand decision dates to a month-end step series so it charts like a rate
+    # a step series: month-ends plus each decision date (so the latest decision shows straight away)
     idx = pd.date_range(s.index.min(), pd.Timestamp.today().normalize(), freq="ME")
-    return s.reindex(s.index.union(idx)).ffill().reindex(idx)
+    return s.reindex(s.index.union(idx)).ffill()
 
 
 def build_asia(status: dict) -> dict[str, pd.Series]:

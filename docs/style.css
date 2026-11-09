@@ -339,3 +339,21 @@ table.perf tr.foldable .cnt { font-weight: 400; }
 .seg-chips button { border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font-size: 12.5px; padding: 4px 11px; border-radius: 999px; cursor: pointer; }
 .seg-chips button:hover { color: var(--ink); background: var(--wash); }
 .seg-chips button[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); font-weight: 600; }
+
+/* economic calendar */
+table.cal th, table.cal td { text-align: left; vertical-align: top; }
+table.cal th.num, table.cal td.num { text-align: right; }
+table.cal td.tm { white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.cal td.ev { white-space: normal; min-width: 240px; }
+table.cal td.ev .star { color: var(--serious); display: inline-block; width: 14px; }
+table.cal td.ev .muted { margin-left: 14px; }
+table.cal td.reg { white-space: nowrap; color: var(--ink-2); }
+table.cal td.src { color: var(--muted); font-size: 12px; white-space: normal; }
+table.cal tr.grp.today td { color: var(--accent); }
+table.cal tr.grp.past td { color: var(--muted); }
+table.cal tr.row.done td.ev { color: var(--ink-2); }
+table.cal tr.row.due td.tm { font-weight: 650; }
+table.cal .tag { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
+table.cal .tag.live, table.cal .tag.confirmed { border-color: var(--good); color: var(--good); }
+table.cal .tag.estimated { border-style: dashed; }
+.cal-bar { background: var(--page); border-radius: 0; position: static; }

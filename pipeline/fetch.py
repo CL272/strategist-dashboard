@@ -585,7 +585,12 @@ def main() -> int:
     import fetch as _self   # curves.py imports this module by name; collect its error notes too
     curves.build_curves(status)
     import asia
-    asia.build_asia(status)
+    asia_series = asia.build_asia(status)
+    try:
+        import econcal
+        econcal.build(fred_key, asia_series, status)
+    except Exception as e:   # the calendar must never break the data refresh
+        print(f"Calendar failed: {type(e).__name__}: {e}")
     if _self is not sys.modules.get("__main__"):
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
 

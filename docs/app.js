@@ -931,14 +931,16 @@ function buildOverview() {
   makeCard(g, { key: 'fragile', range: false, title: 'Market stress gauges', sub: 'Market-priced stress gauges ranked against their own last 10 years. The full composite is on the Stress & Signposts page.', source: 'FRED, Yahoo Finance', render: renderFragile });
   makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity and commodity returns as a USD, SGD, MYR, EUR, GBP, JPY or AUD investor.', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
-  for (const k of ['points', 'headlines', 'fragile', 'where']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', wide: true, sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
+    source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
+  for (const k of ['points', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
 function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
-  ['points', 'headlines', 'moved', 'fragile', 'where'].forEach(k => cards[k].render());
+  ['points', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
@@ -2848,10 +2850,139 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
+// ------------------------------------------------------------------ ECONOMIC CALENDAR
+let CAL = null;
+const CAL_VIEWS = [['This week', 'this'], ['Next week', 'next'], ['Later', 'later'], ['Recent results', 'past']];
+const CAL_REGIONS = ['Malaysia', 'Singapore', 'Australia', 'US', 'China', 'Japan', 'Korea', 'Euro area', 'UK'];
+state.calRegions = new Set(CAL_REGIONS); state.calKey = false;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dayMs = s => Date.parse(s + 'T00:00:00Z');
+const sgToday = () => { const n = new Date(Date.now() + 8 * 3600e3); return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()); };
+const weekOf = t => t - ((new Date(t).getUTCDay() + 6) % 7) * DAY;   // Monday
+const dShort = t => { const d = new Date(t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+const dLong = t => `${WEEKDAYS[new Date(t).getUTCDay()]} ${dShort(t)}`;
+function calSpan(e) { const a = dayMs(e.d); return [a, e.end ? dayMs(e.end) : a]; }
+function calStatus(e, today) {
+  const [, b] = calSpan(e);
+  if (e.actual) return ['done', ''];
+  if (dayMs(e.d) > today) return ['upcoming', ''];
+  if (e.kind === 'Policy' && !e.pending) return ['done', ''];
+  return b >= today ? ['due', e.end ? 'due in this window' : 'due today'] : ['waiting', e.kind === 'Policy' ? 'decided; rate not yet in the data' : 'released; not yet in this dashboard’s data'];
+}
+function calRows(view) {
+  if (!CAL || !CAL.events) return [];
+  const today = sgToday(), ws = weekOf(today);
+  const ok = e => state.calRegions.has(e.region) && (!state.calKey || e.hi);
+  const out = [];
+  for (const e of CAL.events.filter(ok)) {
+    const [a, b] = calSpan(e);
+    let lo, hi;
+    if (view === 'this') [lo, hi] = [ws, ws + 6 * DAY];
+    else if (view === 'next') [lo, hi] = [ws + 7 * DAY, ws + 13 * DAY];
+    else if (view === 'later') [lo, hi] = [ws + 14 * DAY, Infinity];
+    else [lo, hi] = [today - 21 * DAY, today - DAY];
+    if (view === 'past') { if (b < today && b >= lo) out.push({ e, day: a }); continue; }
+    if (view === 'later' ? a >= lo : (a <= hi && b >= lo)) out.push({ e, day: Math.max(a, lo) });
+  }
+  out.sort((x, y) => view === 'past' ? (y.day - x.day) || x.e.region.localeCompare(y.e.region) : (x.day - y.day) || ((x.e.kind === 'Policy' ? 0 : 1) - (y.e.kind === 'Policy' ? 0 : 1)) || (x.e.sgt || '99').localeCompare(y.e.sgt || '99'));
+  return out;
+}
+function calTiming(e) {
+  if (e.conf === 'Live') return ['Scheduled', 'Date from the agency’s release calendar via FRED'];
+  if (e.conf === 'Confirmed') return ['Confirmed', 'From the central bank’s published meeting schedule'];
+  if (e.conf === 'Rule') return ['Fixed rule', e.detail];
+  const [a, b] = calSpan(e);
+  return [e.end ? `Window ${dShort(a)}–${dShort(b)}` : 'Estimated', 'Estimated from the usual release pattern; the agency does not publish a machine-readable forward calendar'];
+}
+function calTable(list, today, { compact = false } = {}) {
+  const tbl = el('table', { class: 'perf cal' });
+  const heads = compact ? ['Time (SGT)', 'Region', 'Event', 'Previous'] : ['Time (SGT)', 'Region', 'Event', 'Covers', 'Actual', 'Previous', 'Timing', 'Source'];
+  const hcls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: hcls[i] })))));
+  const tb = el('tbody'), csv = [['Date', ...heads]];
+  let day = null;
+  for (const { e, day: d } of list) {
+    if (d !== day) {
+      day = d;
+      const lab = dLong(d) + (d === today ? ' · today' : d === today + DAY ? ' · tomorrow' : '');
+      tb.append(el('tr', { class: 'grp' + (d < today ? ' past' : '') + (d === today ? ' today' : '') }, el('td', { colspan: heads.length, text: lab })));
+    }
+    const [st, stTxt] = calStatus(e, today), [timing, timingTip] = calTiming(e);
+    const name = el('div', {}, el('span', { class: 'star', text: e.hi ? '★' : '', title: e.hi ? 'Key event' : '' }), el('span', { text: e.name }));
+    if (e.detail && !compact) name.append(el('div', { class: 'muted small', text: e.detail }));
+    const prev = e.prev ? e.prev + (e.prev_period && st !== 'done' ? ` (${e.prev_period})` : '') : '–';
+    const actual = e.actual ? el('b', { text: e.actual }) : el('span', { class: 'muted small', text: st === 'upcoming' ? '' : stTxt || '–' });
+    const cells = compact
+      ? [e.sgt || '–', e.region, name, prev]
+      : [e.sgt || '–', e.region, name, e.period || e.covers || '', actual, prev, el('span', { class: 'tag ' + e.conf.toLowerCase(), text: timing, title: timingTip }), e.src || ''];
+    const cls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
+    tb.append(el('tr', { class: 'row ' + st }, ...cells.map((x, i) => el('td', { class: cls[i] }, x))));
+    csv.push([iso(d), e.sgt || '', e.region, e.name, ...(compact ? [e.prev || ''] : [e.period || '', e.actual || '', e.prev || '', timing, e.src || ''])]);
+  }
+  tbl.append(tb);
+  if (!list.length) tb.append(el('tr', {}, el('td', { colspan: heads.length, class: 'muted', text: 'Nothing in this period for the regions selected.' })));
+  return [tbl, tb, csv];
+}
+function buildCalendar() {
+  const panel = $('#tab-calendar');
+  const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Period' });
+  CAL_VIEWS.forEach(([lab], i) => nav.append(el('button', { type: 'button', role: 'tab', text: lab, 'data-i': i, onclick: () => { state.sub.calendar = i; renderTab(); } })));
+  const chips = el('div', { class: 'seg-chips', role: 'group', 'aria-label': 'Regions' });
+  const all = el('button', { type: 'button', text: 'All regions', onclick: () => { state.calRegions = new Set(CAL_REGIONS); renderCalendar(); } });
+  chips.append(all);
+  for (const r of CAL_REGIONS) chips.append(el('button', { type: 'button', text: r, 'data-r': r, title: 'Click to show only this region; Ctrl/⌘-click to add or remove it',
+    onclick: ev => { if (ev.ctrlKey || ev.metaKey) { state.calRegions.has(r) ? state.calRegions.delete(r) : state.calRegions.add(r); if (!state.calRegions.size) state.calRegions.add(r); }
+      else state.calRegions = state.calRegions.size === 1 && state.calRegions.has(r) ? new Set(CAL_REGIONS) : new Set([r]); renderCalendar(); } }));
+  const key = el('label', { class: 'mini-label small' }, el('input', { type: 'checkbox', onchange: ev => { state.calKey = ev.target.checked; renderCalendar(); } }), el('span', { text: '★ Key events only' }));
+  const g = el('div', { class: 'grid' });
+  panel.append(nav, el('div', { class: 'perf-bar cal-bar' }, chips, key), g);
+  makeCard(g, { key: 'cal', range: false, title: 'Economic calendar', wide: true, render: renderCalCard });
+  const r = cards.cal.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+}
+function renderCalendar() {
+  const panel = $('#tab-calendar'), cur = state.sub.calendar || 0;
+  panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
+  const one = state.calRegions.size === 1 ? [...state.calRegions][0] : null, allOn = state.calRegions.size === CAL_REGIONS.length;
+  panel.querySelectorAll('.cal-bar .seg-chips button').forEach(b => b.setAttribute('aria-selected', b.dataset.r ? (!allOn && state.calRegions.has(b.dataset.r)) : allOn));
+  cards.cal.render();
+  if (one) cards.cal.titleEl.textContent = `Economic calendar: ${one}`;
+}
+function renderCalCard(c) {
+  const b = htmlBody(c);
+  c.titleEl.textContent = 'Economic calendar';
+  if (!CAL || !CAL.events) { b.append(el('div', { class: 'empty', text: 'The calendar arrives with the next full data refresh.' })); c.csv = null; return; }
+  const [lab, view] = CAL_VIEWS[state.sub.calendar || 0], today = sgToday(), ws = weekOf(today);
+  const span = { this: `${dShort(ws)} – ${dShort(ws + 6 * DAY)}`, next: `${dShort(ws + 7 * DAY)} – ${dShort(ws + 13 * DAY)}`, later: `from ${dShort(ws + 14 * DAY)} to ${dShort(dayMs(CAL.end))}`, past: 'last 3 weeks' }[view];
+  c.subEl.textContent = `${lab}: ${span}. Times are Singapore/Malaysia time (UTC+8); “+1 day” means the next morning here. ★ = key event.`;
+  const list = calRows(view);
+  const [tbl, tb, csv] = calTable(list, today);
+  b.append(el('div', { class: 'table-wrap' }, tbl));
+  foldableGroups(tb, 'cal');
+  c.csv = csv;
+  const notes = [`${list.length} events.`,
+    'Timing: “Scheduled” = date from the agency’s own release calendar (US and euro area, via FRED); “Confirmed” = central bank meeting schedule; “Window” = estimated from the usual release pattern (Malaysia, Singapore, Australia, China, Japan, Korea), so check the agency for the exact day.',
+    'Actual = the number that release printed, from this dashboard’s data; Previous = the reading before it (for upcoming events, the latest reading). No consensus column: there is no free source of economist forecasts.',
+    ...(CAL.notes || [])];
+  setNote(c, notes.join(' '));
+  setSource(c, `FRED release calendar (US, euro area); Federal Reserve, ECB, Bank of Japan, Bank Negara Malaysia, RBA, Bank of England and MAS schedules (checked ${CAL.verified_on}); release windows estimated from DOSM, SingStat, ABS, NBS, Statistics Bureau of Japan and Korea Customs patterns. Built ${CAL.generated}.`);
+}
+function renderCalNext(c) {
+  const b = htmlBody(c);
+  if (!CAL || !CAL.events) { b.append(el('div', { class: 'empty', text: 'The calendar arrives with the next full data refresh.' })); return; }
+  const today = sgToday();
+  const list = CAL.events.filter(e => e.hi).map(e => { const [a, z] = calSpan(e); return { e, a, z }; })
+    .filter(({ a, z }) => z >= today && a <= today + 7 * DAY).map(({ e, a }) => ({ e, day: Math.max(a, today) }))
+    .sort((x, y) => (x.day - y.day) || (x.e.sgt || '99').localeCompare(y.e.sgt || '99'));
+  const [tbl, tb, csv] = calTable(list, today, { compact: true });
+  b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = csv;
+  setNote(c, 'Estimated windows (Asian releases) are listed from today until the window closes.');
+}
+
 // ------------------------------------------------------------------ sub-tabs
 // Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
 const SUBTABS = {
-  overview: [['Today', ['points', 'headlines', 'moved', 'fragile']], ['Where we are', ['where']]],
+  overview: [['Today', ['points', 'headlines', 'moved', 'fragile', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef']],
     ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
@@ -2922,9 +3053,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -2932,7 +3063,7 @@ function setTab(t) {
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
-  $('.filters').hidden = t === 'news';
+  $('.filters').hidden = t === 'news' || t === 'calendar';
   setFiltersHeight();
   renderTab();
 }
@@ -2973,6 +3104,7 @@ async function init() {
   try { POS = await loadJSON('data/positioning.json'); } catch (e) { POS = null; }
   try { SIGN = await loadJSON('data/signposts.json'); } catch (e) { SIGN = null; }
   try { STR = await loadJSON('data/stress.json'); } catch (e) { STR = null; }
+  try { CAL = await loadJSON('data/calendar.json'); } catch (e) { CAL = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
@@ -3006,8 +3138,10 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); applySources(); applyPairToggles(); wire();
-  if (h.get('tab') && +h.get('sub') > 0 && SUBTABS[h.get('tab')] && +h.get('sub') < SUBTABS[h.get('tab')].length) state.sub[h.get('tab')] = +h.get('sub');
+  const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
+  if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
-  setTab(['overview', 'news', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildCalendar();
+  setTab(['overview', 'news', 'calendar', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
