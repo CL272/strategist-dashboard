@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Strategist Dashboard</title>
 <meta name="robots" content="noindex">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232a78d6'/><path d='M3 11l3-3 2 2 5-5' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3.5' fill='%230a2b66'/><rect y='13' width='16' height='3' fill='%23d9252f'/><path d='M3 10l3-3 2 2 5-5' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 <script>
   try { const t = localStorage.getItem('sd-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -54,7 +57,7 @@
 </aside>
 
 <div class="content">
-<div class="page-head"><h1 id="pageTitle">Strategist View</h1></div>
+<div class="page-head"><div><div class="eyebrow" id="pageGroup">Overview</div><h1 id="pageTitle">Strategist View</h1></div><div class="greet" id="greet"></div></div>
 <section class="filters" aria-label="Date range">
   <span class="muted small">All charts</span>
   <div class="presets" id="presets">

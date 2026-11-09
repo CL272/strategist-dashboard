@@ -4,7 +4,7 @@
 const DAY = 864e5;
 const S = {};                 // series store: id -> {id,label,group,kind,unit,source,note,t:[ms],v:[]}
 let META = {};
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const FONT = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
 const state = {
   tab: 'overview', preset: '3Y', from: null, to: null, latest: null, earliest: Date.UTC(2005, 0, 1),
   liqMode: 'level', gcbMode: 'level', ratesMode: 'yields',
@@ -3347,10 +3347,10 @@ function renderFpPath(c) {
           { type: 'line', shape: { x1: b[0] - 6, y1: b[1], x2: b[0] + 6, y2: b[1] }, style: { stroke: fed, lineWidth: 2 } }] }; },
       itemStyle: { color: fed }, encode: { x: 0, y: [1, 2] }, tooltip: { show: false } });
     series.push({ name: 'Fed median (dots)', type: 'scatter', z: 4, symbol: 'diamond', symbolSize: 14, itemStyle: { color: fed, borderColor: tok('--surface'), borderWidth: 1.5 },
-      data: years.map(y => [yEnd(y), d.median[y]]), label: { show: true, position: 'right', formatter: p => fmtNum(p.value[1], 2) + '%', color: fed, fontSize: 11, fontWeight: 600 } });
+      data: years.map(y => [yEnd(y), d.median[y]]), label: { show: true, position: 'right', formatter: p => fmtNum(p.value[1], 2) + '%', color: tok('--ink-2'), fontSize: 11, fontWeight: 600 } });
   }
   if (d.longer_run != null) series[0].markLine = { silent: true, symbol: 'none', data: [{ yAxis: d.longer_run, lineStyle: { color: col(3), type: 'dashed' },
-    label: { formatter: `Fed longer-run ${fmtNum(d.longer_run, 2)}%`, color: col(3), position: 'insideEndTop', fontSize: 11 } }] };
+    label: { formatter: `Fed longer-run ${fmtNum(d.longer_run, 2)}%`, color: tok('--ink-2'), position: 'insideEndTop', fontSize: 11 } }] };
   series[0].markArea = { silent: true, itemStyle: { color: hexA(tok('--muted'), 0.08) }, data: [[{ xAxis: today, name: 'priced by the market →', label: { color: tok('--muted'), fontSize: 11, position: 'insideTopLeft' } }, { xAxis: end }]] };
   o.legend.show = true; o.grid.top = 12 + 22 * legendRows(c, series.map(x => x.name));
   o.xAxis = timeAxis({ min: start, max: end });
@@ -3670,12 +3670,23 @@ const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Econo
 function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
+  // section label above the title: the sidebar group the page sits in
+  let g = document.querySelector(`.tabs button[data-tab="${t}"]`); while (g && !g.classList.contains('nav-group')) g = g.previousElementSibling;
+  $('#pageGroup').textContent = g ? g.textContent : '';
+  setGreeting();
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
   $('.filters').hidden = t === 'news' || t === 'calendar' || t === 'weekly' || t === 'ideas';
   setFiltersHeight();
   renderTab();
+}
+function setGreeting() {   // friendly line in Singapore/Malaysia time
+  const n = new Date(Date.now() + 8 * 3600e3), h = n.getUTCHours();
+  const hello = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  const day = `${WEEKDAYS[n.getUTCDay()]} ${n.getUTCDate()} ${MONTHS[n.getUTCMonth()]} · ${String(h).padStart(2, '0')}:${String(n.getUTCMinutes()).padStart(2, '0')} SGT`;
+  const el_ = $('#greet'); if (!el_) return;
+  el_.replaceChildren(el('b', { text: hello }), ` · ${day}` + (state.latest ? ` · markets to ${nice(state.latest)}` : ''));
 }
 function isDark() {
   const t = document.documentElement.dataset.theme;
