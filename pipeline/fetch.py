@@ -596,6 +596,11 @@ def main() -> int:
         fedpath.build(fred_key, fred_series, status)
     except Exception as e:   # the Fed-path page must never break the data refresh
         print(f"Fed path failed: {type(e).__name__}: {e}")
+    try:
+        import tickers
+        tickers.build(status)
+    except Exception as e:   # ticker prices must never break the data refresh
+        print(f"Tickers failed: {type(e).__name__}: {e}")
     if _self is not sys.modules.get("__main__"):
         DIAG.extend(x for x in _self.DIAG if x not in DIAG)
 

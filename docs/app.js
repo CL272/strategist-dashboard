@@ -266,6 +266,7 @@ function syncCardRange(c) {
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
   if (!c.inst) c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' });
+  else if (c.chartEl.clientWidth && Math.abs(c.inst.getWidth() - c.chartEl.clientWidth) > 2) c.inst.resize();   // was drawn while hidden
   return c.inst;
 }
 function setEmpty(c, msg) {
@@ -742,7 +743,7 @@ function moveZ(id, h) {
   return { id, z: (now - m) / sd, chg: disp, t: W.t[k] };
 }
 function movers(h) {
-  const ids = Object.keys(S).filter(id => (S[id].source || '').startsWith('Yahoo') || PERF_FRED.concat(['EUR_HY_OAS', 'ASIA_CORP_OAS', 'BAA_10Y', 'FWD5Y5Y']).includes(id));
+  const ids = Object.keys(S).filter(id => ((S[id].source || '').startsWith('Yahoo') && S[id].group !== 'Tickers' && S[id].group !== 'Derived') || PERF_FRED.concat(['EUR_HY_OAS', 'ASIA_CORP_OAS', 'BAA_10Y', 'FWD5Y5Y']).includes(id));
   return ids.filter(id => has(id)).map(id => moveZ(id, h)).filter(Boolean).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
 }
 function pctRank(s, to, years = 10) {
@@ -2524,7 +2525,7 @@ const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t
 state.mktCcy = 'local';
 const mktSeries = id => state.mktCcy !== 'local' && convertible(id) ? inCcy(id, state.mktCcy) : S[id];
 function perfRows() {
-  const ids = Object.keys(S).filter(id => S[id].source && S[id].source.startsWith('Yahoo') && S[id].group !== 'Derived').concat(PERF_FRED.filter(id => has(id)));
+  const ids = Object.keys(S).filter(id => S[id].source && S[id].source.startsWith('Yahoo') && S[id].group !== 'Derived' && S[id].group !== 'Tickers').concat(PERF_FRED.filter(id => has(id)));
   return ids.filter(id => has(id)).map(id => {
     const s = mktSeries(id), a = asOf(s, state.to);
     if (!a) return null;
@@ -2866,7 +2867,7 @@ function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 // Ideas are kept only in this browser (localStorage); Export/Import moves them between laptops.
 // Nothing is sent anywhere: the dashboard site is public, so ideas are never published with it.
 const IDEA_KEY = 'sd-ideas-v1';
-const IDEA_VIEWS = [['Open ideas', 'open'], ['Closed', 'closed'], ['Scorecard', 'score']];
+const IDEA_VIEWS = [['Open ideas', 'open'], ['Watchlist', 'watch'], ['Closed', 'closed'], ['Scorecard', 'score']];
 let IDEAS = [], ideaStoreOk = true;
 function loadIdeas() {
   try { const raw = localStorage.getItem(IDEA_KEY); IDEAS = raw ? JSON.parse(raw) : []; ideaStoreOk = true; }
@@ -2902,6 +2903,94 @@ function ideaProgress(x, p) {   // where the price sits between stop (0) and tar
   if (!p || x.target == null || x.stop == null || x.target === x.stop) return null;
   return Math.max(-0.1, Math.min(1.1, (p.level - x.stop) / (x.target - x.stop)));
 }
+// ---- individual tickers (Yahoo Finance via the daily refresh): loaded in the background
+let TICK = null;
+const tickId = sym => 'T_' + sym.replace(/[^A-Za-z0-9]/g, '_');
+const TICK_SYM = {};   // upper-case symbol -> S id
+async function loadTickers() {
+  try { TICK = await loadJSON('data/tickers.json'); } catch (e) { TICK = null; return; }
+  for (const [sym, x] of Object.entries(TICK.items || {})) {
+    const id = tickId(sym);
+    S[id] = { id, sym, label: `${x.name} (${sym})`, short: x.name, group: 'Tickers', kind: 'price', unit: x.ccy || '', ccy: x.ccy || '', exch: x.exch, type: x.type,
+      source: `Yahoo Finance (${sym})`, stale: !!x.stale, mine: x.src === 'watchlist', t: x.d.map(d => d * DAY), v: x.v };
+    TICK_SYM[sym.toUpperCase()] = id;
+  }
+  if (['ideas', 'weekly', 'correlation'].includes(state.tab)) renderTab();
+}
+function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
+  let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
+  const m = t.match(/^([A-Z]+):(.+)$/);
+  if (m) { const suf = { MYX: '.KL', KLSE: '.KL', SGX: '.SI', HKEX: '.HK', TSE: '.T', TYO: '.T', ASX: '.AX', KRX: '.KS', TWSE: '.TW' }[m[1]];
+    t = suf ? (m[1] === 'HKEX' && /^\d+$/.test(m[2]) ? m[2].padStart(4, '0') : m[2]) + suf : m[2]; }
+  if (TICK_SYM[t]) return TICK_SYM[t];
+  const hits = Object.values(TICK_SYM).filter(id => S[id].short.toUpperCase().includes(t));
+  return t.length >= 3 && hits.length === 1 ? hits[0] : null;
+}
+const WATCH_KEY = 'sd-watch-v1';
+function getWatch() { try { return JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); } catch (e) { return state.watchMem || []; } }
+function setWatch(list) { state.watchMem = list; try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch (e) { /* kept for this session only */ } }
+function tickMarket(id) {
+  const x = S[id], sym = x.sym;
+  if (x.mine) return 'Added in watchlist.txt';
+  if (x.type === 'CRYPTOCURRENCY' || /-USD$/.test(sym)) return 'Crypto';
+  if (x.type === 'ETF') return 'ETFs';
+  const suf = (sym.match(/\.([A-Z]+)$/) || [])[1];
+  return { KL: 'Malaysia (Bursa)', SI: 'Singapore (SGX)', HK: 'Hong Kong', T: 'Japan', KS: 'Korea', TW: 'Taiwan', AX: 'Australia' }[suf] || 'US';
+}
+const TICK_ORDER = ['Added in watchlist.txt', 'Malaysia (Bursa)', 'Singapore (SGX)', 'US', 'ETFs', 'Hong Kong', 'Japan', 'Korea', 'Taiwan', 'Australia', 'Crypto'];
+function tickRow(id, { star = true, end = state.latest } = {}) {
+  const s = S[id], a = asOf(s, end); if (!a) return null;
+  const ch = back => { const b = asOf(s, back); return b && b.t < a.t ? (a.v / b.v - 1) * 100 : null; };
+  return { id, s, last: a.v, t: a.t, d1: a.i > 0 ? (a.v / s.v[a.i - 1] - 1) * 100 : null, w1: ch(a.t - 7 * DAY), m1: ch(addMonths(a.t, -1)),
+    ytd: ch(Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)), y1: ch(addMonths(a.t, -12)) };
+}
+function renderWatch(c) {
+  const b = htmlBody(c);
+  if (!TICK) { b.append(el('div', { class: 'empty', text: 'Loading ticker prices… (they arrive with the next daily refresh if this is the first time).' })); c.csv = null; return; }
+  const mine = getWatch().filter(id => S[id]);
+  const q = (state.watchQ || '').trim().toUpperCase().replace(/^\$/, '');
+  const add = el('input', { type: 'search', placeholder: 'Find a ticker: $AAPL, 1155.KL, Maybank, DBS, Tencent…', value: state.watchQ || '', 'aria-label': 'Find a ticker', class: 'perf-search wide-search' });
+  add.addEventListener('input', () => { state.watchQ = add.value; const pos = add.selectionStart; renderWatch(c); const n = c.root.querySelector('.wide-search'); n.focus(); n.setSelectionRange(pos, pos); });
+  const edit = `https://github.com/${REPO_PATH}/edit/main/watchlist.txt`;
+  b.append(el('div', { class: 'perf-bar' }, add, el('span', { class: 'muted small' }, 'Not listed? Add it to ', el('a', { href: edit, target: '_blank', rel: 'noopener', text: 'watchlist.txt on GitHub' }), ' (one ticker per line; it appears after the next daily refresh).')));
+  const all = Object.values(TICK_SYM);
+  const match = id => !q || S[id].sym.toUpperCase().includes(q) || S[id].short.toUpperCase().includes(q);
+  const tbl = el('table', { class: 'perf watch' });
+  const heads = ['', 'Ticker', 'Name', 'Last', '1D', '1W', '1M', 'YTD', '1Y', '3M', ''];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 1 || i === 2 ? 'l' : '' })))));
+  const tb = el('tbody'), pos = tok('--pos'), neg = tok('--neg'), csv = [['Ticker', 'Name', 'Currency', 'Last', '1D %', '1W %', '1M %', 'YTD %', '1Y %']];
+  const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
+  const pc = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
+  const group = (name, ids, open) => {
+    const rows = ids.map(id => tickRow(id)).filter(Boolean); if (!rows.length) return;
+    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: name })));
+    for (const r of rows) {
+      const on = mine.includes(r.id);
+      const starB = el('button', { type: 'button', class: 'star-b' + (on ? ' on' : ''), text: on ? '★' : '☆', title: on ? 'Remove from my watchlist' : 'Add to my watchlist',
+        onclick: ev => { ev.stopPropagation(); const l = getWatch(); setWatch(on ? l.filter(x => x !== r.id) : [...l, r.id]); renderWatch(c); } });
+      const ideaB = el('button', { type: 'button', class: 'ghost', text: '＋ Idea', title: 'Log an idea on this ticker', onclick: ev => { ev.stopPropagation(); openIdeaForm(null, r.id); } });
+      tb.append(el('tr', { class: 'row' + (state.watchSel === r.id ? ' sel' : ''), onclick: () => { state.watchSel = r.id; cards.idea_chart.render(); renderWatch(c); } },
+        el('td', {}, starB), el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short + (r.s.stale ? ' (stale)' : '') }),
+        el('td', { text: fmtNum(r.last, autoDec(r.last)) + ' ' + (r.s.ccy || '') }),
+        ...[[r.d1, 3], [r.w1, 6], [r.m1, 10], [r.ytd, 25], [r.y1, 30]].map(([v, sc]) => el('td', { class: 'heat', style: heat(v, sc), text: pc(v) })),
+        el('td', {}, sparkSVG(r.s, addMonths(r.t, -3), r.t) || ''), el('td', {}, ideaB)));
+      csv.push([r.s.sym, r.s.short, r.s.ccy, r.last, ...[r.d1, r.w1, r.m1, r.ytd, r.y1].map(v => v == null ? '' : v.toFixed(2))]);
+    }
+    if (!open) { /* folded groups are handled by foldableGroups */ }
+  };
+  if (!q) group(`★ My watchlist (${mine.length})`, mine, true);
+  const pool = all.filter(match);
+  for (const m of TICK_ORDER) group(m + (q ? '' : ''), pool.filter(id => tickMarket(id) === m).sort((x, y) => S[x].short.localeCompare(S[y].short)), !!q);
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  if (!q) {   // first visit: fold the big market groups, keep "My watchlist" and Malaysia open
+    let first = false; try { first = !localStorage.getItem('sd-watch-folds'); localStorage.setItem('sd-watch-folds', '1'); } catch (e) { first = !state.watchFoldsDone; }
+    if (first) { state.watchFoldsDone = true; TICK_ORDER.filter(m => m !== 'Malaysia (Bursa)' && m !== 'Added in watchlist.txt').forEach(m => folded.add('watch|' + m)); saveFolded(); }
+  }
+  foldableGroups(tb, q ? 'watchq' : 'watch');
+  if (!mine.length && !q) b.prepend(el('p', { class: 'muted small', text: 'Tip: tap ☆ to add a ticker to your watchlist (kept only in this browser). Groups below fold and unfold; tap a row to chart it.' }));
+  c.csv = csv;
+  setNote(c, `${all.length} tickers with daily closes from Yahoo Finance (built-in list: KLCI and STI constituents, US large caps, popular ETFs, key Hong Kong, Japan, Korea, Taiwan and Australia names, major crypto${(TICK.watchlist || []).length ? `; plus ${TICK.watchlist.length} from watchlist.txt` : ''}). Prices are last daily closes in each ticker's own currency, refreshed twice a day; not live quotes.` + ((TICK.failed || []).length ? ` Not found on Yahoo: ${TICK.failed.join(', ')}.` : ''));
+}
 function buildIdeas() {
   loadIdeas();
   const panel = $('#tab-ideas');
@@ -2932,7 +3021,9 @@ function buildIdeas() {
   makeCard(g, { key: 'idea_table', range: false, title: 'Ideas', wide: true, render: renderIdeaTable });
   makeCard(g, { key: 'idea_chart', title: 'Idea chart', wide: true, render: renderIdeaChart });
   makeCard(g, { key: 'idea_score', range: false, title: 'Scorecard', wide: true, render: renderIdeaScore });
-  for (const k of ['idea_table', 'idea_score']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard(g, { key: 'idea_watch', range: false, title: 'Watchlist and ticker prices', wide: true, render: renderWatch });
+  g.prepend(cards.idea_watch.root);
+  for (const k of ['idea_table', 'idea_score', 'idea_watch']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 function renderIdeas() {
   const panel = $('#tab-ideas'), cur = state.sub.ideas || 0, view = IDEA_VIEWS[cur][1];
@@ -2940,25 +3031,29 @@ function renderIdeas() {
   $('#ideaStoreNote').textContent = ideaStoreOk
     ? `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, stored only in this browser on this computer. Nothing is uploaded. Use Export to back up or move them to another laptop.`
     : '⚠ This browser is blocking storage (private window or a work policy?), so ideas will be lost when you close the page. Use Export before leaving.';
-  cards.idea_table.root.hidden = view === 'score';
-  cards.idea_chart.root.hidden = view === 'score' || !IDEAS.some(x => x.sid);
+  cards.idea_table.root.hidden = view === 'score' || view === 'watch';
+  cards.idea_watch.root.hidden = view !== 'watch';
+  cards.idea_chart.root.hidden = view === 'score' || (view === 'watch' ? !state.watchSel : !IDEAS.some(x => x.sid));
   cards.idea_score.root.hidden = view !== 'score';
-  if (view !== 'score') { cards.idea_table.render(); if (!cards.idea_chart.root.hidden) cards.idea_chart.render(); }
+  if (view === 'watch') cards.idea_watch.render();
+  else if (view !== 'score') cards.idea_table.render();
   else cards.idea_score.render();
+  if (!cards.idea_chart.root.hidden) cards.idea_chart.render();
 }
 function ideaCsv() {
   const h = ['Opened', 'Idea', 'Instrument', 'Direction', 'Entry', 'Target', 'Stop', 'Horizon', 'Conviction', 'Theme', 'Status', 'Closed', 'Exit', 'P&L', 'Rationale', 'Close note'];
   return [h, ...IDEAS.map(x => { const p = ideaPerf(x); return [x.date, x.title, x.sid ? S[x.sid] ? S[x.sid].label : x.sid : '', x.sid ? (ideaDirs(x.sid).find(d => d[0] === x.dir) || ['', ''])[1] : '',
     x.entry ?? '', x.target ?? '', x.stop ?? '', x.horizon || '', x.conv || '', x.theme || '', x.status, x.closeDate || '', x.closeLevel ?? '', p ? fmtPnl(p) : '', x.why || '', x.closeNote || '']; })];
 }
-function openIdeaForm(edit = null) {
+function openIdeaForm(edit = null, preset = null) {
   const box = $('#ideaForm'); box.replaceChildren(); box.hidden = false;
   const x = edit || { id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: iso(sgToday()), status: 'open', conv: 2 };
-  const ids = allIdsSorted().filter(id => !/_YOYc$|^MYR_IN_/.test(id));
+  const ids = allIdsSorted().filter(id => !/_YOYc$|^MYR_IN_/.test(id)).sort((p, q) => (S[p].group === 'Tickers') - (S[q].group === 'Tickers'));
   const dl = el('datalist', { id: 'ideaSeries' }, ...ids.map(id => el('option', { value: `${S[id].label} · ${id}` })));
   const f = (lab, input, hint) => el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: lab }), input, hint ? el('span', { class: 'muted small', text: hint }) : '');
   const title = el('input', { type: 'text', value: x.title || '', placeholder: 'e.g. Long KLCI on BNM hold and earnings recovery', required: true });
-  const inst = el('input', { type: 'text', list: 'ideaSeries', value: x.sid && S[x.sid] ? `${S[x.sid].label} · ${x.sid}` : '', placeholder: 'Type to search, e.g. KLCI, UST 10Y, USD/MYR, gold (or leave blank for a view)' });
+  const pre = preset || x.sid;
+  const inst = el('input', { type: 'text', list: 'ideaSeries', value: pre && S[pre] ? `${S[pre].label} · ${pre}` : '', placeholder: 'Type to search: $AAPL, 1155.KL, Maybank, KLCI, UST 10Y, USD/MYR, gold… (or leave blank for a view)' });
   const dir = el('select', {});
   const date = el('input', { type: 'date', value: x.date, max: iso(sgToday()) });
   const entry = el('input', { type: 'number', step: 'any', value: x.entry ?? '' }), target = el('input', { type: 'number', step: 'any', value: x.target ?? '' }), stop = el('input', { type: 'number', step: 'any', value: x.stop ?? '' });
@@ -2969,14 +3064,14 @@ function openIdeaForm(edit = null) {
   const themes = el('datalist', { id: 'ideaThemes' }, ...[...new Set(IDEAS.map(i => i.theme).filter(Boolean))].map(t => el('option', { value: t })));
   const why = el('textarea', { rows: 3, placeholder: 'Rationale, catalysts, what would make you wrong' }); why.value = x.why || '';
   const info = el('span', { class: 'muted small' });
-  const sidOf = () => { const m = inst.value.match(/·\s*([A-Za-z0-9_]+)\s*$/); return m && S[m[1]] ? m[1] : (S[inst.value.trim()] ? inst.value.trim() : null); };
+  const sidOf = () => { const m = inst.value.match(/·\s*([A-Za-z0-9_]+)\s*$/); return m && S[m[1]] ? m[1] : (S[inst.value.trim()] ? inst.value.trim() : tickerFromText(inst.value)); };
   const sync = () => {
     const sid = sidOf(), prev = dir.value;
     dir.replaceChildren(...(sid ? ideaDirs(sid) : [['up', 'Bullish / up'], ['down', 'Bearish / down']]).map(([v, l]) => el('option', { value: v, text: l })));
     dir.value = prev || x.dir || 'up'; if (!dir.value) dir.selectedIndex = 0;
     if (sid) { const a = asOf(S[sid], dayMs(date.value || iso(sgToday())));
       entry.placeholder = a ? String(+a.v.toFixed(4)) : ''; info.textContent = a ? `${S[sid].label} was ${ideaLevel({ sid }, a.v)} on ${nice(a.t)}. Leave Entry blank to use it.` : 'No price on that date.'; }
-    else { entry.placeholder = ''; info.textContent = inst.value ? 'Not a dashboard series: the idea is logged as a view, without automatic tracking.' : 'No instrument: logged as a view (no automatic tracking).'; }
+    else { entry.placeholder = ''; info.textContent = inst.value ? (TICK ? 'Not a tracked series or ticker yet: logged as a view. To track a new ticker, add it to watchlist.txt (see the Watchlist tab).' : 'Ticker prices are still loading…') : 'No instrument: logged as a view (no automatic tracking).'; }
   };
   inst.addEventListener('change', sync); inst.addEventListener('input', sync); date.addEventListener('change', sync);
   const save = el('button', { type: 'submit', class: 'primary', text: edit ? 'Save changes' : 'Add idea' });
@@ -3069,6 +3164,15 @@ function renderIdeaTable(c) {
   setNote(c, 'P&L: % for prices (no dividends, carry or FX), bp for yields and spreads (positive when the yield moves your way). The stop → target bar shows where the latest level sits between your stop (left) and target (right). Target/stop flags use daily closes since the idea was opened.');
 }
 function renderIdeaChart(c) {
+  if (IDEA_VIEWS[state.sub.ideas || 0][1] === 'watch') {
+    const id = state.watchSel; if (!id || !S[id]) return setEmpty(c, 'Tap a ticker to chart it.');
+    const s = S[id]; c.titleEl.textContent = `${s.short} (${s.sym})`; c.subEl.textContent = `Daily close, ${s.ccy || 'local currency'}. ${s.exch || ''}`;
+    const [from, to] = c.range ? [state.from, state.to] : [addMonths(state.latest, -12), state.latest];
+    const keep = [state.from, state.to]; [state.from, state.to] = [from, to];
+    drawLines(c, [{ name: s.label, data: pts(s, from, to) }], { fmt: v => fmtNum(v, autoDec(v)) + ' ' + (s.ccy || ''), axisFmt: v => fmtNum(v, autoDec(v)), endLabels: false });
+    [state.from, state.to] = keep;
+    setSource(c, `Yahoo Finance (${s.sym})`); setNote(c, 'Last 12 months by default; use the range buttons or drag to zoom. Up to about 3 years of history.'); return;
+  }
   const x = IDEAS.find(i => i.id === state.ideaSel && i.sid) || IDEAS.filter(i => i.sid && i.status !== 'closed').sort((p, q) => q.date.localeCompare(p.date))[0] || IDEAS.find(i => i.sid);
   if (!x || !S[x.sid]) return setEmpty(c, 'Add an idea with a dashboard instrument to chart it.');
   const s = S[x.sid], a = dayMs(x.date), end = x.status === 'closed' && x.closeDate ? dayMs(x.closeDate) : state.latest;
@@ -3764,6 +3868,7 @@ async function init() {
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
   buildCalendar(); buildWeekly(); buildIdeas();
+  setTimeout(loadTickers, 50);   // ~2 MB of ticker history: loaded after the first page is drawn
   setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

@@ -1,0 +1,15 @@
+# Extra tickers to track on the dashboard (Idea log -> Watchlist), on top of the built-in list
+# (KLCI and STI constituents, US large caps, popular ETFs, key Hong Kong, Japan, Korea, Taiwan
+# and Australia names, major crypto).
+#
+# One ticker per line, Yahoo Finance style. TradingView style is fine too and is converted:
+#   AAPL          US stock
+#   $NVDA         a leading $ is ignored
+#   1155.KL       Bursa Malaysia, by stock code (names like MAYBANK do not work; use the code)
+#   MYX:1155      -> 1155.KL
+#   SGX:D05       -> D05.SI
+#   HKEX:700      -> 0700.HK
+#   TSE:7203      -> 7203.T
+#   ASX:BHP       -> BHP.AX
+#
+# Note: this file is public (the repository is public). New tickers appear after the next daily refresh.
