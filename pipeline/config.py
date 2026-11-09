@@ -20,6 +20,7 @@ YAHOO = [
     ("SPX",      "^GSPC",     "S&P 500",              "Equities · US",        "price", "pts"),
     ("NDX",      "^NDX",      "Nasdaq 100",           "Equities · US",        "price", "pts"),
     ("RTY",      "^RUT",      "Russell 2000",         "Equities · US",        "price", "pts"),
+    ("SPXEW",    "^SPXEW",    "S&P 500 equal weight", "Equities · US",        "price", "pts"),
     ("SX5E",     "^STOXX50E", "Euro Stoxx 50",        "Equities · Europe",    "price", "pts"),
     ("DAX",      "^GDAXI",    "DAX",                  "Equities · Europe",    "price", "pts"),
     ("CAC",      "^FCHI",     "CAC 40",               "Equities · Europe",    "price", "pts"),

@@ -2673,7 +2673,158 @@ function buildMarkets() {
   makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); renderPerfTable(); }
+function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); }
+
+// ------------------------------------------------------------------ BREADTH (from the ticker universe)
+// Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
+// Current constituents only, so history carries survivorship bias (stocks that dropped out are missing).
+const BR_MKTS = {
+  MY: { name: 'Malaysia', index: 'KLCI', pick: id => /\.KL$/.test(S[id].sym), who: 'Bursa large caps' },
+  SG: { name: 'Singapore', index: 'STI', pick: id => /\.SI$/.test(S[id].sym), who: 'SGX large caps' },
+  US: { name: 'US', index: 'SPX', pick: id => !/\./.test(S[id].sym) && !/-USD$/.test(S[id].sym) && S[id].type === 'EQUITY', who: 'US large caps' },
+};
+const brCache = {};
+function breadth(mk) {
+  if (brCache[mk]) return brCache[mk];
+  const M = BR_MKTS[mk]; if (!TICK || !has(M.index)) return null;
+  const mem = Object.values(TICK_SYM).filter(M.pick);
+  if (mem.length < 8) return null;
+  const idx = S[M.index], cal = idx.t.filter(t => t >= idx.t[idx.t.length - 1] - 3 * 366 * DAY);
+  const pre = mem.map(id => {   // per member: prefix sums for moving averages, rolling 52-week extremes
+    const s = S[id], n = s.v.length, ps = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) ps[i + 1] = ps[i] + s.v[i];
+    return { id, s, ps };
+  });
+  const out = { t: [], a200: [], a50: [], hl: [], ew: [], n: [], members: mem };
+  let ewLevel = 100;
+  const ptr = pre.map(() => -1), last = pre.map(() => null);
+  for (const t of cal) {
+    let n = 0, c200 = 0, n200 = 0, c50 = 0, n50 = 0, hi = 0, lo = 0, rs = 0, rn = 0;
+    pre.forEach((m, k) => {
+      const s = m.s; let i = ptr[k]; while (i + 1 < s.t.length && s.t[i + 1] <= t) i++; ptr[k] = i;
+      if (i < 0 || t - s.t[i] > 6 * DAY) return;
+      n++;
+      const v = s.v[i];
+      if (i >= 199) { n200++; if (v > (m.ps[i + 1] - m.ps[i - 199]) / 200) c200++; }
+      if (i >= 49) { n50++; if (v > (m.ps[i + 1] - m.ps[i - 49]) / 50) c50++; }
+      if (i >= 250) { let mx = -Infinity, mn = Infinity; for (let j = i - 250; j < i; j++) { const x = s.v[j]; if (x > mx) mx = x; if (x < mn) mn = x; } if (v >= mx) hi++; if (v <= mn) lo++; }
+      if (last[k] && last[k].i < i && t - last[k].t <= 6 * DAY) { rs += v / s.v[last[k].i] - 1; rn++; }
+      last[k] = { i, t };
+    });
+    if (n < mem.length * 0.6) continue;
+    if (rn) ewLevel *= 1 + rs / rn;
+    out.t.push(t); out.n.push(n);
+    out.a200.push(n200 >= mem.length * 0.6 ? c200 / n200 * 100 : null);
+    out.a50.push(n50 >= mem.length * 0.6 ? c50 / n50 * 100 : null);
+    out.hl.push(n200 >= mem.length * 0.6 ? (hi - lo) / n * 100 : null);
+    out.ew.push(ewLevel);
+  }
+  return (brCache[mk] = out);
+}
+const brSer = (b, k, label) => ({ t: b.t.filter((_, i) => b[k][i] != null), v: b[k].filter(v => v != null), label, kind: 'level', unit: '%' });
+state.brMkt = 'MY';
+function brKpis() {
+  const box = $('#brKpis'); box.replaceChildren();
+  const tile = (label, val, delta, foot, tk) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
+    el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', val), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  if (!TICK) { box.append(el('div', { class: 'muted small', text: 'Loading ticker prices…' })); return; }
+  for (const mk of ['MY', 'SG', 'US']) {
+    const b = breadth(mk); if (!b || !b.t.length) continue;
+    const a = brSer(b, 'a200'), x = asOf(a, state.to); if (!x) continue;
+    const p = asOf(a, addMonths(x.t, -1)), tkn = x.v >= 70 ? '--good' : x.v >= 40 ? '--warning' : '--critical';
+    tile(`${BR_MKTS[mk].name}: above 200-day`, fmtNum(x.v, 0) + '%', p ? `1M ${sign(x.v - p.v)}${fmtNum(Math.abs(x.v - p.v), 0)} pts · ${x.v >= 70 ? 'broad uptrend' : x.v >= 40 ? 'mixed' : 'narrow / weak'}` : '', `${b.members.length} ${BR_MKTS[mk].who} · ${nice(x.t)}`, tkn);
+  }
+  if (has('SPXEW', 'SPX')) { const r = combine(S.SPXEW, S.SPX, (a, b) => a / b, {}, 4 * DAY), a = asOf(r, state.to), b = asOf(r, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31));
+    if (a && b) tile('US equal vs cap weight, YTD', `${sign(a.v / b.v - 1)}${fmtNum(Math.abs(a.v / b.v - 1) * 100, 1)}%`, a.v < b.v ? 'the average stock is lagging the index' : 'the average stock is keeping up', 'S&P 500 equal weight ÷ S&P 500'); }
+}
+function renderBrTrend(c) {
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk);
+  if (!b || !b.t.length) return setEmpty(c, 'Not enough data yet.');
+  c.titleEl.textContent = `${M.name}: index vs share of stocks in an uptrend`;
+  drawLines(c, [{ name: '% above 200-day average', data: pts(brSer(b, 'a200'), state.from, state.to) }, { name: '% above 50-day average', data: pts(brSer(b, 'a50'), state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
+    { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, endLabels: false,
+      hlines: [{ y: 80, label: '80: broad (often stretched)' }, { y: 50, label: '50' }, { y: 20, label: '20: washed out' }] });
+  // index on a second axis (dashboard convention for pairs)
+  const ix = S[M.index];
+  c.inst.setOption({ yAxis: [{}, valAxis(v => fmtNum(v, 0), { position: 'right', splitLine: { show: false }, axisLabel: { color: tok('--muted'), fontSize: 11 } })],
+    series: [{}, {}, line(ix.label, pts(ix, state.from, state.to), tok('--ink-2'), { yAxisIndex: 1, lineStyle: { width: 1.5, color: tok('--ink-2') } })], legend: { show: true } });
+  c.csv = [['Date', '% above 200d', '% above 50d', ix.label], ...b.t.filter(t => t >= state.from && t <= state.to).map(t => { const i = b.t.indexOf(t); const z = asOf(ix, t); return [iso(t), b.a200[i] ?? '', b.a50[i] ?? '', z ? z.v : '']; })];
+  const x = asOf(brSer(b, 'a200'), state.to);
+  setNote(c, `${b.members.length} ${M.who} from the dashboard’s ticker list (current members, so older readings carry survivorship bias). Rising index with falling breadth = narrow leadership, a classic late-rally warning; breadth below 20% has often marked washed-out lows.${x ? ` Latest: ${fmtNum(x.v, 0)}% above the 200-day.` : ''}`);
+  setSource(c, `Yahoo Finance daily closes (${b.members.length} stocks; ${M.index === 'SPX' ? '^GSPC' : M.index === 'KLCI' ? '^KLSE' : '^STI'}); breadth calculated`);
+}
+function renderBrHL(c) {
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk);
+  if (!b || !b.t.length) return setEmpty(c, 'Not enough data yet.');
+  c.titleEl.textContent = `${M.name}: new 52-week highs minus lows`;
+  const s = brSer(b, 'hl'), p = pts(s, state.from, state.to);
+  const o = baseOpt(); o.legend.show = false; o.grid.top = 14;
+  o.xAxis = timeAxis(); o.yAxis = valAxis(v => v + '%');
+  o.tooltip.formatter = tipFormatter(v => `${sign(v)}${fmtNum(Math.abs(v), 0)}% of stocks`);
+  o.series = [{ name: 'Net new highs', type: 'bar', barWidth: '90%', large: true, data: p.map(([t, v]) => ({ value: [t, v], itemStyle: { color: v >= 0 ? tok('--pos') : tok('--neg') } })) }];
+  setZoomable(c, o);
+  c.csv = [['Date', 'Net new highs (% of stocks)'], ...p.map(([t, v]) => [iso(t), v.toFixed(1)])];
+  setNote(c, 'Share of stocks at a 52-week closing high minus the share at a 52-week low, each day. Persistent net new lows while the index holds up is a warning sign; a burst of new highs often confirms a new uptrend.');
+  setSource(c, 'Yahoo Finance daily closes; calculated');
+}
+function renderBrEW(c) {
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  const list = [];
+  for (const mk of ['MY', 'SG', 'US']) {
+    const b = breadth(mk), ix = S[BR_MKTS[mk].index]; if (!b || !b.t.length || !ix) continue;
+    const ew = { t: b.t, v: b.ew }, r = combine(ew, ix, (a, x) => a / x, {}, 6 * DAY), base = asOf(r, state.from) || { v: r.v[0] };
+    list.push({ name: `${BR_MKTS[mk].name}: equal-weight ${BR_MKTS[mk].who} ÷ ${ix.label}`, data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]) });
+  }
+  if (has('SPXEW', 'SPX')) { const r = combine(S.SPXEW, S.SPX, (a, x) => a / x, {}, 4 * DAY), base = asOf(r, state.from) || { v: r.v[0] };
+    list.push({ name: 'US: S&P 500 equal weight ÷ S&P 500 (official)', data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(3) } } }); }
+  if (!list.length) return setEmpty(c, 'Not enough data yet.');
+  drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100, label: '' }], endLabels: false });
+  setNote(c, `Equal-weight basket of the dashboard’s stocks against the cap-weighted index, 100 at the start of the range. Falling = the big names are doing the work (narrow, concentrated market); rising = the average stock is outperforming (broad participation). Price returns only.`);
+  setSource(c, 'Yahoo Finance daily closes (^SPXEW, ^GSPC, ^KLSE, ^STI and the stocks); ratios calculated');
+}
+function renderBrTable(c) {
+  const b0 = htmlBody(c);
+  if (!TICK) { b0.append(el('div', { class: 'empty', text: 'Loading ticker prices…' })); return; }
+  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk); if (!b) { b0.append(el('div', { class: 'empty', text: 'Not enough data.' })); return; }
+  c.titleEl.textContent = `${M.name}: who is leading and lagging`;
+  const rows = b.members.map(id => {
+    const s = S[id], a = asOf(s, state.to); if (!a || a.i < 200) return null;
+    const ma = k => s.v.slice(a.i - k + 1, a.i + 1).reduce((x, y) => x + y, 0) / k;
+    const hi = Math.max(...s.v.slice(Math.max(0, a.i - 250), a.i + 1)), m3 = asOf(s, addMonths(a.t, -3));
+    return { id, s, v: a.v, d200: (a.v / ma(200) - 1) * 100, d50: (a.v / ma(50) - 1) * 100, off: (a.v / hi - 1) * 100, r3: m3 ? (a.v / m3.v - 1) * 100 : null };
+  }).filter(Boolean).sort((x, y) => y.d200 - x.d200);
+  const tbl = el('table', { class: 'perf watch' }), pos = tok('--pos'), neg = tok('--neg');
+  const heads = ['Ticker', 'Name', 'Last', 'vs 200-day', 'vs 50-day', 'From 52w high', '3M'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))));
+  const tb = el('tbody'), pc = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
+  const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
+  for (const r of rows) tb.append(el('tr', { class: 'row', onclick: () => { state.sub.ideas = 1; state.watchSel = r.id; setTab('ideas'); } },
+    el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short }), el('td', { text: fmtNum(r.v, autoDec(r.v)) }),
+    el('td', { class: 'heat', style: heat(r.d200, 20), text: pc(r.d200) }), el('td', { class: 'heat', style: heat(r.d50, 10), text: pc(r.d50) }),
+    el('td', { class: 'heat', style: heat(r.off, 30), text: pc(r.off) }), el('td', { class: 'heat', style: heat(r.r3, 20), text: pc(r.r3) })));
+  tbl.append(tb); b0.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(r => [r.s.sym, r.s.short, r.v, r.d200.toFixed(2), r.d50.toFixed(2), r.off.toFixed(2), r.r3 == null ? '' : r.r3.toFixed(2)])];
+  setNote(c, `Sorted by distance from the 200-day average: leaders at the top, laggards at the bottom. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.`);
+  setSource(c, 'Yahoo Finance daily closes; calculated');
+}
+function buildBreadth() {
+  const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'brGrid' });
+  const k = el('div', { class: 'kpis', id: 'brKpis' });
+  panel.append(k, g);
+  const seg = { key: 'brMkt', options: [['MY', 'Malaysia'], ['SG', 'Singapore'], ['US', 'US']], onchange: null };
+  makeCard(g, { key: 'br_trend', title: 'Breadth', wide: true, tall: true, defaultRange: '1Y', seg, render: renderBrTrend });
+  makeCard(g, { key: 'br_hl', title: 'New highs minus lows', wide: true, defaultRange: '1Y', seg, render: renderBrHL });
+  makeCard(g, { key: 'br_ew', title: 'Equal weight vs the index: is the rally broad?', wide: true, defaultRange: 'YTD', render: renderBrEW });
+  makeCard(g, { key: 'br_table', range: false, title: 'Leaders and laggards', wide: true, seg, render: renderBrTable });
+  const r = cards.br_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+  // the three market switches stay in step
+  for (const key of ['br_trend', 'br_hl', 'br_table']) cards[key].root.querySelectorAll('.card-tools .seg button').forEach(btn => btn.addEventListener('click', () => {
+    for (const k2 of ['br_trend', 'br_hl', 'br_table']) if (k2 !== key) { cards[k2].root.querySelectorAll('.card-tools .seg button').forEach(x => x.classList.toggle('on', x.textContent === btn.textContent)); cards[k2].render(); }
+  }));
+}
 
 // ------------------------------------------------------------------ CORRELATION
 const UNIVERSES = {
@@ -2915,7 +3066,7 @@ async function loadTickers() {
       source: `Yahoo Finance (${sym})`, stale: !!x.stale, mine: x.src === 'watchlist', t: x.d.map(d => d * DAY), v: x.v };
     TICK_SYM[sym.toUpperCase()] = id;
   }
-  if (['ideas', 'weekly', 'correlation'].includes(state.tab)) renderTab();
+  if (['ideas', 'weekly', 'correlation', 'markets'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
   let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
@@ -3697,6 +3848,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'headlines', 'moved', 'fragile', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']]],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef']],
     ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
@@ -3863,7 +4015,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); buildFedPath(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildFedPath(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
