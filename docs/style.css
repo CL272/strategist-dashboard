@@ -357,3 +357,58 @@ table.cal .tag { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; bord
 table.cal .tag.live, table.cal .tag.confirmed { border-color: var(--good); color: var(--good); }
 table.cal .tag.estimated { border-style: dashed; }
 .cal-bar { background: var(--page); border-radius: 0; position: static; }
+
+/* ---- weekly one-page brief: sized like an A4 page so it prints (and screenshots) as one sheet */
+.wk-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.wk-controls button { font-size: 13px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; }
+.onepage {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 22px 26px;
+  max-width: 1120px; font-size: 12.5px; line-height: 1.45;
+}
+.onepage h2 { font-size: 20px; margin: 0 0 2px; }
+.onepage h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid var(--grid); }
+.op-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+.op-asof { text-align: right; }
+.op-take ul { margin: 0; padding-left: 18px; }
+.op-take li { margin: 2px 0; }
+.op-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
+.op-tile { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; }
+.op-v { font-size: 14px; font-weight: 650; margin: 1px 0; display: flex; align-items: center; gap: 6px; }
+.op-cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; }
+.op-table { font-size: 12px; }
+.op-table th, .op-table td { padding: 2.5px 6px; }
+.op-table td svg { width: 64px; height: 16px; }
+.op-asia { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.op-asia dt { font-weight: 650; }
+.op-asia dd { margin: 0; color: var(--ink-2); }
+.op-list { list-style: none; margin: 0; padding: 0; }
+.op-list li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px dotted var(--grid); }
+.op-list li.op-day { font-weight: 650; border-bottom: 0; padding-top: 5px; color: var(--ink); }
+.op-news li { display: block; }
+.op-news li .muted { margin-left: 6px; font-size: 11px; }
+.op-foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--grid); }
+@media (max-width: 900px) { .op-cols { grid-template-columns: minmax(0, 1fr); } }
+@media print {
+  @page { size: A4 portrait; margin: 9mm; }
+  .wk-controls, .page-head { display: none !important; }
+  .onepage { border: 0; padding: 0; max-width: none; font-size: 9.6px; line-height: 1.35; }
+  .onepage h2 { font-size: 16px; }
+  .onepage h3 { font-size: 9px; margin: 8px 0 4px; }
+  .op-tiles { grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 8px; }
+  .op-v { font-size: 11px; }
+  .op-cols { grid-template-columns: 1.05fr 1fr; gap: 14px; }
+  table.perf.op-table { font-size: 8.6px; }
+  table.perf.op-table th, table.perf.op-table td { padding: 0.6px 4px; line-height: 1.25; }
+  table.perf.op-table td svg { width: 46px; height: 11px; }
+  .op-list li { padding: 0.5px 0; }
+  .op-take li { margin: 1px 0; }
+  .op-tile { padding: 4px 6px; }
+  .op-foot { margin-top: 8px; }
+  html, body, .app, .content, main { background: #fff !important; }
+  .onepage { background: #fff; }
+  main { padding: 0; }
+  footer:not(.op-foot) { display: none; }
+  .onepage .small, .op-foot { font-size: 8px; }
+  table.perf.op-table tr.grp td { font-size: 8.8px; padding: 1.5px 4px; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

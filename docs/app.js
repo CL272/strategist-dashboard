@@ -2850,6 +2850,179 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
+// ------------------------------------------------------------------ WEEKLY ONE-PAGE BRIEF
+// Built from the data already on the dashboard, for the week ending on a Friday. Prints to one A4 page.
+const WK_ROWS = [
+  ['Equities', ['SPX', 'NDX', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'STI', 'KLCI', 'AS51']],
+  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'JGB10Y', 'SGS10Y', 'AU_10Y', 'HY_OAS']],
+  ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD']],
+  ['Commodities & crypto', ['GOLD', 'BRENT', 'COPPER', 'BTC']],
+  ['Volatility', ['VIX', 'MOVE']],
+];
+state.weekEnd = null;
+function lastFriday(t) { const d = new Date(t).getUTCDay(); return t - ((d + 2) % 7) * DAY; }   // Friday on or before t
+function wkChange(id, end) {
+  const s = S[id], a = asOf(s, end); if (!a) return null;
+  const b = asOf(s, end - 7 * DAY), y = asOf(s, Date.UTC(new Date(end).getUTCFullYear() - 1, 11, 31));
+  return { s, a, w: b && b.t < a.t ? chg(s, b.v, a.v) : null, ytd: y ? chg(s, y.v, a.v) : null };
+}
+function wkTakeaways(end) {
+  const out = [], pct = (r) => r && r.w != null ? fmtChg(r.s, r.w) : '–';
+  const eq = ['SPX', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'STI', 'KLCI', 'AS51'].filter(id => has(id)).map(id => ({ id, r: wkChange(id, end) })).filter(x => x.r && x.r.w != null).sort((a, b) => b.r.w - a.r.w);
+  if (eq.length) {
+    const spx = wkChange('SPX', end);
+    out.push(`Equities: S&P 500 ${pct(spx)} on the week (${spx && spx.ytd != null ? fmtChg(spx.s, spx.ytd) : '–'} YTD). Best of the majors ${S[eq[0].id].label} ${fmtChg(eq[0].r.s, eq[0].r.w)}; worst ${S[eq[eq.length - 1].id].label} ${fmtChg(eq[eq.length - 1].r.s, eq[eq.length - 1].r.w)}. Malaysia's KLCI ${pct(wkChange('KLCI', end))}, Singapore's STI ${pct(wkChange('STI', end))}.`);
+  }
+  if (has('UST10Y')) { const t10 = wkChange('UST10Y', end), t2 = has('UST2Y') ? wkChange('UST2Y', end) : null;
+    out.push(`Rates: UST 10Y ${fmtNum(t10.a.v, 2)}% (${pct(t10)})` + (t2 ? `, 2Y ${fmtNum(t2.a.v, 2)}% (${pct(t2)})` : '') + (has('REAL10Y') ? `, 10Y real ${fmtNum(asOf(S.REAL10Y, end).v, 2)}%` : '') + '.'); }
+  const now = fpSnap('now');
+  if (now && now.path.length && FP.contracts) {
+    const n = now.path[0], k = Object.keys(FP.contracts).filter(x => x.endsWith('-12')).sort().pop(), c = k && FP.contracts[k];
+    let t = `Fed: futures price ${n.odds.replace(' ~100%', '')} at the ${dShort(dayMs(n.d))} FOMC`;
+    if (c) { const ser = { t: c.d.map(dayMs), v: c.v }, a = asOf(ser, end), b = asOf(ser, end - 7 * DAY);
+      if (a) t += `; the Dec ${k.slice(0, 4)} contract implies ${fmtNum(a.v, 2)}%` + (b ? ` (${bp((a.v - b.v) * 100)} on the week)` : ''); }
+    const med = FP.dots && FP.dots.median && k && FP.dots.median[k.slice(0, 4)];
+    if (med != null) t += ` vs the Fed's ${fmtNum(med, 2)}% median`;
+    out.push(t + '.');
+  }
+  if (has('DXY')) { const d = wkChange('DXY', end), m = has('USDMYR') ? wkChange('USDMYR', end) : null, g = has('USDSGD') ? wkChange('USDSGD', end) : null;
+    out.push(`FX: DXY ${pct(d)}` + (m ? `; USD/MYR ${fmtNum(m.a.v, 4)} (${pct(m)})` : '') + (g ? `; USD/SGD ${fmtNum(g.a.v, 4)} (${pct(g)})` : '') + (has('USDJPY') ? `; USD/JPY ${fmtNum(asOf(S.USDJPY, end).v, 2)}` : '') + '.'); }
+  const cm = ['BRENT', 'GOLD', 'COPPER'].filter(id => has(id)).map(id => `${S[id].label} ${pct(wkChange(id, end))}`);
+  if (cm.length) out.push(`Commodities: ${cm.join(', ')}.`);
+  const keep = state.to; state.to = end;
+  const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3);
+  state.to = keep;
+  if (mv.length) out.push(`Unusual moves (≥2σ vs 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
+  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); let t = `Macro regime: ${QUADS[q.v].name} (${monthLab(q.t)} data)`;
+    if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${Math.round(a.v)}th percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
+    out.push(t + '.'); }
+  return out;
+}
+function wkTiles(end) {
+  const out = [];
+  const add = (label, val, foot, tk) => out.push({ label, val, foot, tk });
+  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); add('Macro regime', QUADS[q.v].name, monthLab(q.t) + ' data', null); }
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, end - 28 * DAY), [bl, tk] = legacyBand(a.v); add('Stress composite', `${Math.round(a.v)} · ${bl}`, b ? `4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)}` : '', tk); }
+  if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.share[j] == null) j--; if (SIGN.share[j] != null) add('Peak signposts', `${fmtNum(SIGN.share[j], 0)}% triggered`, cols[j], null); }
+  if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, end); add('Recession odds (12m)', fmtNum(a.v, 0) + '%', 'NY Fed curve model', null); }
+  const now = fpSnap('now');
+  if (FP && FP.target && FP.target[0] != null) add('Fed funds target', `${fmtNum(FP.target[0], 2)}–${fmtNum(FP.target[1], 2)}%`, now && now.path.length ? `next ${dShort(dayMs(now.path[0].d))}: ${now.path[0].odds.replace(' ~100%', '')}` : '', null);
+  if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, end), b = asOf(s, end - 28 * DAY); add('Fed net liquidity', fmtVal(s, a.v), b ? `4w ${sign(a.v - b.v)}${fmtVal(s, Math.abs(a.v - b.v))}` : '', null); }
+  if (has('VIX')) { const p = pctRank(S.VIX, end, 10); if (p) add('VIX', fmtNum(p.v, 1), `${Math.round(p.p)}th pct (10y)`, null); }
+  return out;
+}
+function wkAsia(end) {
+  const rows = [];
+  const lv = (id, f) => { if (!has(id)) return null; const a = asOf(S[id], end); return a ? f(a) : null; };
+  const wk = id => { const r = has(id) ? wkChange(id, end) : null; return r && r.w != null ? fmtChg(r.s, r.w) : '–'; };
+  rows.push(['Malaysia', [
+    lv('MY_OPR', a => `OPR ${fmtNum(a.v, 2)}%`), lv('MY_CPI_YOY', a => `CPI ${fmtNum(a.v, 1)}% (${monthLab(a.t)})`),
+    has('USDMYR') ? `USD/MYR ${fmtNum(asOf(S.USDMYR, end).v, 3)} (${wk('USDMYR')} w/w)` : null, has('KLCI') ? `KLCI ${wk('KLCI')} w/w` : null].filter(Boolean)]);
+  rows.push(['Singapore', [
+    lv('SORA3M', a => `3M SORA ${fmtNum(a.v, 2)}%`), lv('SG_CORE_YOY', a => `MAS core ${fmtNum(a.v, 1)}% (${monthLab(a.t)})`),
+    has('USDSGD') ? `USD/SGD ${fmtNum(asOf(S.USDSGD, end).v, 4)} (${wk('USDSGD')} w/w)` : null, has('STI') ? `STI ${wk('STI')} w/w` : null].filter(Boolean)]);
+  rows.push(['Australia', [
+    lv('AU_CASH', a => `RBA cash ${fmtNum(a.v, 2)}%`), lv('AU_TRIM_YOY', a => `trimmed-mean CPI ${fmtNum(a.v, 1)}%`),
+    has('AU_10Y') ? `10Y ${fmtNum(asOf(S.AU_10Y, end).v, 2)}% (${wk('AU_10Y')} w/w)` : null, has('AUDUSD') ? `AUD/USD ${wk('AUDUSD')} w/w` : null].filter(Boolean)]);
+  rows.push(['China & Japan', [
+    lv('CN_CPI_YOY', a => `China CPI ${fmtNum(a.v, 1)}%`), lv('CN_10Y', a => `CGB 10Y ${fmtNum(a.v, 2)}%`),
+    lv('JP_CORE_YOY', a => `Japan core CPI ${fmtNum(a.v, 1)}%`), has('USDJPY') ? `USD/JPY ${wk('USDJPY')} w/w` : null].filter(Boolean)]);
+  return rows.filter(r => r[1].length);
+}
+function wkAhead(end) {
+  if (!CAL || !CAL.events) return [];
+  const a = end + 3 * DAY, b = end + 9 * DAY;   // Monday to Sunday after the Friday
+  return CAL.events.filter(e => e.hi).map(e => { const [x, y] = calSpan(e); return { e, x, y }; })
+    .filter(({ x, y }) => y >= a && x <= b).map(({ e, x }) => ({ e, day: Math.max(x, a) }))
+    .sort((p, q) => (p.day - q.day) || (p.e.kind === 'Policy' ? -1 : 1) || (p.e.sgt || '99').localeCompare(q.e.sgt || '99'));
+}
+function buildWeekly() {
+  const panel = $('#tab-weekly');
+  const sel = el('select', { 'aria-label': 'Week ending', id: 'wkSel' });
+  sel.addEventListener('change', () => { state.weekEnd = +sel.value; renderWeekly(); });
+  const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy as text', title: 'Plain text for an email or chat' });
+  copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(state.weekText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy as text', 1500); } catch (e) { alert(state.weekText); } });
+  panel.append(el('div', { class: 'controls wk-controls' },
+    el('label', {}, 'Week ending ', sel),
+    el('button', { type: 'button', text: '⎙ Print / save as PDF', title: 'Prints this page only, on one A4 sheet', onclick: () => window.print() }), copy,
+    el('span', { class: 'muted small', text: 'Built from this dashboard’s data. For screenshots, the page is sized to fit one A4 sheet.' })),
+    el('article', { class: 'onepage', id: 'wkPage' }));
+}
+function renderWeekly() {
+  const sel = $('#wkSel'), latest = lastFriday(state.latest);
+  if (!sel.options.length) for (let k = 0; k < 12; k++) { const t = latest - k * 7 * DAY; sel.append(el('option', { value: t, text: `Fri ${dShort(t)} ${new Date(t).getUTCFullYear()}` + (k === 0 ? ' (latest)' : '') })); }
+  const end = state.weekEnd || latest; sel.value = end;
+  const page = $('#wkPage'); page.replaceChildren();
+  const txt = [];
+  // header
+  page.append(el('header', { class: 'op-head' },
+    el('div', {}, el('h2', { text: 'Weekly strategist brief' }), el('div', { class: 'muted', text: `Week to Friday ${dShort(end)} ${new Date(end).getUTCFullYear()} · markets, macro and the week ahead` })),
+    el('div', { class: 'muted small op-asof', text: `Data as of ${nice(Math.min(end, state.latest))}` + (META.updated_utc ? ` · refreshed ${META.updated_utc}` : '') })));
+  txt.push(`WEEKLY STRATEGIST BRIEF: week to Fri ${dShort(end)} ${new Date(end).getUTCFullYear()}`, '');
+  // takeaways
+  const tk = wkTakeaways(end);
+  page.append(el('section', { class: 'op-take' }, el('h3', { text: 'Key takeaways' }), el('ul', {}, ...tk.map(t => el('li', { text: t })))));
+  txt.push('KEY TAKEAWAYS', ...tk.map(t => '• ' + t), '');
+  // tiles
+  const tiles = wkTiles(end);
+  page.append(el('section', { class: 'op-tiles' }, ...tiles.map(t => el('div', { class: 'op-tile' }, el('div', { class: 'k-label', text: t.label }),
+    el('div', { class: 'op-v' }, t.tk ? el('span', { class: 'qdot', style: `background:${tok(t.tk)}` }) : '', t.val), el('div', { class: 'k-asof', text: t.foot })))));
+  // two columns
+  const left = el('div', { class: 'op-col' }), right = el('div', { class: 'op-col' });
+  page.append(el('div', { class: 'op-cols' }, left, right));
+  // scoreboard
+  const tbl = el('table', { class: 'perf op-table' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Asset', 'Last', '1W', 'YTD', '3M'].map(h => el('th', { text: h })))));
+  const tb = el('tbody'), pos = tok('--pos'), neg = tok('--neg');
+  const sc = { price: [3, 15], yield: [15, 75], level: [10, 30] };
+  txt.push('SCOREBOARD (last, 1W, YTD)');
+  for (const [g, ids] of WK_ROWS) {
+    const ok = ids.filter(id => has(id)); if (!ok.length) continue;
+    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: g })));
+    for (const id of ok) {
+      const r = wkChange(id, end); if (!r) continue;
+      const heat = (v, k) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(r.s.kind === 'level' ? v / Math.max(1e-9, Math.abs(r.a.v)) * 100 : v) / sc[r.s.kind][k]) * 0.42)}`;
+      const last = r.s.kind === 'yield' ? fmtNum(r.a.v, 2) + '%' : fmtVal(r.s, r.a.v);
+      tb.append(el('tr', { class: 'row' }, el('td', { text: r.s.label.replace(' (equity vol)', '').replace(' (rates vol)', '') }), el('td', { text: last }),
+        el('td', { class: 'heat', style: heat(r.w, 0), text: fmtChg(r.s, r.w) }), el('td', { class: 'heat', style: heat(r.ytd, 1), text: fmtChg(r.s, r.ytd) }),
+        el('td', {}, sparkSVG(r.s, addMonths(end, -3), end) || '')));
+      txt.push(`  ${r.s.label}: ${last}, ${fmtChg(r.s, r.w)}, ${fmtChg(r.s, r.ytd)} YTD`);
+    }
+  }
+  tbl.append(tb);
+  left.append(el('section', {}, el('h3', { text: 'Cross-asset scoreboard' }), tbl,
+    el('p', { class: 'muted small', text: 'Local currency. Yields and spreads in bp; VIX/MOVE in points. 1W = Friday to Friday. Shading: blue = up, red = down.' })));
+  txt.push('');
+  // Asia focus
+  const asia = wkAsia(end);
+  right.append(el('section', {}, el('h3', { text: 'Asia focus' }), el('dl', { class: 'op-asia' }, ...asia.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v.join(' · ') })]))));
+  txt.push('ASIA FOCUS', ...asia.map(([k, v]) => `  ${k}: ${v.join(' · ')}`), '');
+  // movers
+  const keep = state.to; state.to = end; const mv = movers(1).slice(0, 6); state.to = keep;
+  if (mv.length) right.append(el('section', {}, el('h3', { text: 'Most unusual moves this week' }),
+    el('ul', { class: 'op-list' }, ...mv.map(r => el('li', {}, el('span', { text: S[r.id].label }), el('b', { text: `${fmtMove(S[r.id], r.chg)} · ${zf(r.z)}σ`, style: `color:${tok(r.z >= 0 ? '--pos' : '--neg')}` })))),
+    el('p', { class: 'muted small', text: 'σ = size of the weekly move against that asset’s own last 5 years of weekly moves.' })));
+  // week ahead
+  const ah = wkAhead(end);
+  const ul = el('ul', { class: 'op-list op-cal' });
+  let day = null;
+  for (const { e, day: d } of ah.slice(0, 16)) {
+    if (d !== day) { day = d; ul.append(el('li', { class: 'op-day', text: dLong(d) })); }
+    ul.append(el('li', {}, el('span', {}, el('span', { class: 'muted', text: (e.sgt || '').replace(' (+1 day)', '⁺¹') + ' ' }), `${e.region}: ${e.name}`),
+      el('span', { class: 'muted', text: e.prev ? `prev ${e.prev}` : e.end ? `${dShort(calSpan(e)[0])}–${dShort(calSpan(e)[1])}` : '' })));
+  }
+  right.append(el('section', {}, el('h3', { text: 'Week ahead (key events, SGT)' }), ah.length ? ul : el('p', { class: 'muted small', text: 'No calendar loaded.' }),
+    ah.length > 16 ? el('p', { class: 'muted small', text: `+${ah.length - 16} more on the Calendar page.` }) : ''));
+  txt.push('WEEK AHEAD (SGT)', ...ah.map(({ e, day: d }) => `  ${dLong(d)} ${e.sgt || ''} ${e.region}: ${e.name}${e.prev ? ` (prev ${e.prev})` : ''}`), '');
+  // headlines
+  if (NEWS && NEWS.items && end >= lastFriday(state.latest)) {
+    const items = NEWS.items.slice(0, 5);
+    right.append(el('section', {}, el('h3', { text: 'Headlines' }), el('ul', { class: 'op-list op-news' }, ...items.map(n => el('li', {}, el('span', { text: n.title }), el('span', { class: 'muted', text: n.source }))))));
+  }
+  page.append(el('footer', { class: 'op-foot muted small', text: 'Sources: Yahoo Finance, FRED (Federal Reserve, BLS, BEA, ICE BofA), US Treasury, MOF Japan, MAS/SingStat, DOSM/Bank Negara, RBA, OECD, CBOT fed funds futures, public news feeds. Generated from public data by the Strategist Dashboard; facts only, no investment advice.' }));
+  state.weekText = txt.join('\n');
+}
+
 // ------------------------------------------------------------------ FED PATH vs MARKET PRICING
 let FP = null;
 const bp = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 0) + 'bp';
@@ -3219,9 +3392,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -3229,7 +3402,7 @@ function setTab(t) {
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
-  $('.filters').hidden = t === 'news' || t === 'calendar';
+  $('.filters').hidden = t === 'news' || t === 'calendar' || t === 'weekly';
   setFiltersHeight();
   renderTab();
 }
@@ -3308,7 +3481,7 @@ async function init() {
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
-  buildCalendar();
-  setTab(['overview', 'news', 'calendar', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildCalendar(); buildWeekly();
+  setTab(['overview', 'news', 'calendar', 'weekly', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
