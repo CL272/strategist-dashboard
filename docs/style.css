@@ -140,8 +140,8 @@ main { padding: 16px 24px 8px; }
 .card-tools .seg { display: inline-flex; background: var(--wash); border-radius: 6px; padding: 2px; }
 .card-tools .seg button { border: 0; background: transparent; padding: 1px 8px; font-size: 12px; border-radius: 4px; color: var(--ink-2); }
 .card-tools .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
-.chart { width: 100%; height: 340px; }
-.card.tall .chart { height: 460px; }
+.chart { width: 100%; height: 300px; }
+.card.tall .chart { height: 420px; }
 .card.focus { grid-column: 1 / -1; }
 .card.focus .chart { height: 560px; }
 .card .note { font-size: 12px; color: var(--ink-2); margin: 4px 0 0; }
@@ -582,3 +582,14 @@ table.watch tr.row.sel td { background: var(--wash); }
 .star-b { border: 0; background: transparent; font-size: 16px; line-height: 1; color: var(--muted); padding: 0 4px; cursor: pointer; }
 .star-b.on { color: #e0a100; }
 table.watch td .ghost { font-size: 11.5px; padding: 1px 8px; white-space: nowrap; }
+
+/* compact card chrome: one-line date bar, small date inputs */
+.card-range { gap: 6px; margin-top: 4px; padding-top: 6px; }
+.card-range input[type="date"] { font-size: 11.5px; padding: 1px 4px; width: 118px; }
+.card .src { margin-top: 4px; }
+.card .note { margin: 6px 0 0; }
+.more-btn { margin: 8px 0 2px; font-size: 12.5px; padding: 4px 12px; border-radius: 8px; }
+table.perf tr.grp td .more-btn { margin: 2px 0; font-weight: 500; }
+details.fold-box > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 4px 0; list-style: none; }
+details.fold-box > summary::before { content: "▸ "; }
+details.fold-box[open] > summary::before { content: "▾ "; }

@@ -250,8 +250,8 @@ function buildCardRange(c) {
   f.addEventListener('change', onDate); t.addEventListener('change', onDate);
   const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Top bar', title: 'Follow the date bar at the top of the page',
     onclick: () => { c.range = null; c.render(); } });
-  row.append(seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset,
-    el('span', { class: 'muted small zoom-hint', text: 'Tip: drag across the chart to zoom' }));
+  seg.title = 'Date range for this chart. Tip: you can also drag across the chart to zoom';
+  row.append(seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset);
   c.rangeParts = { seg, f, t, reset };
   return row;
 }
@@ -664,7 +664,7 @@ function renderRates(c) {
 }
 function buildLiquidity() {
   const g = $('#liqGrid');
-  makeCard(g, { key: 'netliq', title: 'Fed net liquidity vs S&P 500', wide: true, tall: true, source: 'FRED (WALCL, WDTGAL, RRPONTSYD), Yahoo Finance',
+  makeCard(g, { key: 'netliq', title: 'Fed net liquidity vs S&P 500', wide: true, source: 'FRED (WALCL, WDTGAL, RRPONTSYD), Yahoo Finance',
     seg: { key: 'liqMode', options: [['level', 'Levels'], ['chg13', '13w %'], ['yoy', 'YoY %']] }, render: renderNetLiq });
   makeCard(g, { key: 'comp', title: 'Fed balance sheet components', sub: 'USD trillions. Reserves are what banks hold at the Fed; TGA and reverse repo drain them.', source: 'FRED', render: renderComponents });
   makeCard(g, { key: 'fund', title: 'Repo funding stress', sub: 'Overnight rates minus interest on reserve balances (IORB), bp.', source: 'FRED', render: renderFunding });
@@ -926,13 +926,13 @@ function buildOverview() {
   const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
     try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
   tp.root.querySelector('.card-tools').prepend(copy);
-  makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', wide: true, render: renderHeadlinesCard });
+  makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', render: renderHeadlinesCard });
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
   makeCard(g, { key: 'fragile', range: false, title: 'Market stress gauges', sub: 'Market-priced stress gauges ranked against their own last 10 years. The full composite is on the Stress & Signposts page.', source: 'FRED, Yahoo Finance', render: renderFragile });
   makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity and commodity returns as a USD, SGD, MYR, EUR, GBP, JPY or AUD investor.', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
-  makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', wide: true, sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
+  makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
     source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
   for (const k of ['points', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
@@ -1273,7 +1273,7 @@ function buildRegime() {
     render: c => { if (!has('REG_G', 'REG_I')) return setEmpty(c, NO_FRED);
       drawLines(c, [{ name: 'Growth', data: pts(S.REG_G, state.from, state.to), color: col(0) }, { name: 'Inflation', data: pts(S.REG_I, state.from, state.to), color: col(1) }],
         { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, areas: recessionAreas(state.from, state.to) }); } });
-  const hist = makeCard(g, { key: 'reghist', title: 'Regime history', wide: true, tall: true, source: 'FRED, Yahoo Finance',
+  const hist = makeCard(g, { key: 'reghist', title: 'Regime history', wide: true, source: 'FRED, Yahoo Finance',
     seg: { key: 'regAsset', options: [['SPX', 'S&P 500'], ['NDX', 'Nasdaq'], ['TLT', 'Long UST'], ['GOLD', 'Gold'], ['COPPER', 'Copper'], ['DXY', 'USD']] }, render: renderRegimeHistory });
   makeCard(g, { key: 'regtable', range: false, title: 'What worked in each regime', wide: true, source: 'FRED, Yahoo Finance',
     sub: 'Annualised average monthly return by regime (local currency; ETFs include dividends). Hover a cell for details.',
@@ -1696,9 +1696,9 @@ function buildAsia() {
   makeCard(g, { key: 'sgust', title: 'SGS vs US Treasury 10Y', sub: 'Singapore government 10Y (monthly) against UST 10Y (daily).', render: c => {
     seriesCard(['SGS10Y', 'UST10Y'], pct2, pct1)(c);
     if (has('SGS10Y', 'UST10Y')) { const gg = asOf(S.SGS10Y, state.to); if (gg) { const u = asOf(S.UST10Y, gg.t + 31 * DAY); setNote(c, `Latest month-end: SGS 10Y ${fmtNum(gg.v, 2)}% vs UST 10Y ${fmtNum(u.v, 2)}%, a ${fmtNum((u.v - gg.v) * 100, 0)}bp US premium.`); } } } });
-  makeCard(g, { key: 'sghedge', title: 'UST 10Y for an SGD investor', wide: true, sub: 'Treasuries hedged back into SGD, against SGS 10Y.',
+  makeCard(g, { key: 'sghedge', title: 'UST 10Y for an SGD investor', sub: 'Treasuries hedged back into SGD, against SGS 10Y.',
     source: 'US Treasury (3M, 10Y); MAS via SingStat (M700071: compounded SORA 3M, SGS 10Y); hedged yield calculated', render: renderSgHedge });
-  makeCard(g, { key: 'sneer', title: 'S$NEER proxy', wide: true, tall: true, sub: 'Trade-weighted SGD (dashboard estimate) and its pace of appreciation.',
+  makeCard(g, { key: 'sneer', title: 'S$NEER proxy', sub: 'Trade-weighted SGD (dashboard estimate) and its pace of appreciation.',
     source: 'Dashboard estimate from Yahoo Finance FX (SGD=X, CNY=X, MYR=X, EURUSD=X, TWD=X, JPY=X, IDR=X, KRW=X, HKD=X, THB=X, INR=X, AUDUSD=X, PHP=X, GBPUSD=X)', render: renderSneer });
   makeCard(g, { key: 'sginfl', title: 'Singapore inflation', sub: 'Headline CPI and MAS core inflation, year-on-year %.', render: seriesCard(['SG_CPI_YOY', 'SG_CORE_YOY'], pct1, pct1, { zero: true }) });
   makeCard(g, { key: 'sggrowth', title: 'Singapore activity', seg: { key: 'sgGrowth', options: [['nodx', 'NODX'], ['gdp', 'GDP'], ['jobs', 'Unemployment']] },
@@ -1741,8 +1741,8 @@ const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia l
 const ASIA_KPI_MIX = ['Malaysia OPR', 'USD/MYR', '3M compounded SORA', 'USD/SGD', 'RBA cash rate', 'Australia 10Y yield'];
 function renderAsia() {
   regionKpis();
-  const sub = SUBTABS.asia[state.sub.asia || 0][0];
-  filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? sub : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
+  const sub = SUBTABS.asia[state.sub.asia || 0][0].split(':')[0];
+  filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? '*' : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
   ASIA_CARDS.forEach(k => cards[k].render());
 }
 let NEWS = null;
@@ -1793,7 +1793,8 @@ function renderNews() {
   box.append(bar,
     el('p', { class: 'muted small', text: (state.newsMsg && Date.now() - state.newsMsg < 60000 ? (state.newsFresh ? '✓ New headlines loaded. ' : '✓ Checked just now: no newer batch yet. ') : '') +
       `Headlines collected ${newsAge()}; new batches arrive about every 10 minutes and the page checks on its own every 10 minutes. ${items.length} of ${NEWS.items.length} shown. Links open the original publisher; paywalls may apply.` }),
-    newsList(items, 200),
+    newsList(items, state.newsAll ? 400 : 40),
+    items.length > 40 && !state.newsAll ? el('button', { class: 'ghost more-btn', type: 'button', text: `Show ${items.length - 40} more headlines`, onclick: () => { state.newsAll = true; renderNews(); } }) : '',
     el('p', { class: 'src', text: `Source: public RSS feeds: ${ok.join(', ')}.` + (bad.length ? ` Unavailable this run: ${bad.join(', ')}.` : '') }));
 }
 function renderHeadlinesCard(c) {
@@ -2190,9 +2191,15 @@ function renderHealth() {
   const tbl = el('table', { class: 'perf' });
   tbl.append(el('thead', {}, el('tr', {}, ...['State', 'Series', 'Source', 'Frequency', 'Latest data', 'Age (days)'].map(h => el('th', { text: h })))));
   const tb = el('tbody'), col_ = { stale: '--critical', missing: '--serious', 'kept previous': '--warning', ok: '--good' };
-  for (const r of HEALTH.rows) tb.append(el('tr', { class: 'row' }, el('td', {}, el('span', { class: 'chip', style: `--st:${tok(col_[r.state])}` }, r.state)),
-    el('td', { text: `${r.label} (${r.id})` }), el('td', { class: 'muted', text: r.source }), el('td', { text: r.freq }), el('td', { text: r.last }), el('td', { text: r.age_days == null ? '' : String(r.age_days) })));
+  const bad = HEALTH.rows.filter(r => r.state !== 'ok'), good = HEALTH.rows.filter(r => r.state === 'ok');
+  for (const [name, list] of [[`Needs attention · ${bad.length}`, bad], [`Up to date · ${good.length}`, good]]) {
+    if (!list.length) continue;
+    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 6, text: name })));
+    for (const r of list) tb.append(el('tr', { class: 'row' }, el('td', {}, el('span', { class: 'chip', style: `--st:${tok(col_[r.state])}` }, r.state)),
+      el('td', { text: `${r.label} (${r.id})` }), el('td', { class: 'muted', text: r.source }), el('td', { text: r.freq }), el('td', { text: r.last }), el('td', { text: r.age_days == null ? '' : String(r.age_days) })));
+  }
   tbl.append(tb); box.append(el('div', { class: 'table-wrap' }, tbl));
+  foldableGroups(tb, 'health', name => name.startsWith('Up to date'));
 }
 
 // ------------------------------------------------------------------ POSITIONING & VOLATILITY
@@ -2480,7 +2487,9 @@ function renderSignRules(c) {
     tb.append(el('tr', { class: 'row' }, el('td', { class: 'muted', text: r.group }), el('td', { text: r.label }),
       el('td', { text: (v === 1 ? '✓ triggered' : v === 0 ? '·  no' : '—  no data') + (v != null && k !== j ? ` (${SIGN.columns[k]})` : '') }),
       el('td', { text: r.level || '—' }), el('td', { class: 'rule', text: r.rule }), el('td', { class: 'muted', text: r.source }))); }
-  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  tbl.append(tb);
+  const det = el('details', { class: 'fold-box' }, el('summary', { text: `Show the ${SIGN.rows.length} rules, their latest readings and sources` }), el('div', { class: 'table-wrap' }, tbl));
+  b.append(det);
   const notes = SIGN.rows.filter(r => r.note);
   if (notes.length) { const d = el('details', { class: 'method' }, el('summary', { text: 'Notes on individual rows' }));
     const bd = el('div', { class: 'body' }); notes.forEach(r => bd.append(el('p', {}, el('b', { text: r.label + ' — ' }), r.note))); d.append(bd); b.append(d); }
@@ -2554,7 +2563,7 @@ function toggleSel(id, on) {
 const PERF_CLASSES = ['Equities', 'Rates & credit', 'FX', 'Commodities & crypto', 'Volatility', 'All'];
 const perfClass = g => /^Equities/.test(g) ? 'Equities' : /^(Rates|Credit|Bonds)/.test(g) ? 'Rates & credit' : /^FX/.test(g) ? 'FX'
   : /^(Commodities|Crypto)/.test(g) ? 'Commodities & crypto' : /^Volatility/.test(g) ? 'Volatility' : 'All';
-state.perfClass = 'All';
+state.perfClass = 'Equities';
 function renderPerfTable() {
   const q = (state.perfQuery || '').trim().toLowerCase();
   const rows = perfRows().filter(r => (state.perfClass === 'All' || perfClass(r.s.group) === state.perfClass)
@@ -2600,7 +2609,7 @@ function renderPerfTable() {
     }
   }
   tbl.append(tb);
-  foldableGroups(tb, 'perf');
+  foldableGroups(tb, 'perf', (name, i) => i >= 4);
   if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: cols.length + 2, class: 'muted', text: 'No assets match this filter.' })));
   $('#perfNote').textContent = `Changes to ${nice(state.to)}. “Range” runs from ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Prices in local currency' : `Equities, ETFs, commodities and crypto in ${state.mktCcy} (FX pairs unchanged)`}, % (ETFs include dividends); yields and spreads in bp; VIX/MOVE in points. Tick a row to chart it.`;
   $('#perfCsv').onclick = () => downloadCSV([['Asset', 'Group', 'Last', ...cols], ...rows.map(r => [r.s.label, r.s.group, r.last, ...cols.map(k => r[k] == null ? '' : r[k].toFixed(2))])], 'cross-asset-performance');
@@ -2608,25 +2617,32 @@ function renderPerfTable() {
 const FOLD_KEY = 'sd-folded-groups';
 const folded = (() => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || '[]')); } catch (e) { return new Set(); } })();
 function saveFolded() { try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (e) { /* storage blocked: folding still works this session */ } }
-function foldableGroups(tbody, table) {   // table = a name so the same group can be folded separately in two tables
-  let head = null, kids = [];
+const OPEN_KEY = 'sd-opened-groups';
+const opened = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]')); } catch (e) { return new Set(); } })();
+function saveOpened() { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...opened])); } catch (e) { /* session only */ } }
+// table = a name so the same group can be folded separately in two tables;
+// foldDefault(name, index) = true folds a group until the viewer opens it
+function foldableGroups(tbody, table, foldDefault = null) {
+  let head = null, kids = [], gi = 0;
   const wire = (h, rows) => {
     if (!h) return;
     const td = h.firstElementChild, name = td.textContent, key = table + '|' + name.split(' · in ')[0];
     const set = open => { h.classList.toggle('folded', !open); rows.forEach(r => r.hidden = !open); h.setAttribute('aria-expanded', open); };
     td.replaceChildren(el('span', { class: 'chev', 'aria-hidden': 'true' }), el('span', { text: name }), el('span', { class: 'muted small cnt', text: ` ${rows.length}` }));
     h.classList.add('foldable'); h.tabIndex = 0; h.title = 'Click to fold or unfold this group';
-    const toggle = () => { const open = h.classList.contains('folded'); open ? folded.delete(key) : folded.add(key); saveFolded(); set(open); };
+    const dflt = foldDefault ? foldDefault(name, gi++) : false;
+    const remember = open => { if (open) { folded.delete(key); opened.add(key); } else { folded.add(key); opened.delete(key); } saveFolded(); saveOpened(); };
+    const toggle = () => { const open = h.classList.contains('folded'); remember(open); set(open); };
     h.addEventListener('click', toggle); h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
-    h.foldTo = open => { open ? folded.delete(key) : folded.add(key); set(open); };
-    set(!folded.has(key));
+    h.foldTo = open => { remember(open); set(open); };
+    set(folded.has(key) ? false : opened.has(key) ? true : !dflt);
   };
   for (const tr of [...tbody.children]) {
     if (tr.classList.contains('grp')) { wire(head, kids); head = tr; kids = []; } else if (head) kids.push(tr);
   }
   wire(head, kids);
 }
-function foldAll(tbody, open) { tbody.querySelectorAll('tr.foldable').forEach(h => h.foldTo(open)); saveFolded(); }
+function foldAll(tbody, open) { tbody.querySelectorAll('tr.foldable').forEach(h => h.foldTo(open)); }
 function hexA(hex, a) {
   const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a.toFixed(3)})`;
@@ -2776,13 +2792,13 @@ function renderBrEW(c) {
   for (const mk of ['MY', 'SG', 'US']) {
     const b = breadth(mk), ix = S[BR_MKTS[mk].index]; if (!b || !b.t.length || !ix) continue;
     const ew = { t: b.t, v: b.ew }, r = combine(ew, ix, (a, x) => a / x, {}, 6 * DAY), base = asOf(r, state.from) || { v: r.v[0] };
-    list.push({ name: `${BR_MKTS[mk].name}: equal-weight ${BR_MKTS[mk].who} ÷ ${ix.label}`, data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]) });
+    list.push({ name: `${BR_MKTS[mk].name}`, data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]) });
   }
   if (has('SPXEW', 'SPX')) { const r = combine(S.SPXEW, S.SPX, (a, x) => a / x, {}, 4 * DAY), base = asOf(r, state.from) || { v: r.v[0] };
-    list.push({ name: 'US: S&P 500 equal weight ÷ S&P 500 (official)', data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(3) } } }); }
+    list.push({ name: 'US (official S&P EW)', data: pts(r, state.from, state.to).map(([t, v]) => [t, v / base.v * 100]), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(3) } } }); }
   if (!list.length) return setEmpty(c, 'Not enough data yet.');
   drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100, label: '' }], endLabels: false });
-  setNote(c, `Equal-weight basket of the dashboard’s stocks against the cap-weighted index, 100 at the start of the range. Falling = the big names are doing the work (narrow, concentrated market); rising = the average stock is outperforming (broad participation). Price returns only.`);
+  setNote(c, `Equal-weight basket of each market’s stocks ÷ its index (KLCI, STI, S&P 500), 100 at the start of the range. Falling = the big names are doing the work (narrow market); rising = broad participation. Price returns.`);
   setSource(c, 'Yahoo Finance daily closes (^SPXEW, ^GSPC, ^KLSE, ^STI and the stocks); ratios calculated');
 }
 function renderBrTable(c) {
@@ -2801,13 +2817,15 @@ function renderBrTable(c) {
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))));
   const tb = el('tbody'), pc = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
   const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
-  for (const r of rows) tb.append(el('tr', { class: 'row', onclick: () => { state.sub.ideas = 1; state.watchSel = r.id; setTab('ideas'); } },
+  const N = 6, cut = !state.brAll && rows.length > 2 * N + 2;
+  const shown = cut ? [...rows.slice(0, N), null, ...rows.slice(-N)] : rows;
+  for (const r of shown) if (!r) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length} (${rows.length - 2 * N} more in the middle)`, onclick: () => { state.brAll = true; c.render(); } })))); else tb.append(el('tr', { class: 'row', onclick: () => { state.sub.ideas = 1; state.watchSel = r.id; setTab('ideas'); } },
     el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short }), el('td', { text: fmtNum(r.v, autoDec(r.v)) }),
     el('td', { class: 'heat', style: heat(r.d200, 20), text: pc(r.d200) }), el('td', { class: 'heat', style: heat(r.d50, 10), text: pc(r.d50) }),
     el('td', { class: 'heat', style: heat(r.off, 30), text: pc(r.off) }), el('td', { class: 'heat', style: heat(r.r3, 20), text: pc(r.r3) })));
   tbl.append(tb); b0.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = [heads, ...rows.map(r => [r.s.sym, r.s.short, r.v, r.d200.toFixed(2), r.d50.toFixed(2), r.off.toFixed(2), r.r3 == null ? '' : r.r3.toFixed(2)])];
-  setNote(c, `Sorted by distance from the 200-day average: leaders at the top, laggards at the bottom. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.`);
+  setNote(c, `Sorted by distance from the 200-day average: ${cut ? `top ${N} leaders and bottom ${N} laggards` : 'leaders at the top, laggards at the bottom'}. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.` + (state.brAll ? '' : ''));
   setSource(c, 'Yahoo Finance daily closes; calculated');
 }
 function buildBreadth() {
@@ -2815,9 +2833,9 @@ function buildBreadth() {
   const k = el('div', { class: 'kpis', id: 'brKpis' });
   panel.append(k, g);
   const seg = { key: 'brMkt', options: [['MY', 'Malaysia'], ['SG', 'Singapore'], ['US', 'US']], onchange: null };
-  makeCard(g, { key: 'br_trend', title: 'Breadth', wide: true, tall: true, defaultRange: '1Y', seg, render: renderBrTrend });
-  makeCard(g, { key: 'br_hl', title: 'New highs minus lows', wide: true, defaultRange: '1Y', seg, render: renderBrHL });
-  makeCard(g, { key: 'br_ew', title: 'Equal weight vs the index: is the rally broad?', wide: true, defaultRange: 'YTD', render: renderBrEW });
+  makeCard(g, { key: 'br_trend', title: 'Breadth', wide: true, defaultRange: '1Y', seg, render: renderBrTrend });
+  makeCard(g, { key: 'br_hl', title: 'New highs minus lows', defaultRange: '1Y', seg, render: renderBrHL });
+  makeCard(g, { key: 'br_ew', title: 'Equal weight vs the index', defaultRange: 'YTD', render: renderBrEW });
   makeCard(g, { key: 'br_table', range: false, title: 'Leaders and laggards', wide: true, seg, render: renderBrTable });
   const r = cards.br_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
   // the three market switches stay in step
@@ -3758,7 +3776,7 @@ function calTiming(e) {
   const [a, b] = calSpan(e);
   return [e.end ? `Window ${dShort(a)}–${dShort(b)}` : 'Estimated', 'Estimated from the usual release pattern; the agency does not publish a machine-readable forward calendar'];
 }
-function calTable(list, today, { compact = false } = {}) {
+function calTable(list, today, { compact = false, weekly = false } = {}) {
   const tbl = el('table', { class: 'perf cal' });
   const heads = compact ? ['Time (SGT)', 'Region', 'Event', 'Previous'] : ['Time (SGT)', 'Region', 'Event', 'Covers', 'Actual', 'Previous', 'Timing', 'Source'];
   const hcls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
@@ -3766,9 +3784,10 @@ function calTable(list, today, { compact = false } = {}) {
   const tb = el('tbody'), csv = [['Date', ...heads]];
   let day = null;
   for (const { e, day: d } of list) {
-    if (d !== day) {
-      day = d;
-      const lab = dLong(d) + (d === today ? ' · today' : d === today + DAY ? ' · tomorrow' : '');
+    const g = weekly ? weekOf(d) : d;
+    if (g !== day) {
+      day = g;
+      const lab = weekly ? `Week of ${dLong(g)}` : dLong(d) + (d === today ? ' · today' : d === today + DAY ? ' · tomorrow' : '');
       tb.append(el('tr', { class: 'grp' + (d < today ? ' past' : '') + (d === today ? ' today' : '') }, el('td', { colspan: heads.length, text: lab })));
     }
     const [st, stTxt] = calStatus(e, today), [timing, timingTip] = calTiming(e);
@@ -3778,7 +3797,7 @@ function calTable(list, today, { compact = false } = {}) {
     const actual = e.actual ? el('b', { text: e.actual }) : el('span', { class: 'muted small', text: st === 'upcoming' ? '' : stTxt || '–' });
     const cells = compact
       ? [e.sgt || '–', e.region, name, prev]
-      : [e.sgt || '–', e.region, name, e.period || e.covers || '', actual, prev, el('span', { class: 'tag ' + e.conf.toLowerCase(), text: timing, title: timingTip }), e.src || ''];
+      : [weekly ? `${WEEKDAYS[new Date(d).getUTCDay()]} ${new Date(d).getUTCDate()}` + (e.sgt ? ' · ' + e.sgt : '') : e.sgt || '–', e.region, name, e.period || e.covers || '', actual, prev, el('span', { class: 'tag ' + e.conf.toLowerCase(), text: timing, title: timingTip }), e.src || ''];
     const cls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
     tb.append(el('tr', { class: 'row ' + st }, ...cells.map((x, i) => el('td', { class: cls[i] }, x))));
     csv.push([iso(d), e.sgt || '', e.region, e.name, ...(compact ? [e.prev || ''] : [e.period || '', e.actual || '', e.prev || '', timing, e.src || ''])]);
@@ -3819,9 +3838,10 @@ function renderCalCard(c) {
   const span = { this: `${dShort(ws)} – ${dShort(ws + 6 * DAY)}`, next: `${dShort(ws + 7 * DAY)} – ${dShort(ws + 13 * DAY)}`, later: `from ${dShort(ws + 14 * DAY)} to ${dShort(dayMs(CAL.end))}`, past: 'last 3 weeks' }[view];
   c.subEl.textContent = `${lab}: ${span}. Times are Singapore/Malaysia time (UTC+8); “+1 day” means the next morning here. ★ = key event.`;
   const list = calRows(view);
-  const [tbl, tb, csv] = calTable(list, today);
+  const byWeek = view === 'later' || view === 'past';
+  const [tbl, tb, csv] = calTable(list, today, { weekly: byWeek });
   b.append(el('div', { class: 'table-wrap' }, tbl));
-  foldableGroups(tb, 'cal');
+  foldableGroups(tb, 'cal', byWeek ? (name, i) => i > 0 : null);
   c.csv = csv;
   const notes = [`${list.length} events.`,
     'Timing: “Scheduled” = date from the agency’s own release calendar (US and euro area, via FRED); “Confirmed” = central bank meeting schedule; “Window” = estimated from the usual release pattern (Malaysia, Singapore, Australia, China, Japan, Korea), so check the agency for the exact day.',
@@ -3846,21 +3866,21 @@ function renderCalNext(c) {
 // ------------------------------------------------------------------ sub-tabs
 // Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
 const SUBTABS = {
-  overview: [['Today', ['points', 'headlines', 'moved', 'fragile', 'cal_next']], ['Where we are', ['where']]],
+  overview: [['Today', ['points', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']]],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
-  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef']],
-    ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
+  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
+    ['Market signals', ['cugold', 'cycdef']], ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
-  asia: [['Malaysia', ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
+  asia: [['Malaysia: markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend']], ['Malaysia: economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['asiafx', 'asiaidx']]],
   cnjp: [['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread']], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj']]],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']]],
-  stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr', 'st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
+  stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
   correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']]],
 };
 state.sub = {};
