@@ -1746,9 +1746,19 @@ function renderAsia() {
 }
 let NEWS = null;
 state.newsCat = 'All'; state.newsQ = '';
+// Headlines: a fast lane (the "live-news" branch, refreshed every 10 minutes by .github/workflows/news.yml)
+// with the copy published on the site as a fallback; whichever is newer wins.
+const REPO_PATH = location.hostname.endsWith('github.io')
+  ? `${location.hostname.split('.')[0]}/${location.pathname.split('/').filter(Boolean)[0] || ''}` : 'CL272/strategist-dashboard';
+const LIVE_NEWS = `https://raw.githubusercontent.com/${REPO_PATH}/live-news/news.json`;
 async function loadNews() {
-  try { NEWS = await (await fetch('data/news.json', { cache: 'no-store' })).json(); } catch (e) { NEWS = NEWS || null; }
+  const get = async u => { try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+  const [live, site] = await Promise.all([get(LIVE_NEWS + '?t=' + Date.now()), get('data/news.json?t=' + Date.now())]);
+  const best = [live, site].filter(x => x && x.items).sort((a, b) => (b.updated_utc || '').localeCompare(a.updated_utc || ''))[0];
+  if (best) { const fresh = !NEWS || best.updated_utc !== NEWS.updated_utc; NEWS = best; NEWS.via = best === live ? 'live' : 'site'; state.newsFresh = fresh; }
+  state.newsChecked = Date.now();
 }
+const newsAge = () => { if (!NEWS || !NEWS.updated_utc) return ''; const t = Date.parse(NEWS.updated_utc.replace(' UTC', 'Z').replace(' ', 'T')); return isNaN(t) ? NEWS.updated_utc : `${timeAgo(t)} (${new Date(t + 8 * 3600e3).toISOString().slice(11, 16)} SGT)`; };
 function timeAgo(t) {
   const m = Math.round((Date.now() - t) / 60000);
   return m < 60 ? `${Math.max(m, 0)}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
@@ -1772,14 +1782,16 @@ function renderNews() {
   for (const c of cats) seg.append(el('button', { type: 'button', text: c, class: c === state.newsCat ? 'on' : '', onclick: () => { state.newsCat = c; renderNews(); } }));
   const q = el('input', { type: 'search', placeholder: 'Filter headlines (e.g. Fed, China, oil)', value: state.newsQ, 'aria-label': 'Filter headlines' });
   q.addEventListener('input', () => { state.newsQ = q.value; const pos = q.selectionStart; renderNews(); const nq = $('#newsBody input[type=search]'); nq.focus(); nq.setSelectionRange(pos, pos); });
-  const refresh = el('button', { class: 'ghost', type: 'button', text: '↻ Refresh', onclick: async () => { refresh.textContent = 'Loading…'; await loadNews(); renderNews(); } });
+  const refresh = el('button', { class: 'ghost', type: 'button', text: '↻ Refresh', onclick: async () => {
+    refresh.textContent = 'Checking…'; refresh.disabled = true; await loadNews(); state.newsMsg = Date.now(); renderNews(); } });
   bar.append(seg, q, refresh);
   const ql = state.newsQ.trim().toLowerCase();
   const items = NEWS.items.filter(n => (state.newsCat === 'All' || n.cat === state.newsCat) && (!ql || n.title.toLowerCase().includes(ql) || n.source.toLowerCase().includes(ql)));
   const ok = Object.entries(NEWS.feeds || {}).filter(([, v]) => v.startsWith('ok')).map(([k]) => k);
   const bad = Object.entries(NEWS.feeds || {}).filter(([, v]) => !v.startsWith('ok')).map(([k]) => k);
   box.append(bar,
-    el('p', { class: 'muted small', text: `Headlines refreshed ${NEWS.updated_utc} (every 30 minutes; ↻ reloads the latest). ${items.length} of ${NEWS.items.length} shown. Links open the original publisher; paywalls may apply.` }),
+    el('p', { class: 'muted small', text: (state.newsMsg && Date.now() - state.newsMsg < 60000 ? (state.newsFresh ? '✓ New headlines loaded. ' : '✓ Checked just now: no newer batch yet. ') : '') +
+      `Headlines collected ${newsAge()}; new batches arrive about every 10 minutes and the page checks on its own every 10 minutes. ${items.length} of ${NEWS.items.length} shown. Links open the original publisher; paywalls may apply.` }),
     newsList(items, 200),
     el('p', { class: 'src', text: `Source: public RSS feeds: ${ok.join(', ')}.` + (bad.length ? ` Unavailable this run: ${bad.join(', ')}.` : '') }));
 }

@@ -1,0 +1,59 @@
+name: Live headlines
+
+# Headlines on their own fast lane. GitHub's scheduler often fires only every few hours, so one run
+# here loops for almost 6 hours, rebuilding the headlines every 10 minutes and force-pushing them to
+# the "live-news" branch (a single file, no history). The dashboard reads that file directly, so new
+# headlines show up without a full rebuild of the site. A new scheduled run waits in the queue while
+# one is looping, so the next loop starts as soon as the current one ends.
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [pipeline/news.py, .github/workflows/news.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-news
+  cancel-in-progress: false
+
+jobs:
+  headlines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Refresh headlines every 10 minutes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          end=$((SECONDS + 340 * 60))
+          while [ $SECONDS -lt $end ]; do
+            python pipeline/news.py > /dev/null || echo "headline build failed; trying again next round"
+            if [ -s docs/data/news.json ]; then
+              tmp=$(mktemp -d)
+              cp docs/data/news.json "$tmp/news.json"
+              (
+                cd "$tmp"
+                git init -q -b live-news
+                git -c user.name="github-actions[bot]" -c user.email="41898699+github-actions[bot]@users.noreply.github.com" add news.json
+                git -c user.name="github-actions[bot]" -c user.email="41898699+github-actions[bot]@users.noreply.github.com" commit -qm "Headlines $(date -u +%Y-%m-%dT%H:%MZ)"
+                git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-news
+              ) && echo "pushed headlines at $(date -u +%H:%M) UTC" || echo "push failed"
+              rm -rf "$tmp"
+            fi
+            sleep 600
+          done
