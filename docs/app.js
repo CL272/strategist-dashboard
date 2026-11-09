@@ -401,8 +401,8 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   if ((zero || hlines.length) && series.length) {
     const ml = zeroLine();
     if (!zero) ml.data = [];
-    for (const h of hlines) ml.data.push({ yAxis: h.y, lineStyle: { color: tok('--muted'), type: 'dashed', width: 1 },
-      label: { show: true, formatter: h.label, color: tok('--muted'), position: 'insideStartTop', fontSize: 11 } });
+    for (const h of hlines) ml.data.push({ yAxis: h.y, lineStyle: { color: h.color || tok('--muted'), type: 'dashed', width: h.color ? 1.5 : 1 },
+      label: { show: true, formatter: h.label, color: h.color || tok('--muted'), position: 'insideStartTop', fontSize: 11 } });
     series[0].markLine = ml;
   }
   if (areas && areas.length && series.length) {
@@ -2850,6 +2850,257 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
 
+// ------------------------------------------------------------------ IDEA LOG
+// Ideas are kept only in this browser (localStorage); Export/Import moves them between laptops.
+// Nothing is sent anywhere: the dashboard site is public, so ideas are never published with it.
+const IDEA_KEY = 'sd-ideas-v1';
+const IDEA_VIEWS = [['Open ideas', 'open'], ['Closed', 'closed'], ['Scorecard', 'score']];
+let IDEAS = [], ideaStoreOk = true;
+function loadIdeas() {
+  try { const raw = localStorage.getItem(IDEA_KEY); IDEAS = raw ? JSON.parse(raw) : []; ideaStoreOk = true; }
+  catch (e) { IDEAS = IDEAS || []; ideaStoreOk = false; }
+}
+function saveIdeas() {
+  try { localStorage.setItem(IDEA_KEY, JSON.stringify(IDEAS)); ideaStoreOk = true; } catch (e) { ideaStoreOk = false; }
+}
+const ideaDirs = id => S[id] && S[id].kind === 'yield' ? [['down', 'Yield/spread falls (long bonds, receive)'], ['up', 'Yield/spread rises (short bonds, pay)']]
+  : [['up', 'Long / rises'], ['down', 'Short / falls']];
+function ideaPerf(x, at = null) {   // P&L of an idea at `at` (default: now or its close); null if not trackable
+  const s = x.sid && S[x.sid]; if (!s || x.entry == null) return null;
+  const t = at ?? (x.status === 'closed' && x.closeDate ? dayMs(x.closeDate) : state.latest);
+  const level = x.status === 'closed' && x.closeLevel != null && at == null ? x.closeLevel : (asOf(s, t) || {}).v;
+  if (level == null) return null;
+  const sg = x.dir === 'down' ? -1 : 1;
+  if (s.kind === 'price') return { level, val: sg * (level / x.entry - 1) * 100, unit: '%' };
+  if (s.kind === 'yield') return { level, val: sg * (level - x.entry) * 100, unit: 'bp' };
+  return { level, val: sg * (level - x.entry), unit: s.unit || 'pts' };
+}
+const fmtPnl = p => p == null ? '–' : `${p.val > 0 ? '+' : p.val < 0 ? '−' : ''}${fmtNum(Math.abs(p.val), p.unit === 'bp' ? 0 : p.unit === '%' ? 1 : 2)}${p.unit === '%' ? '%' : p.unit === 'bp' ? 'bp' : ' ' + p.unit}`;
+function ideaHits(x) {   // first time the price path reached the target or the stop since entry
+  const s = x.sid && S[x.sid]; if (!s || x.entry == null) return null;
+  const a = dayMs(x.date), b = x.status === 'closed' && x.closeDate ? dayMs(x.closeDate) : state.latest, up = x.dir !== 'down';
+  for (const [t, v] of pts(s, a + DAY, b)) {
+    if (x.target != null && (up ? v >= x.target : v <= x.target)) return { what: 'target', t };
+    if (x.stop != null && (up ? v <= x.stop : v >= x.stop)) return { what: 'stop', t };
+  }
+  return null;
+}
+function ideaLevel(x, v) { const s = S[x.sid]; return v == null ? '–' : s && s.kind === 'yield' ? fmtNum(v, 2) + '%' : s ? fmtVal(s, v) : fmtNum(v, autoDec(v)); }
+function ideaProgress(x, p) {   // where the price sits between stop (0) and target (1)
+  if (!p || x.target == null || x.stop == null || x.target === x.stop) return null;
+  return Math.max(-0.1, Math.min(1.1, (p.level - x.stop) / (x.target - x.stop)));
+}
+function buildIdeas() {
+  loadIdeas();
+  const panel = $('#tab-ideas');
+  const newBtn = el('button', { type: 'button', class: 'primary', text: '＋ New idea', onclick: () => openIdeaForm() });
+  const exp = el('button', { type: 'button', class: 'ghost', text: 'Export', title: 'Download all ideas as a file (back-up, or to move to another laptop)', onclick: () => {
+    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 1, exported: new Date().toISOString(), ideas: IDEAS }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); download(url, `idea-log_${iso(Date.now())}.json`); setTimeout(() => URL.revokeObjectURL(url), 2000); } });
+  const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
+  file.addEventListener('change', async () => {
+    const f = file.files[0]; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text()), list = Array.isArray(j) ? j : j.ideas;
+      if (!Array.isArray(list)) throw new Error('no ideas in file');
+      const have = new Set(IDEAS.map(x => x.id)); let n = 0;
+      for (const x of list) if (x && x.id && x.title && !have.has(x.id)) { IDEAS.push(x); n++; }
+      saveIdeas(); alert(`Imported ${n} idea${n === 1 ? '' : 's'} (${list.length - n} already here).`); renderIdeas();
+    } catch (e) { alert('Could not read that file: ' + e.message); }
+    file.value = '';
+  });
+  const imp = el('button', { type: 'button', class: 'ghost', text: 'Import', title: 'Add ideas from an exported file (existing ideas are kept)', onclick: () => file.click() });
+  const csv = el('button', { type: 'button', class: 'ghost', text: 'CSV', title: 'Download the ideas as a spreadsheet', onclick: () => downloadCSV(ideaCsv(), 'idea-log') });
+  panel.append(el('div', { class: 'controls idea-bar' }, newBtn, exp, imp, csv, file, el('span', { class: 'muted small', id: 'ideaStoreNote' })),
+    el('div', { id: 'ideaForm', class: 'card idea-form', hidden: true }));
+  const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Ideas' });
+  IDEA_VIEWS.forEach(([lab], i) => nav.append(el('button', { type: 'button', role: 'tab', text: lab, 'data-i': i, onclick: () => { state.sub.ideas = i; renderTab(); } })));
+  const g = el('div', { class: 'grid' });
+  panel.append(nav, g);
+  makeCard(g, { key: 'idea_table', range: false, title: 'Ideas', wide: true, render: renderIdeaTable });
+  makeCard(g, { key: 'idea_chart', title: 'Idea chart', wide: true, render: renderIdeaChart });
+  makeCard(g, { key: 'idea_score', range: false, title: 'Scorecard', wide: true, render: renderIdeaScore });
+  for (const k of ['idea_table', 'idea_score']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderIdeas() {
+  const panel = $('#tab-ideas'), cur = state.sub.ideas || 0, view = IDEA_VIEWS[cur][1];
+  panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
+  $('#ideaStoreNote').textContent = ideaStoreOk
+    ? `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, stored only in this browser on this computer. Nothing is uploaded. Use Export to back up or move them to another laptop.`
+    : '⚠ This browser is blocking storage (private window or a work policy?), so ideas will be lost when you close the page. Use Export before leaving.';
+  cards.idea_table.root.hidden = view === 'score';
+  cards.idea_chart.root.hidden = view === 'score' || !IDEAS.some(x => x.sid);
+  cards.idea_score.root.hidden = view !== 'score';
+  if (view !== 'score') { cards.idea_table.render(); if (!cards.idea_chart.root.hidden) cards.idea_chart.render(); }
+  else cards.idea_score.render();
+}
+function ideaCsv() {
+  const h = ['Opened', 'Idea', 'Instrument', 'Direction', 'Entry', 'Target', 'Stop', 'Horizon', 'Conviction', 'Theme', 'Status', 'Closed', 'Exit', 'P&L', 'Rationale', 'Close note'];
+  return [h, ...IDEAS.map(x => { const p = ideaPerf(x); return [x.date, x.title, x.sid ? S[x.sid] ? S[x.sid].label : x.sid : '', x.sid ? (ideaDirs(x.sid).find(d => d[0] === x.dir) || ['', ''])[1] : '',
+    x.entry ?? '', x.target ?? '', x.stop ?? '', x.horizon || '', x.conv || '', x.theme || '', x.status, x.closeDate || '', x.closeLevel ?? '', p ? fmtPnl(p) : '', x.why || '', x.closeNote || '']; })];
+}
+function openIdeaForm(edit = null) {
+  const box = $('#ideaForm'); box.replaceChildren(); box.hidden = false;
+  const x = edit || { id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: iso(sgToday()), status: 'open', conv: 2 };
+  const ids = allIdsSorted().filter(id => !/_YOYc$|^MYR_IN_/.test(id));
+  const dl = el('datalist', { id: 'ideaSeries' }, ...ids.map(id => el('option', { value: `${S[id].label} · ${id}` })));
+  const f = (lab, input, hint) => el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: lab }), input, hint ? el('span', { class: 'muted small', text: hint }) : '');
+  const title = el('input', { type: 'text', value: x.title || '', placeholder: 'e.g. Long KLCI on BNM hold and earnings recovery', required: true });
+  const inst = el('input', { type: 'text', list: 'ideaSeries', value: x.sid && S[x.sid] ? `${S[x.sid].label} · ${x.sid}` : '', placeholder: 'Type to search, e.g. KLCI, UST 10Y, USD/MYR, gold (or leave blank for a view)' });
+  const dir = el('select', {});
+  const date = el('input', { type: 'date', value: x.date, max: iso(sgToday()) });
+  const entry = el('input', { type: 'number', step: 'any', value: x.entry ?? '' }), target = el('input', { type: 'number', step: 'any', value: x.target ?? '' }), stop = el('input', { type: 'number', step: 'any', value: x.stop ?? '' });
+  const horizon = el('input', { type: 'date', value: x.horizon || '' });
+  const conv = el('select', {}, ...[[1, '★ Low'], [2, '★★ Medium'], [3, '★★★ High']].map(([v, l]) => el('option', { value: v, text: l })));
+  conv.value = x.conv || 2;
+  const theme = el('input', { type: 'text', value: x.theme || '', placeholder: 'e.g. Fed, Malaysia, AI, carry', list: 'ideaThemes' });
+  const themes = el('datalist', { id: 'ideaThemes' }, ...[...new Set(IDEAS.map(i => i.theme).filter(Boolean))].map(t => el('option', { value: t })));
+  const why = el('textarea', { rows: 3, placeholder: 'Rationale, catalysts, what would make you wrong' }); why.value = x.why || '';
+  const info = el('span', { class: 'muted small' });
+  const sidOf = () => { const m = inst.value.match(/·\s*([A-Za-z0-9_]+)\s*$/); return m && S[m[1]] ? m[1] : (S[inst.value.trim()] ? inst.value.trim() : null); };
+  const sync = () => {
+    const sid = sidOf(), prev = dir.value;
+    dir.replaceChildren(...(sid ? ideaDirs(sid) : [['up', 'Bullish / up'], ['down', 'Bearish / down']]).map(([v, l]) => el('option', { value: v, text: l })));
+    dir.value = prev || x.dir || 'up'; if (!dir.value) dir.selectedIndex = 0;
+    if (sid) { const a = asOf(S[sid], dayMs(date.value || iso(sgToday())));
+      entry.placeholder = a ? String(+a.v.toFixed(4)) : ''; info.textContent = a ? `${S[sid].label} was ${ideaLevel({ sid }, a.v)} on ${nice(a.t)}. Leave Entry blank to use it.` : 'No price on that date.'; }
+    else { entry.placeholder = ''; info.textContent = inst.value ? 'Not a dashboard series: the idea is logged as a view, without automatic tracking.' : 'No instrument: logged as a view (no automatic tracking).'; }
+  };
+  inst.addEventListener('change', sync); inst.addEventListener('input', sync); date.addEventListener('change', sync);
+  const save = el('button', { type: 'submit', class: 'primary', text: edit ? 'Save changes' : 'Add idea' });
+  const cancel = el('button', { type: 'button', class: 'ghost', text: 'Cancel', onclick: () => { box.hidden = true; box.replaceChildren(); } });
+  const form = el('form', { class: 'if-grid' },
+    el('h2', { class: 'if-wide', text: edit ? 'Edit idea' : 'New idea' }),
+    el('div', { class: 'if-wide' }, f('Idea', title)),
+    el('div', { class: 'if-wide' }, f('Instrument (dashboard series)', inst), info),
+    f('Direction', dir), f('Opened', date), f('Entry level', entry), f('Target', target), f('Stop', stop), f('Review by', horizon, 'optional'), f('Conviction', conv), f('Theme', theme),
+    el('div', { class: 'if-wide' }, f('Rationale', why)), el('div', { class: 'if-wide if-actions' }, save, cancel), dl, themes);
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    if (!title.value.trim()) { title.focus(); return; }
+    const sid = sidOf(), num = el_ => el_.value === '' ? null : +el_.value;
+    let ent = num(entry);
+    if (ent == null && sid) { const a = asOf(S[sid], dayMs(date.value)); ent = a ? +a.v.toFixed(6) : null; }
+    const up = dir.value !== 'down', tg = num(target), st = num(stop), bad = [];
+    if (ent != null && tg != null && (up ? tg <= ent : tg >= ent)) bad.push(`the target (${tg}) is ${up ? 'not above' : 'not below'} the entry (${+ent.toFixed(4)})`);
+    if (ent != null && st != null && (up ? st >= ent : st <= ent)) bad.push(`the stop (${st}) is ${up ? 'not below' : 'not above'} the entry (${+ent.toFixed(4)})`);
+    if (bad.length && !confirm(`Check the levels for “${dir.selectedOptions[0].text}”: ${bad.join(' and ')}. Save anyway?`)) return;
+    Object.assign(x, { title: title.value.trim(), sid, sidText: sid ? null : inst.value.trim() || null, dir: dir.value, date: date.value || iso(sgToday()), entry: ent, target: num(target), stop: num(stop),
+      horizon: horizon.value || null, conv: +conv.value, theme: theme.value.trim() || null, why: why.value.trim() || null, updated: new Date().toISOString() });
+    if (!edit) IDEAS.push(x);
+    saveIdeas(); box.hidden = true; box.replaceChildren(); state.ideaSel = x.id; state.sub.ideas = 0; renderTab();
+  });
+  box.append(form); sync(); title.focus();
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function closeIdea(x) {
+  const p = ideaPerf(x);
+  const box = $('#ideaForm'); box.replaceChildren(); box.hidden = false;
+  const date = el('input', { type: 'date', value: iso(sgToday()), max: iso(sgToday()) });
+  const lvl = el('input', { type: 'number', step: 'any', placeholder: p ? String(+p.level.toFixed(4)) : '' });
+  const note = el('textarea', { rows: 2, placeholder: 'What happened, what you learned' });
+  const form = el('form', { class: 'if-grid' }, el('h2', { class: 'if-wide', text: `Close: ${x.title}` }),
+    el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: 'Closed on' }), date),
+    el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: 'Exit level' }), lvl, el('span', { class: 'muted small', text: x.sid ? 'Blank = the dashboard level on that date' : '' })),
+    el('div', { class: 'if-wide' }, el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: 'Note' }), note)),
+    el('div', { class: 'if-wide if-actions' }, el('button', { type: 'submit', class: 'primary', text: 'Close idea' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', onclick: () => { box.hidden = true; } })));
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    let v = lvl.value === '' ? null : +lvl.value;
+    if (v == null && x.sid && S[x.sid]) { const a = asOf(S[x.sid], dayMs(date.value)); v = a ? a.v : null; }
+    Object.assign(x, { status: 'closed', closeDate: date.value, closeLevel: v, closeNote: note.value.trim() || null, updated: new Date().toISOString() });
+    saveIdeas(); box.hidden = true; renderTab();
+  });
+  box.append(form); box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderIdeaTable(c) {
+  const b = htmlBody(c), view = IDEA_VIEWS[state.sub.ideas || 0][1];
+  const list = IDEAS.filter(x => (view === 'open') === (x.status !== 'closed')).sort((p, q) => q.date.localeCompare(p.date));
+  c.titleEl.textContent = view === 'open' ? `Open ideas (${list.length})` : `Closed ideas (${list.length})`;
+  c.subEl.textContent = view === 'open' ? 'Tracked against the latest dashboard prices. Click a row to chart it.' : 'Exit levels as entered, or the dashboard level on the close date.';
+  if (!list.length) {
+    b.append(el('div', { class: 'empty', text: view === 'open' ? 'No open ideas yet. Use “＋ New idea” to log one: pick an instrument from the dashboard and it is tracked automatically.' : 'No closed ideas yet.' }));
+    c.csv = null; return;
+  }
+  const tbl = el('table', { class: 'perf ideas' });
+  const heads = ['Opened', 'Idea', 'Instrument', 'Entry', view === 'open' ? 'Now' : 'Exit', 'P&L', 'Stop → target', view === 'open' ? 'Review by' : 'Closed', ''];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 1 || i === 2 || i === 6 ? 'l' : '' })))));
+  const tb = el('tbody'), pos = tok('--pos'), neg = tok('--neg'), today = sgToday();
+  for (const x of list) {
+    const p = ideaPerf(x), hit = ideaHits(x), pr = ideaProgress(x, p), s = x.sid && S[x.sid];
+    const dirTxt = s ? (ideaDirs(x.sid).find(d => d[0] === x.dir) || ['', ''])[1].split(' (')[0] : x.dir === 'down' ? 'Bearish' : 'Bullish';
+    const bar = pr == null ? el('span', { class: 'muted small', text: x.target != null ? `target ${ideaLevel(x, x.target)}` : '–' })
+      : el('div', { class: 'pbar2', title: `stop ${ideaLevel(x, x.stop)} · target ${ideaLevel(x, x.target)}` }, el('i', { style: `left:${(Math.max(0, Math.min(1, pr)) * 100).toFixed(0)}%` }));
+    const flag = hit ? el('span', { class: 'flag ' + hit.what, text: hit.what === 'target' ? `✓ target hit ${dShort(hit.t)}` : `✕ stop hit ${dShort(hit.t)}` }) : '';
+    const due = x.horizon && view === 'open' && dayMs(x.horizon) < today ? el('span', { class: 'flag stop', text: 'review due' }) : '';
+    const actions = el('td', { class: 'acts' },
+      el('button', { type: 'button', class: 'ghost', text: 'Edit', onclick: ev => { ev.stopPropagation(); openIdeaForm(x); } }),
+      view === 'open' ? el('button', { type: 'button', class: 'ghost', text: 'Close', onclick: ev => { ev.stopPropagation(); closeIdea(x); } })
+        : el('button', { type: 'button', class: 'ghost', text: 'Reopen', onclick: ev => { ev.stopPropagation(); Object.assign(x, { status: 'open', closeDate: null, closeLevel: null }); saveIdeas(); renderTab(); } }),
+      el('button', { type: 'button', class: 'ghost', text: '✕', title: 'Delete', onclick: ev => { ev.stopPropagation(); if (confirm(`Delete “${x.title}”? This cannot be undone (unless you exported a back-up).`)) { IDEAS = IDEAS.filter(i => i !== x); saveIdeas(); renderTab(); } } }));
+    const tr = el('tr', { class: 'row' + (state.ideaSel === x.id ? ' sel' : ''), onclick: () => { state.ideaSel = x.id; renderIdeas(); } },
+      el('td', { text: dShort(dayMs(x.date)) + ' ' + String(new Date(dayMs(x.date)).getUTCFullYear()).slice(2) }),
+      el('td', { class: 'idea-t' }, el('div', {}, el('b', { text: x.title }), ' ', el('span', { class: 'star', text: '★'.repeat(x.conv || 0) })),
+        el('div', { class: 'muted small', text: [dirTxt, x.theme].filter(Boolean).join(' · ') }), x.why ? el('div', { class: 'small why', text: x.why }) : '',
+        x.closeNote ? el('div', { class: 'small why', text: 'Closed: ' + x.closeNote }) : ''),
+      el('td', { class: 'l', text: s ? s.label : x.sidText || 'view' }),
+      el('td', { text: ideaLevel(x, x.entry) }),
+      el('td', { text: p ? ideaLevel(x, p.level) : '–' }),
+      el('td', { class: 'heat', style: p ? `background:${hexA(p.val >= 0 ? pos : neg, Math.min(1, Math.abs(p.unit === '%' ? p.val / 10 : p.unit === 'bp' ? p.val / 75 : p.val / Math.max(1e-9, Math.abs(x.entry) * 0.1))) * 0.42)}` : '', text: fmtPnl(p) }),
+      el('td', { class: 'l' }, bar, flag, due),
+      el('td', { text: view === 'open' ? (x.horizon ? dShort(dayMs(x.horizon)) : '–') : (x.closeDate ? dShort(dayMs(x.closeDate)) : '–') }),
+      actions);
+    tb.append(tr);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = ideaCsv();
+  setNote(c, 'P&L: % for prices (no dividends, carry or FX), bp for yields and spreads (positive when the yield moves your way). The stop → target bar shows where the latest level sits between your stop (left) and target (right). Target/stop flags use daily closes since the idea was opened.');
+}
+function renderIdeaChart(c) {
+  const x = IDEAS.find(i => i.id === state.ideaSel && i.sid) || IDEAS.filter(i => i.sid && i.status !== 'closed').sort((p, q) => q.date.localeCompare(p.date))[0] || IDEAS.find(i => i.sid);
+  if (!x || !S[x.sid]) return setEmpty(c, 'Add an idea with a dashboard instrument to chart it.');
+  const s = S[x.sid], a = dayMs(x.date), end = x.status === 'closed' && x.closeDate ? dayMs(x.closeDate) : state.latest;
+  const from = c.range ? state.from : addMonths(a, -3), to = c.range ? state.to : Math.max(end, state.latest);
+  c.titleEl.textContent = `Idea chart: ${x.title}`;
+  c.subEl.textContent = `${s.label} from 3 months before the idea. Entry, target and stop shown as lines.`;
+  const hl = [{ y: x.entry, label: `entry ${ideaLevel(x, x.entry)}` }];
+  if (x.target != null) hl.push({ y: x.target, label: `target ${ideaLevel(x, x.target)}`, color: tok('--good') });
+  if (x.stop != null) hl.push({ y: x.stop, label: `stop ${ideaLevel(x, x.stop)}`, color: tok('--critical') });
+  const keep = [state.from, state.to]; [state.from, state.to] = [from, to];
+  drawLines(c, [{ name: s.label, data: pts(s, from, to) }], { fmt: v => ideaLevel(x, v), axisFmt: v => ideaLevel(x, v).replace(/\.0+%$/, '%'), endLabels: false, hlines: hl,
+    areas: [[a, end, hexA(tok('--accent'), 0.08), 'idea open']], yExtra: { min: v => Math.min(v.min, ...hl.map(h => h.y)), max: v => Math.max(v.max, ...hl.map(h => h.y)) } });
+  [state.from, state.to] = keep;
+  setSource(c, srcOf([x.sid]));
+  const p = ideaPerf(x);
+  setNote(c, `${x.status === 'closed' ? 'Closed' : 'Open'} since ${nice(a)}${p ? `: ${fmtPnl(p)}` : ''}. Click another row in the table to chart it.`);
+}
+function renderIdeaScore(c) {
+  const b = htmlBody(c), closed = IDEAS.filter(x => x.status === 'closed'), open = IDEAS.filter(x => x.status !== 'closed');
+  if (!IDEAS.length) { b.append(el('div', { class: 'empty', text: 'The scorecard fills in as you log and close ideas.' })); c.csv = null; return; }
+  const stat = (list) => {
+    const ps = list.map(x => ({ x, p: ideaPerf(x) })).filter(r => r.p);
+    const wins = ps.filter(r => r.p.val > 0).length;
+    const pct = ps.filter(r => r.p.unit === '%').map(r => r.p.val), bps = ps.filter(r => r.p.unit === 'bp').map(r => r.p.val);
+    const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+    return { n: list.length, tracked: ps.length, hit: ps.length ? wins / ps.length * 100 : null, pct: avg(pct), bps: avg(bps), best: ps.sort((p, q) => q.p.val - p.p.val)[0] };
+  };
+  const row = (lab, st) => el('tr', { class: 'row' }, el('td', { text: lab }), el('td', { text: String(st.n) }), el('td', { text: st.hit == null ? '–' : fmtNum(st.hit, 0) + '%' }),
+    el('td', { text: st.pct == null ? '–' : (st.pct >= 0 ? '+' : '−') + fmtNum(Math.abs(st.pct), 1) + '%' }), el('td', { text: st.bps == null ? '–' : bp(st.bps) }));
+  const tbl = el('table', { class: 'perf' });
+  tbl.append(el('thead', {}, el('tr', {}, ...['Group', 'Ideas', 'Hit rate', 'Avg P&L (price ideas)', 'Avg P&L (rates ideas)'].map(h => el('th', { text: h })))));
+  const tb = el('tbody');
+  tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: 'Overall' })), row('Closed ideas', stat(closed)), row('Open ideas (mark-to-market)', stat(open)));
+  tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: 'By conviction (all ideas)' })));
+  for (const k of [3, 2, 1]) { const l = IDEAS.filter(x => (x.conv || 2) === k); if (l.length) tb.append(row('★'.repeat(k), stat(l))); }
+  const themes = [...new Set(IDEAS.map(x => x.theme).filter(Boolean))];
+  if (themes.length) { tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: 'By theme (all ideas)' }))); for (const t of themes) tb.append(row(t, stat(IDEAS.filter(x => x.theme === t)))); }
+  const ta = stat(IDEAS.filter(x => ideaHits(x)));
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  const hits = IDEAS.map(ideaHits).filter(Boolean);
+  setNote(c, `Hit rate = share of tracked ideas with positive P&L. ${hits.filter(h => h.what === 'target').length} idea(s) reached their target and ${hits.filter(h => h.what === 'stop').length} their stop at some point. Ideas without a dashboard instrument count in “Ideas” but not in the P&L figures.` + (ta.n ? '' : ''));
+  c.csv = ideaCsv();
+}
+
 // ------------------------------------------------------------------ WEEKLY ONE-PAGE BRIEF
 // Built from the data already on the dashboard, for the week ending on a Friday. Prints to one A4 page.
 const WK_ROWS = [
@@ -3014,10 +3265,18 @@ function renderWeekly() {
   right.append(el('section', {}, el('h3', { text: 'Week ahead (key events, SGT)' }), ah.length ? ul : el('p', { class: 'muted small', text: 'No calendar loaded.' }),
     ah.length > 16 ? el('p', { class: 'muted small', text: `+${ah.length - 16} more on the Calendar page.` }) : ''));
   txt.push('WEEK AHEAD (SGT)', ...ah.map(({ e, day: d }) => `  ${dLong(d)} ${e.sgt || ''} ${e.region}: ${e.name}${e.prev ? ` (prev ${e.prev})` : ''}`), '');
+  // the user's own open ideas (from this browser only)
+  const mine = IDEAS.filter(x => x.status !== 'closed' && x.date <= iso(end));
+  if (mine.length) {
+    right.append(el('section', {}, el('h3', { text: 'My open ideas' }), el('ul', { class: 'op-list' }, ...mine.slice(0, 6).map(x => { const p = ideaPerf(x, end);
+      return el('li', {}, el('span', { text: x.title + (x.conv ? ' ' + '★'.repeat(x.conv) : '') }), el('b', { text: p ? fmtPnl(p) : 'view', style: p ? `color:${tok(p.val >= 0 ? '--pos' : '--neg')}` : '' })); })),
+      mine.length > 6 ? el('p', { class: 'muted small', text: `+${mine.length - 6} more in the Idea log.` }) : ''));
+    txt.push('MY OPEN IDEAS', ...mine.map(x => { const p = ideaPerf(x, end); return `  ${x.title}: ${p ? fmtPnl(p) : 'view'}`; }), '');
+  }
   // headlines
   if (NEWS && NEWS.items && end >= lastFriday(state.latest)) {
-    const items = NEWS.items.slice(0, 5);
-    right.append(el('section', {}, el('h3', { text: 'Headlines' }), el('ul', { class: 'op-list op-news' }, ...items.map(n => el('li', {}, el('span', { text: n.title }), el('span', { class: 'muted', text: n.source }))))));
+    const items = NEWS.items.slice(0, mine.length ? 3 : 5);
+    right.append(el('section', { class: mine.length > 3 ? 'op-news-sec no-print' : 'op-news-sec' }, el('h3', { text: 'Headlines' }), el('ul', { class: 'op-list op-news' }, ...items.map(n => el('li', {}, el('span', { text: n.title }), el('span', { class: 'muted', text: n.source }))))));
   }
   page.append(el('footer', { class: 'op-foot muted small', text: 'Sources: Yahoo Finance, FRED (Federal Reserve, BLS, BEA, ICE BofA), US Treasury, MOF Japan, MAS/SingStat, DOSM/Bank Negara, RBA, OECD, CBOT fed funds futures, public news feeds. Generated from public data by the Strategist Dashboard; facts only, no investment advice.' }));
   state.weekText = txt.join('\n');
@@ -3392,9 +3651,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, ideas: renderIdeas, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -3402,7 +3661,7 @@ function setTab(t) {
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
-  $('.filters').hidden = t === 'news' || t === 'calendar' || t === 'weekly';
+  $('.filters').hidden = t === 'news' || t === 'calendar' || t === 'weekly' || t === 'ideas';
   setFiltersHeight();
   renderTab();
 }
@@ -3478,10 +3737,10 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildCorrelation(); buildFedPath(); applySources(); applyPairToggles(); wire();
-  const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
+  const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
-  buildCalendar(); buildWeekly();
-  setTab(['overview', 'news', 'calendar', 'weekly', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  buildCalendar(); buildWeekly(); buildIdeas();
+  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
