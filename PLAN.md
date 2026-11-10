@@ -139,7 +139,7 @@ BoE's curve files need a host the sandbox cannot reach; revisit if the owner wan
 
 ---
 
-## Reliability work (do WP-R1 before WP1; the rest alongside)
+## Reliability work (do WP-R1 and WP-R5 before WP1; the rest alongside)
 
 - **WP-R1. Survive a Pages outage.** On 10 Nov the site went offline (repo toggled private), and the next
   run could not load yesterday's data as a fallback, so two SingStat series went missing. After each
@@ -152,6 +152,13 @@ BoE's curve files need a host the sandbox cannot reach; revisit if the owner wan
   at the end of `fetch.main()` and keep new modules under 60 seconds each (the BNM back-fill is one-off).
 - **WP-R4. Health coverage.** Add every new series to `health.py` with the right frequency (BNM interbank:
   daily; ECB forwards: daily; palm oil: monthly), so stale data raises the existing alert issue.
+
+- **WP-R5. Archive step fails when two pushes land close together.** Seen on 10 Nov (run 42773077776):
+  the second queued run checked out its own older commit, both runs rewrote the same line of
+  `archive/ai_openrouter_daily.csv`, and `git pull --rebase` hit a conflict, so that run failed before
+  deploying. The site was unaffected because the other run deployed. Fix in `update.yml`: check out the
+  latest `main` for the archive step (or, on a rebase conflict, abort and skip the archive commit for that
+  run, since the next run rewrites the same rows), and never let this step block the deploy.
 
 ## Things to keep an eye on (no build needed)
 
