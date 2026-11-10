@@ -2827,7 +2827,7 @@ function buildMarkets() {
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderCommod(); }
 
 // ------------------------------------------------------------------ BREADTH (from the ticker universe)
 // Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
@@ -2965,6 +2965,88 @@ function renderBrTable(c) {
   setNote(c, `Sorted by distance from the 200-day average: ${cut ? `top ${N} leaders and bottom ${N} laggards` : 'leaders at the top, laggards at the bottom'}. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.` + (state.brAll ? '' : ''));
   setSource(c, 'Yahoo Finance daily closes; calculated');
 }
+// ------------------------------------------------------------------ COMMODITIES (Markets → Commodities)
+const CM_IDS = ['BRENT', 'WTI', 'NATGAS', 'GOLD', 'COPPER', 'IRONORE', 'PALM', 'BDRY'];
+const CM_TABLE = ['BRENT', 'WTI', 'NATGAS', 'GOLD', 'SILVER', 'COPPER', 'IRONORE', 'PALM', 'BDRY'];
+const CM_PLANT = ['1961.KL', '2445.KL', '5285.KL'];   // IOI, KLK, SD Guthrie
+state.cmCcy = 'USD';
+function plantBasket() {   // equal-weight Malaysian plantation basket, daily, = 100 at the first common date
+  const ids = CM_PLANT.map(x => TICK_SYM[x]).filter(Boolean); if (ids.length < 2) return null;
+  const start = Math.max(...ids.map(id => S[id].t[0])), base = ids.map(id => asOf(S[id], start).v), s0 = S[ids[0]], t = [], v = [];
+  for (let i = 0; i < s0.t.length; i++) { const d = s0.t[i]; if (d < start) continue;
+    let x = 0, ok = true; for (let k = 0; k < ids.length; k++) { const a = asOf(S[ids[k]], d); if (!a || d - a.t > 7 * DAY) { ok = false; break; } x += a.v / base[k]; }
+    if (ok) { t.push(d); v.push(x / ids.length * 100); } }
+  return { id: 'MY_PLANT', label: `Malaysia plantation basket (${ids.map(id => S[id].short).join(', ')})`, group: 'Derived', kind: 'price', unit: 'index', ccy: 'MYR',
+    source: 'Yahoo Finance tickers; equal weight, calculated', t, v };
+}
+function cmRet(s, back) { const a = asOf(s, state.to); if (!a) return null; const b = asOf(s, back(a.t)); return b && b.v && a.t - b.t < 400 * DAY ? (a.v / b.v - 1) * 100 : null; }
+function renderCmRebased(c) {
+  const ids = CM_IDS.filter(id => has(id)); if (!ids.length) return setEmpty(c, 'Waiting for data.');
+  const list = ids.map(id => { const p = pts(inCcy(id, state.cmCcy), state.from, state.to), b = p.length ? p[0][1] : null;
+    return { name: S[id].label, data: b ? p.map(([t, v]) => [t, v / b * 100]) : [], color: col(CM_IDS.indexOf(id)) }; }).filter(x => x.data.length);
+  drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), endLabels: false });
+  setNote(c, `Each series = 100 at the start of the range, ${state.cmCcy === 'USD' ? 'in US dollars' : `converted to ${state.cmCcy} at daily FX`}. Palm oil is a monthly average. BDRY is an ETF of dry-bulk freight futures, a shipping-rate proxy.`);
+  setSource(c, 'Yahoo Finance futures (Brent, WTI, US gas, gold, copper, SGX iron ore) and BDRY ETF; IMF palm oil via FRED');
+}
+function corrW(A, B, from, to) {   // correlation of weekly % changes over the range
+  const wk = s => { const m = new Map(); for (const [t, v] of pts(s, from, to)) m.set(Math.floor((t / DAY + 3) / 7), v); return m; };
+  const a = wk(A), b = wk(B), ks = [...a.keys()].filter(k => b.has(k)).sort((x, y) => x - y), x = [], y = [];
+  for (let i = 1; i < ks.length; i++) if (ks[i] === ks[i - 1] + 1) { x.push(a.get(ks[i]) / a.get(ks[i - 1]) - 1); y.push(b.get(ks[i]) / b.get(ks[i - 1]) - 1); }
+  return x.length >= 20 ? pearson(x, y) : null;
+}
+function renderCmPalm(c) {
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  const bk = S.MY_PLANT; if (!bk) return setEmpty(c, 'Plantation stocks not in the ticker list.');
+  if (!has('PALM')) { drawLines(c, [{ name: 'Plantation basket (=100)', data: pts(bk, Math.max(state.from, bk.t[0]), state.to) }], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+    setNote(c, 'Palm oil (IMF via FRED) was not available on the last refresh; showing the plantation basket only.'); return setSource(c, 'Yahoo Finance (Bursa Malaysia)'); }
+  const from = Math.max(state.from, bk.t[0]);
+  drawPair(c, { name: 'Palm oil (USD/t, monthly)', data: pts(S.PALM, from, state.to) }, { name: 'Plantation basket (=100)', data: pts(bk, from, state.to) },
+    { fmtA: v => fmtNum(v, 0), fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  const p = asOf(S.PALM, state.to), p12 = p && asOf(S.PALM, addMonths(p.t, -12));
+  setNote(c, `Palm oil ${p ? `${fmtNum(p.v, 0)} USD/t in ${monthLab(p.t)}` : ''}${p12 ? ` (${sign(p.v - p12.v)}${fmtNum(Math.abs(p.v / p12.v - 1) * 100, 1)}% on a year)` : ''}. Basket = ${S.MY_PLANT.label.replace('Malaysia plantation basket ', '')}, equal weight, in ringgit; ticker history covers about 3 years.`);
+  setSource(c, 'IMF primary commodity prices via FRED (PPOILUSDM); Yahoo Finance (Bursa Malaysia)');
+}
+function renderCmIron(c) {
+  if (!has('IRONORE', 'AUDUSD')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Iron ore (USD/t)', data: pts(S.IRONORE, state.from, state.to) }, { name: 'AUD/USD', data: pts(S.AUDUSD, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1), fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 2) });
+  const r = corrW(S.IRONORE, S.AUDUSD, state.from, state.to);
+  setNote(c, `Iron ore is Australia's largest export, so the Aussie dollar tends to follow it.${r != null ? ` Correlation of weekly changes over this range: ${r >= 0 ? '+' : '−'}${fmtNum(Math.abs(r), 2)}.` : ''} SGX 62% Fe futures.`);
+  setSource(c, 'Yahoo Finance (TIO=F, AUDUSD=X)');
+}
+function renderCmTable(c) {
+  const b = htmlBody(c), ccy = state.cmCcy;
+  const yStart = t => Date.UTC(new Date(t).getUTCFullYear(), 0, 1) - 1;
+  const P = [['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)], ['YTD', yStart], ['1Y', t => addMonths(t, -12)]];
+  const rows = CM_TABLE.filter(id => has(id)).map(id => { const s = inCcy(id, ccy), a = asOf(S[id], state.to);
+    return { id, last: a, r: P.map(([, f]) => cmRet(s, f)) }; });
+  if (S.MY_PLANT) { const a = asOf(S.MY_PLANT, state.to); rows.push({ id: 'MY_PLANT', last: a, r: P.map(([, f]) => cmRet(inCcy('MY_PLANT', ccy), f)) }); }
+  const heads = ['Commodity', 'Last', 'Unit', 'As of', ...P.map(p => p[0])];
+  const tbl = el('table', { class: 'perf watch' }), pos = tok('--pos'), neg = tok('--neg');
+  const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
+  const pc = v => v == null ? '–' : sign(v) + fmtNum(Math.abs(v), 1) + '%', SC = [5, 10, 20, 25, 30];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i === 2 ? 'l' : '' })))));
+  const tb = el('tbody');
+  for (const r of rows) { const s = S[r.id];
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: r.id === 'MY_PLANT' ? 'Malaysia planters (basket)' : s.label }), el('td', { text: r.last ? fmtNum(r.last.v, autoDec(r.last.v)) : '–' }),
+      el('td', { class: 'l muted', text: r.id === 'MY_PLANT' ? 'index, MYR' : s.unit }), el('td', { class: 'muted', text: r.last ? dShort(r.last.t) : '–' }),
+      ...r.r.map((v, i) => el('td', { class: 'heat', style: heat(v, SC[i]), text: pc(v) })))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(r => [S[r.id].label, r.last ? r.last.v : '', S[r.id].unit, r.last ? new Date(r.last.t).toISOString().slice(0, 10) : '', ...r.r.map(v => v == null ? '' : v.toFixed(2))])];
+  setNote(c, `Returns ${ccy === 'USD' ? 'in US dollars' : `in ${ccy}`} (the plantation basket starts in ringgit); prices in their own units. Palm oil is monthly, so 1W is blank or stale.`);
+  setSource(c, 'Yahoo Finance; IMF via FRED; calculated');
+}
+function buildCommod() {
+  const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'cmGrid' }); panel.append(g);
+  const seg = { key: 'cmCcy', select: true, label: 'Currency', options: CCY_CHOICES.filter(x => x[0] !== 'local'), onchange: () => renderCommod() };
+  makeCard(g, { key: 'cm_rebased', title: 'Energy, metals and shipping, rebased', wide: true, defaultRange: '1Y', seg, render: renderCmRebased });
+  makeCard(g, { key: 'cm_palm', title: 'Palm oil vs Malaysian planters', defaultRange: '3Y', render: renderCmPalm });
+  makeCard(g, { key: 'cm_iron', title: 'Iron ore vs the Australian dollar', defaultRange: '3Y', render: renderCmIron });
+  makeCard(g, { key: 'cm_table', title: 'Commodity scorecard', wide: true, range: false, render: renderCmTable });
+  const r = cards.cm_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+}
+function renderCommod() { ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table'].forEach(k => cards[k].render()); }
+
 function buildBreadth() {
   const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'brGrid' });
   const k = el('div', { class: 'kpis', id: 'brKpis' });
@@ -3173,6 +3255,8 @@ const LL_PAIRS = [
   ['DXY', 'yoy', 'EEM', 'yoy', 'US dollar → EM equities (inverse)'],
   ['REAL10Y', 'chg', 'GOLD', 'yoy', 'Real yields → gold (inverse)'],
   ['CN_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'China exports → Malaysia exports'],
+  ['PALM', 'yoy', 'MY_PLANT', 'yoy', 'Palm oil → Malaysian plantation stocks'],
+  ['IRONORE', 'yoy', 'AUDUSD', 'yoy', 'Iron ore → Australian dollar'],
 ];
 const llCache = new Map();
 const llMode = id => S[id].kind === 'price' ? 'yoy' : S[id].kind === 'yield' ? 'chg' : 'level';
@@ -3330,6 +3414,7 @@ async function loadTickers() {
       source: `Yahoo Finance (${sym})`, stale: !!x.stale, mine: x.src === 'watchlist', t: x.d.map(d => d * DAY), v: x.v };
     TICK_SYM[sym.toUpperCase()] = id;
   }
+  const pb = plantBasket(); if (pb) { S.MY_PLANT = pb; LOCAL_CCY.MY_PLANT = 'MYR'; }
   if (['ideas', 'weekly', 'correlation', 'markets'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
@@ -4321,7 +4406,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
@@ -4489,7 +4574,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();

@@ -95,6 +95,8 @@ YAHOO = [
     ("WTI",      "CL=F",      "WTI crude",            "Commodities",          "price", "USD/bbl"),
     ("COPPER",   "HG=F",      "Copper",               "Commodities",          "price", "USD/lb"),
     ("NATGAS",   "NG=F",      "US natural gas",       "Commodities",          "price", "USD/MMBtu"),
+    ("IRONORE",  "TIO=F",     "Iron ore (62% Fe)",    "Commodities",          "price", "USD/t"),
+    ("BDRY",     "BDRY",      "Dry bulk shipping (BDRY ETF)", "Commodities",  "price", "USD"),
     # Crypto
     ("BTC",      "BTC-USD",   "Bitcoin",              "Crypto",               "price", "USD"),
     ("ETH",      "ETH-USD",   "Ether",                "Crypto",               "price", "USD"),
@@ -174,6 +176,7 @@ FRED = [
     ("GS10",        "GS10",        "10Y Treasury yield (monthly)", "Rates · US", "yield", "%", MACRO_START),
     ("TB3MS",       "TB3MS",       "3M T-bill rate (monthly)",    "Rates · US", "yield", "%", MACRO_START),
     ("WTI_LONG",    "WTISPLC",     "WTI crude spot (monthly)",    "Commodities", "price", "USD/bbl", MACRO_START),
+    ("PALM",        "PPOILUSDM",   "Palm oil (IMF, monthly)",     "Commodities", "price", "USD/t", MACRO_START),
     # Real effective exchange rates (BIS broad, monthly) for FX valuation
     ("REER_USD",    "RBUSBIS",     "US dollar REER",              "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_EUR",    "RBXMBIS",     "Euro REER",                   "Valuation · FX", "level", "idx", MACRO_START),

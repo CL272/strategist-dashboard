@@ -593,3 +593,6 @@ table.perf tr.grp td .more-btn { margin: 2px 0; font-weight: 500; }
 details.fold-box > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 4px 0; list-style: none; }
 details.fold-box > summary::before { content: "▸ "; }
 details.fold-box[open] > summary::before { content: "▾ "; }
+
+/* a grid whose cards are all on other sub-tabs takes no space */
+.grid:not(:has(> :not([hidden]))) { display: none; }
