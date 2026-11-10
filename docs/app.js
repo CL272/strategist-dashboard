@@ -131,7 +131,7 @@ function makeCard(parent, o) {
     }
     tools.append(seg);
   }
-  c.yBtn = el('button', { class: 'ghost', type: 'button', text: '↕ Y', title: 'Set the y-axis range by hand', onclick: () => toggleYPanel(c) });
+  c.yBtn = el('button', { class: 'ghost', type: 'button', text: '↕ Y', title: 'Y-axis: drag the axis numbers up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => toggleYPanel(c) });
   tools.append(c.yBtn,
     el('button', { class: 'ghost', type: 'button', text: '⤢', title: 'Focus (enlarge for screenshots)', onclick: () => { c.root.classList.toggle('focus'); setTimeout(() => c.inst && c.inst.resize(), 0); } }),
     el('button', { class: 'ghost', type: 'button', text: 'PNG', title: 'Download chart as image', onclick: () => exportPNG(c) }),
@@ -177,6 +177,62 @@ function valueAxes(c) {   // [{i, name, extent:[lo,hi]}] for the chart's numeric
   });
   return out;
 }
+// ---- TradingView-style y-axis: drag the axis numbers up/down to stretch or squeeze the scale,
+// Shift-drag (or two-finger scroll over the axis) to slide it, mouse wheel to zoom at the pointer, double-click to reset.
+function axisAt(c, x, y) {   // the numeric y axis whose label strip is under the pointer, or null
+  const ch = c.inst, opt = ch.getOption(), n = (opt.yAxis || []).length;
+  for (let i = 0; i < n; i++) {
+    let m, rect, ext;
+    try { m = ch.getModel().getComponent('yAxis', i); if (!m || m.get('type') !== 'value') continue;
+      rect = m.getCoordSysModel().coordinateSystem.getRect(); ext = m.axis.scale.getExtent(); } catch (e) { continue; }
+    if (y < rect.y - 6 || y > rect.y + rect.height + 6) continue;
+    const right = m.axis.position === 'right';
+    if (right ? (x >= rect.x + rect.width && x <= rect.x + rect.width + 80) : (x <= rect.x && x >= rect.x - 80)) return { i, rect, ext: [ext[0], ext[1]] };
+  }
+  return null;
+}
+function setAxisRange(c, i, lo, hi) {
+  if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return;
+  c.yRange = c.yRange || {};
+  c.yRange[i] = { min: lo, max: hi, drag: true };
+  const n = (c.inst.getOption().yAxis || []).length, patch = [];
+  // a dragged range rarely ends on round numbers, so the two end labels are hidden to keep the axis tidy
+  for (let k = 0; k < n; k++) patch.push(k === i ? { min: lo, max: hi, axisLabel: { showMinLabel: false, showMaxLabel: false } } : {});
+  c.inst.setOption({ yAxis: patch });
+  c.yBtn.classList.add('on');
+  if (!c.yPanel.hidden) c.yPanel.hidden = true;
+}
+function attachAxisDrag(c) {
+  const zr = c.inst.getZr();
+  let drag = null;
+  zr.on('mousedown', e => {
+    const a = axisAt(c, e.offsetX, e.offsetY); if (!a) return;
+    drag = { ...a, y0: e.offsetY, pan: !!(e.event && e.event.shiftKey) };
+    if (e.event && e.event.preventDefault) e.event.preventDefault();
+  });
+  zr.on('mousemove', e => {
+    if (!drag) { if (axisAt(c, e.offsetX, e.offsetY)) zr.setCursorStyle('ns-resize'); return; }
+    zr.setCursorStyle('ns-resize');
+    const dy = e.offsetY - drag.y0, [lo, hi] = drag.ext, span = hi - lo;
+    if (drag.pan) { const d = dy / drag.rect.height * span; setAxisRange(c, drag.i, lo + d, hi + d); }
+    else { const f = Math.exp(dy / 160), mid = (lo + hi) / 2; setAxisRange(c, drag.i, mid - span / 2 * f, mid + span / 2 * f); }   // down = squeeze, up = stretch
+  });
+  const end = () => { drag = null; };
+  zr.on('mouseup', end); zr.on('globalout', end);
+  zr.on('mousewheel', e => {
+    const a = axisAt(c, e.offsetX, e.offsetY); if (!a) return;
+    if (e.event) { e.event.preventDefault && e.event.preventDefault(); e.event.stopPropagation && e.event.stopPropagation(); }
+    const [lo, hi] = a.ext, span = hi - lo, f = e.wheelDelta > 0 ? 0.88 : 1 / 0.88;
+    const at = hi - (e.offsetY - a.rect.y) / a.rect.height * span;   // value under the pointer stays put
+    setAxisRange(c, a.i, at - (at - lo) * f, at + (hi - at) * f);
+  });
+  zr.on('dblclick', e => {
+    const a = axisAt(c, e.offsetX, e.offsetY); if (!a || !c.yRange) return;
+    delete c.yRange[a.i];
+    if (!Object.keys(c.yRange).length) { c.yRange = null; c.yBtn.classList.remove('on'); }
+    c.render();
+  });
+}
 function applyYRange(c) {
   if (!c.yRange || !c.inst || c.chartEl.hidden) return;
   const n = (c.inst.getOption().yAxis || []).length;
@@ -184,6 +240,7 @@ function applyYRange(c) {
   for (let i = 0; i < n; i++) {
     const r = c.yRange[i];
     const q = {}; if (r && r.min != null) q.min = r.min; if (r && r.max != null) q.max = r.max;
+    if (r && r.drag) q.axisLabel = { showMinLabel: false, showMaxLabel: false };
     patch.push(q);
   }
   c.inst.setOption({ yAxis: patch });
@@ -216,7 +273,7 @@ function toggleYPanel(c) {
   inputs.forEach(([, lo, hi]) => [lo, hi].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') apply(); })));
   c.yPanel.append(el('button', { type: 'button', text: 'Apply', onclick: apply }),
     el('button', { type: 'button', class: 'ghost', text: 'Auto', title: 'Back to automatic scaling', onclick: () => { c.yRange = null; c.yBtn.classList.remove('on'); c.yPanel.hidden = true; c.render(); } }),
-    el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range.' }));
+    el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range. Tip: you can also drag the axis numbers on the chart (double-click the axis to reset).' }));
   c.yPanel.hidden = false;
 }
 function setSource(c, txt) { c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; }
@@ -265,7 +322,7 @@ function syncCardRange(c) {
 }
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
-  if (!c.inst) c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' });
+  if (!c.inst) { c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' }); attachAxisDrag(c); }
   else if (c.chartEl.clientWidth && Math.abs(c.inst.getWidth() - c.chartEl.clientWidth) > 2) c.inst.resize();   // was drawn while hidden
   return c.inst;
 }
