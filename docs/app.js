@@ -4209,6 +4209,24 @@ function cbNormal(k, tid) {   // {v: bp, how: text} — the tenor's usual spread
   }
   cbNormCache.set(key, out); return out;
 }
+const CB_LAG = { ECB: 7, RBA: 1, BoJ: 1, BNM: 0 };   // days from decision to the policy-rate series moving
+function cbMeetings(k, from, to) {   // decisions whose new rate takes effect inside (from, to]: [{ d: decision day, t: effective day }]
+  const sch = CAL && CAL.schedules && CAL.schedules[CBS[k].cal]; if (!sch) return null;
+  return sch.map(d => ({ d: dayMs(d), t: dayMs(d) + (CB_LAG[k] || 0) * DAY })).filter(x => x.t > from && x.t <= to); }
+function cbSchedEnd(k) { const sch = CAL && CAL.schedules && CAL.schedules[CBS[k].cal]; return sch && sch.length ? dayMs(sch[sch.length - 1]) : null; }
+// Turn a tenor's excess over its normal spread into the move it implies per meeting, using the real decision dates
+// inside the tenor. Term rates average over their term, so a meeting late in the term barely moves them: a 25bp hike
+// 72 days into a 92-day rate adds only ~5bp. If the excess would need more than 50bp per meeting, it is not rate pricing.
+function cbImplied(k, tid, t = state.latest) {
+  const C = CBS[k], ten = C.tenors.find(x => x[0] === tid), sp = cbSpreadSeries(k, tid), nm = cbNormal(k, tid);
+  if (!ten || !sp || !nm) return null;
+  const a = asOf(sp, t); if (!a) return null;
+  const end = addMonths(a.t, ten[1]), ms = cbMeetings(k, a.t, end); if (!ms) return null;
+  const fwd = /^EA_FWD_/.test(tid);   // an instantaneous forward counts every meeting before its horizon in full
+  const w = ms.reduce((x, m) => x + (fwd ? 1 : (end - m.t) / (end - a.t)), 0), ex = a.v - nm.v, per = w > 0 ? ex / w : null, se = cbSchedEnd(k);
+  return { ex, w, n: ms.length, first: ms.length ? ms[0].d : null, per, beyond: se != null && end > se ? se : null,
+    ok: Math.abs(ex) <= CB_DEAD || (per != null && Math.abs(per) <= 50) };
+}
 function cbPrep() {   // series built on the page: JGB 1Y/2Y from the MOF curve, euro HICP inflation
   if (!S.JP_GB_1Y && CURVES.JP) for (const [id, y] of [['JP_GB_1Y', 1], ['JP_GB_2Y', 2]]) { const c = curveSeries('JP', y); if (c) S[id] = { ...c, id, label: `JGB ${y}Y yield`, group: 'Rates · Japan' }; }
   if (!S.EA_HICP_YOY && has('EA_HICP')) { const y = yoyOf('EA_HICP'); S.EA_HICP_YOY = { ...y, id: 'EA_HICP_YOY', label: 'Euro area HICP inflation YoY' }; }
@@ -4226,13 +4244,14 @@ function cbStats(k, t = state.latest) {
   const p = asOf(S[C.policy], t), sp = cbSpreadSeries(k, C.head), a = sp && asOf(sp, t);
   const nm = a ? cbNormal(k, C.head) : null, avg = nm ? nm.v : null, prev = sp && a ? asOf(sp, a.t - 30 * DAY) : null;
   const vsNorm = a && avg != null ? a.v - avg : null;
-  const read = vsNorm == null ? '–' : vsNorm > CB_DEAD ? 'Hikes priced' : vsNorm < -CB_DEAD ? 'Cuts priced' : 'On hold';
+  const imp = a ? cbImplied(k, C.head, t) : null, clear = !imp || imp.ok;
+  const read = vsNorm == null ? '–' : !clear ? 'No clear signal' : vsNorm > CB_DEAD ? 'Hikes priced' : vsNorm < -CB_DEAD ? 'Cuts priced' : 'On hold';
   // last change in the policy rate
   let last = null; const s = S[C.policy];
   for (let i = p ? p.i : -1; i > 0; i--) if (Math.abs(s.v[i] - s.v[i - 1]) >= 0.05) { last = { t: s.t[i], d: s.v[i] - s.v[i - 1] }; break; }
   let inf = C.infl && has(C.infl) ? asOf(S[C.infl], t) : null; if (inf && t - inf.t > 200 * DAY) inf = null;   // ignore stale prints
   const today = sgToday(), next = CAL && CAL.events ? CAL.events.filter(e => e.kind === 'Policy' && e.name.startsWith(C.cal) && calSpan(e)[1] >= today)[0] : null;
-  return { p, spread: a, avg, vsNorm, chg1m: a && prev ? a.v - prev.v : null, read, last, inf, real: p && inf ? p.v - inf.v : null, next };
+  return { p, spread: a, avg, vsNorm, imp, chg1m: a && prev ? a.v - prev.v : null, read, last, inf, real: p && inf ? p.v - inf.v : null, next };
 }
 const readTok = r => r === 'Hikes priced' ? '--critical' : r === 'Cuts priced' ? '--s1' : '--muted';
 function fedRow() {   // the Fed from the futures page, for the monitor table
@@ -4251,8 +4270,8 @@ function cbKpis() {
     el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', val), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
   for (const k of Object.keys(CBS)) {
     const C = CBS[k], st = cbStats(k); if (!st || !st.p) continue;
-    tile(`${C.short} read`, st.read, st.vsNorm != null ? `${C.gaugeLab}: ${bp(st.vsNorm)} vs normal` : '', `${C.policyLab} ${fmtNum(st.p.v, 2)}%`, readTok(st.read));
-    tile(`${C.short}: ${C.policyLab}`, fmtNum(st.p.v, 2) + '%', st.last ? `last move ${bp(st.last.d * 100)} on ${dShort(st.last.t)} ${new Date(st.last.t).getUTCFullYear()}` : 'no change in the data', nice(st.p.t));
+    tile(`${C.short} read`, st.read, st.vsNorm != null ? `${C.gaugeLab}: ${bp(st.vsNorm)} vs normal` + (st.read === 'No clear signal' ? ' — too large to be rate pricing' : '') : '', `${C.policyLab} ${fmtNum(st.p.v, 2)}%`, readTok(st.read));
+    tile(`${C.short}: ${C.policyLab}`, fmtNum(st.p.v, 2) + '%', st.last ? `last move ${bp(st.last.d * 100)}, effective ${dShort(st.last.t)} ${new Date(st.last.t).getUTCFullYear()}` : 'no change in the data', nice(st.p.t));
     if (st.spread) tile(`${C.short}: ${C.gaugeLab}`, bp(st.spread.v), st.avg != null ? `normal ${bp(st.avg)} · 1M ${st.chg1m == null ? '–' : bp(st.chg1m)}` : '', nice(st.spread.t));
     tile(`${C.short}: next decision`, st.next ? dShort(dayMs(st.next.d)) + (st.next.end ? '–' + dShort(dayMs(st.next.end)) : '') : '–', st.next && st.next.sgt ? `${st.next.sgt} SGT` : '', st.next ? (st.next.conf === 'Confirmed' ? 'bank schedule' : 'estimated') : 'not in calendar');
   }
@@ -4263,7 +4282,7 @@ function cbKpis() {
 function renderCbTable(c) {
   const b = htmlBody(c); cbPrep();
   const tbl = el('table', { class: 'perf watch' });
-  const heads = ['Bank', 'Policy rate', 'Last move', 'Next decision', 'Inflation', 'Real rate', 'Gauge', 'vs normal', '1M chg', 'Read'];
+  const heads = ['Bank', 'Policy rate', 'Last move (effective)', 'Next decision', 'Inflation', 'Real rate', 'Gauge', 'vs normal', '1M chg', 'Read'];
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i === 6 || i === 9 ? 'l' : '' })))));
   const tb = el('tbody'), csv = [heads], pc = v => v == null ? '–' : fmtNum(v, 1) + '%';
   const cell = (t, cls = '') => el('td', { class: cls, text: t });
@@ -4322,13 +4341,14 @@ function renderCbPath(c, k) {
   const snaps = [['now', 0, col(0), 'solid'], ['1M ago', 1, col(1), 'dashed'], ['3M ago', 3, col(2), 'dotted']];
   const series = [line(`${C.policyLab} (actual)`, pts(S[C.policy], start, state.latest), tok('--ink-2'), { step: 'end' })];
   let maxT = state.latest;
-  const rows = [];
+  const rows = [], dropped = [];
   for (const [nm, back, color, dash] of snaps) {
     const t0 = addMonths(state.latest, -back), p0 = asOf(S[C.policy], t0); if (!p0) continue;
     const ptsL = [[t0, p0.v]];
     for (const [tid, m, lab] of C.tenors) {
       const sp = cbSpreadSeries(k, tid); if (!sp) continue;
       const nmT = cbNormal(k, tid), a = asOf(sp, t0); if (!nmT || !a || t0 - a.t > 20 * DAY) continue; const avg = nmT.v;
+      const im = cbImplied(k, tid, t0); if (im && !im.ok) { if (back === 0) dropped.push(`${lab} (${bp(im.ex)} vs normal would need ${bp(im.per)} per meeting)`); continue; }
       // forwards are a rate at the horizon; yields and money-market rates are an average over it, so sit at mid-horizon
       const lvl = p0.v + (a.v - avg) / 100, tt = /^EA_FWD_/.test(tid) ? addMonths(t0, m) : t0 + (addMonths(t0, m) - t0) / 2; ptsL.push([tt, lvl]); maxT = Math.max(maxT, addMonths(t0, m));
       if (back === 0) rows.push(`${lab} ${bp(a.v - avg)}`);
@@ -4344,7 +4364,7 @@ function renderCbPath(c, k) {
   c.titleEl.textContent = `${C.name}: policy rate and what markets imply`;
   c.subEl.textContent = `${C.policyLab[0].toUpperCase() + C.policyLab.slice(1)} with the path implied by ${C.tenors.map(x => x[2]).join(', ')} rates, after removing each tenor’s usual premium. Forwards sit at their horizon; yields and money-market rates are an average over their term, so they sit at mid-term.`;
   c.csv = [['Series', 'Date', 'Rate'], ...series.flatMap(sr => sr.data.map(([t, v]) => [sr.name, iso(t), v.toFixed(3)]))];
-  setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. ${C.tenors.some(([t]) => !CB_GOV.test(t)) ? 'Money-market rates are net of their usual credit premium (median spread in past no-move periods); government-curve rates are read as is.' : 'Government-curve rates are read as is (little term premium at these horizons).'} A rough read of direction; not OIS pricing, not a probability.`);
+  setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. ${dropped.length ? `Left out as not rate pricing: ${dropped.join('; ')}; more likely a funding or term-premium shift. ` : ''}${C.tenors.some(([t]) => !CB_GOV.test(t)) ? 'Money-market rates are net of their usual credit premium (median spread in past no-move periods); government-curve rates are read as is.' : 'Government-curve rates are read as is (little term premium at these horizons).'} A rough read of direction; not OIS pricing, not a probability.`);
   setSource(c, C.src);
 }
 function renderCbSpread(c, k) {
@@ -4357,7 +4377,9 @@ function renderCbSpread(c, k) {
   drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) }], { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false,
     hlines: gov ? [] : [{ y: nm.v, label: `normal ${bp(nm.v)}`, color: col(1) }] });
   const st = cbStats(k);
-  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band). Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : '');
+  const im = st && st.imp, meet = im && im.first ? `${dShort(im.first)}` : '';
+  const chk = im && im.per != null && Math.abs(im.ex) > CB_DEAD ? ` Meeting check: ${im.n} decision${im.n === 1 ? '' : 's'} fall${im.n === 1 ? 's' : ''} inside this tenor (first ${meet}${im.beyond ? `; the published schedule ends ${nice(im.beyond)}, so the pace is if anything overstated` : ''}); the excess equals about ${bp(im.per)} per meeting${im.ok ? ', a plausible pace.' : ', too large to be rate pricing, so it is read as a funding or term-premium shift.'}` : '';
+  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band).${chk} Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : '');
   setSource(c, C.src);
 }
 function renderCbInfo(c, k) {

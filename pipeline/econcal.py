@@ -432,7 +432,11 @@ def build(fred_key: str | None, asia: dict[str, pd.Series], status: dict) -> Non
         left = (dt.date.fromisoformat(last) - today).days
         if left <= 75:
             notes.append(f"{region}: central bank dates on file run out on {last}; the next schedule needs adding.")
+    # full decision schedules (not just the calendar window): the central bank page uses them to judge market pricing
+    schedules = {}
+    for _, name, d, *_ in MEETINGS:
+        schedules.setdefault(name.split()[0], []).append(d)
     write("calendar.json", dict(generated=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), verified_on=VERIFIED_ON,
-                                start=start.isoformat(), end=end.isoformat(), notes=notes, events=uniq))
+                                start=start.isoformat(), end=end.isoformat(), notes=notes, events=uniq, schedules=schedules))
     status["CALENDAR"] = "ok" if uniq else "missing"
     print(f"  {len(uniq)} calendar rows ({sum(r['conf'] == 'Live' for r in uniq)} live US dates)")
