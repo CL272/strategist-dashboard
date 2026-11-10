@@ -657,6 +657,7 @@ const SCARCITY = {
 };
 function scarcityStatus(v, [lo, hi]) { return v > hi ? ['ample', '--good'] : v >= lo ? ['approaching scarcity', '--serious'] : ['scarce', '--critical']; }
 state.m2Mode = 'spx';
+state.inflMode = 'actual';
 function monthlyYoY(s) {   // month-end values -> YoY % series stamped at month start
   const me = monthEnds(s), keys = [...me.keys()].sort((a, b) => a - b), t = [], v = [];
   for (const k of keys) { const p = me.get(addMonths(k, -12)); if (p) { t.push(k); v.push((me.get(k) / p - 1) * 100); } }
@@ -664,6 +665,8 @@ function monthlyYoY(s) {   // month-end values -> YoY % series stamped at month 
 }
 let spxYoY = null;
 function renderM2(c) {
+  c.titleEl.textContent = state.m2Mode === 'mmf' ? 'Cash on the sidelines: money market funds' : 'US M2 vs S&P 500';
+  if (state.m2Mode === 'mmf') return renderMMF(c);
   if (!has('M2_YOY')) return setEmpty(c, NO_FRED);
   const pct = v => fmtNum(v, 1) + '%';
   if (state.m2Mode === 'm2' || !has('SPX')) {
@@ -735,9 +738,21 @@ function buildLiquidity() {
   makeCard(g, { key: 'nfci', title: 'Chicago Fed financial conditions (NFCI)', sub: 'Weekly. Below zero = looser than the long-run average.', source: 'FRED (NFCI)',
     render: simple(['NFCI'], v => fmtNum(v, 2), v => fmtNum(v, 2), { zero: true }) });
   makeCard(g, { key: 'm2', title: 'US M2 vs S&P 500', source: 'FRED (M2SL); Yahoo Finance (^GSPC)',
-    seg: { key: 'm2Mode', options: [['spx', 'vs S&P'], ['lead', '6m lead'], ['m2', 'M2']] }, render: renderM2 });
+    seg: { key: 'm2Mode', options: [['spx', 'vs S&P'], ['lead', '6m lead'], ['m2', 'M2'], ['mmf', 'Money funds']] }, render: renderM2 });
   makeCard(g, { key: 'rates', title: 'US Treasury yields', source: 'FRED',
     seg: { key: 'ratesMode', options: [['yields', 'Yields'], ['curve', 'Curve']] }, render: renderRates });
+}
+function renderMMF(c) {
+  const L = [];
+  if (has('MMF_TOTAL')) L.push({ name: 'All money market funds (quarterly)', data: pts(S.MMF_TOTAL, state.from, state.to).map(([t, v]) => [t, v / 1e6]), color: col(0), extra: { step: 'end' } });
+  if (has('MMF_RETAIL')) L.push({ name: 'Retail money market funds (weekly)', data: pts(S.MMF_RETAIL, state.from, state.to).map(([t, v]) => [t, v / 1e3]), color: col(1) });
+  if (!L.length) return setEmpty(c, NO_FRED);
+  c.subEl.textContent = 'Assets of US money market funds, $ trillion. Retail = weekly (ICI); all funds = quarterly (Fed financial accounts).';
+  setSource(c, 'FRED (WRMFNS, MMMFFAQ027S); ICI, Federal Reserve Z.1');
+  drawLines(c, L, { fmt: v => '$' + fmtNum(v, 2) + 'tn', axisFmt: v => '$' + fmtNum(v, 1) + 'tn', areas: recessionAreas(state.from, state.to) });
+  const r = has('MMF_RETAIL') ? asOf(S.MMF_RETAIL, state.to) : null, r1 = r && asOf(S.MMF_RETAIL, addMonths(r.t, -12));
+  const head = r ? 'Retail funds $' + fmtNum(r.v / 1e3, 2) + 'tn on ' + dShort(r.t) + (r1 ? ' (' + sign(r.v - r1.v) + fmtNum(Math.abs(r.v / r1.v - 1) * 100, 0) + '% on a year)' : '') + '. ' : '';
+  setNote(c, head + 'Money parked in funds can move into risk assets if yields on cash fall, but balances usually keep rising with interest income, so watch the pace, not the level.');
 }
 function renderLiquidity() {
   liquidityKpis(); liquiditySignals();
@@ -1058,6 +1073,7 @@ function regimeKpis() {
     const a = asOf(S[id], state.to); if (!a) return;
     tile(label, el('span', { text: fmt(a.v) }), desc(a.v), monthLab(a.t));
   };
+  simple('GDPNOW', 'GDPNow (Atlanta Fed)', v => sign(v) + fmtNum(Math.abs(v), 1) + '%', v => v < 0 ? '⚠ contraction estimate' : v < 1 ? 'below-trend growth' : v > 3 ? 'above-trend growth' : 'around trend', );
   simple('SAHM', 'Sahm rule', v => fmtNum(v, 2) + 'pp', v => v >= 0.5 ? '⚠ triggered (≥0.50)' : `trigger at 0.50 (${fmtNum(0.5 - v, 2)}pp away)`);
   simple('REC_PROB_NYF', 'Recession odds, 12m (curve)', v => fmtNum(v, 0) + '%', v => v >= 30 ? '⚠ elevated (≥30%)' : 'NY Fed yield-curve model');
   simple('CORE_CPI_3M', 'Core CPI, 3m annualised', v => fmtNum(v, 1) + '%', v => has('CORE_CPI_YOY') ? `YoY ${fmtNum(asOf(S.CORE_CPI_YOY, state.to).v, 1)}%` : '');
@@ -1431,9 +1447,22 @@ function buildRegime() {
       drawLines(c, ids.map((id, i) => ({ name: names[id], data: pts(S[id], state.from, state.to), color: col(i) })),
         { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, hlines: [{ y: 30, label: '30%' }], areas: recessionAreas(state.from, state.to) }); } });
   makeCard(g, { key: 'infl', title: 'US inflation', source: 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)', sub: 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.',
-    render: c => { const ids = ['CPI_YOY', 'CORE_CPI_YOY', 'CORE_PCE_YOY', 'CORE_CPI_3M'].filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
+    seg: { key: 'inflMode', options: [['actual', 'Actual'], ['exp', 'Expectations']] },
+    render: c => { const exp = state.inflMode === 'exp' && has('MICH', 'EXPINF1YR') ? ['CPI_YOY', 'MICH', 'EXPINF1YR'] : null;
+      const ids = (exp || ['CPI_YOY', 'CORE_CPI_YOY', 'CORE_PCE_YOY', 'CORE_CPI_3M']).filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
       drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
-        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 1) + '%', hlines: [{ y: 2, label: '2% target' }] }); } });
+        { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 1) + '%', hlines: [{ y: 2, label: '2% target' }] });
+      c.subEl.textContent = exp ? 'What households (University of Michigan survey) and markets plus surveys (Cleveland Fed model) expect inflation to be a year ahead, against actual CPI.' : 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.';
+      setSource(c, exp ? 'FRED (CPIAUCSL, MICH, EXPINF1YR)' : 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)');
+      if (state.inflMode === 'exp' && !exp) setNote(c, 'Expectations series arrive with the next daily run; showing actual inflation.'); else setNote(c, ''); } });
+  makeCard(g, { key: 'gdpnow', title: 'GDPNow vs reported GDP', source: 'FRED (GDPNOW, A191RL1Q225SBEA); Atlanta Fed',
+    sub: 'Real GDP growth, quarter on quarter annualised, %. GDPNow is the Atlanta Fed’s running model estimate for the quarter, before the official number.',
+    render: c => { if (!has('GDPNOW') && !has('RGDP_SAAR')) return setEmpty(c, NO_FRED);
+      const L = []; if (has('RGDP_SAAR')) L.push({ name: 'Reported real GDP (BEA)', data: pts(S.RGDP_SAAR, state.from, state.to), color: col(0), extra: { step: 'end' } });
+      if (has('GDPNOW')) L.push({ name: 'GDPNow estimate', data: pts(S.GDPNOW, state.from, state.to), color: col(1), extra: { step: 'end', lineStyle: { type: 'dashed', width: 2 } } });
+      drawLines(c, L, { fmt: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true, areas: recessionAreas(state.from, state.to) });
+      const g = has('GDPNOW') ? asOf(S.GDPNOW, state.to) : null, r = has('RGDP_SAAR') ? asOf(S.RGDP_SAAR, state.to) : null, q = t => `Q${Math.floor(new Date(t).getUTCMonth() / 3) + 1} ${new Date(t).getUTCFullYear()}`;
+      setNote(c, [g ? `GDPNow for ${q(g.t)}: ${sign(g.v)}${fmtNum(Math.abs(g.v), 1)}%.` : '', r ? `Last reported (${q(r.t)}): ${sign(r.v)}${fmtNum(Math.abs(r.v), 1)}%.` : ''].join(' ')); } });
   makeCard(g, { key: 'claims', title: 'Initial jobless claims', source: 'FRED (ICSA)', sub: '4-week average, thousands. Weekly, the timeliest labour-market signal.',
     render: c => { if (!has('CLAIMS_4WK')) return setEmpty(c, NO_FRED);
       drawLines(c, [{ name: 'Initial claims, 4-week avg', data: pts(S.CLAIMS_4WK, state.from, state.to) }],
@@ -1506,7 +1535,7 @@ function renderRegNow(c) {
 function renderRegime() {
   regimeKpis();
   renderMethodPanel();
-  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'reg_contrib', 'reg_now', 'zin', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
+  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'reg_contrib', 'reg_now', 'zin', 'sahm', 'recprob', 'infl', 'claims', 'gdpnow'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ FIXED INCOME
@@ -4514,7 +4543,7 @@ const SUBTABS = {
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
-    ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['sahm', 'recprob', 'infl', 'claims']]],
+    ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Malaysia: markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend']], ['Malaysia: economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],

@@ -219,6 +219,12 @@ FRED = [
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
+    ("GDPNOW",      "GDPNOW",      "Atlanta Fed GDPNow (q/q annualised)", "Macro · Growth", "level", "%", "2011-01-01"),
+    ("RGDP_SAAR",   "A191RL1Q225SBEA", "US real GDP growth (q/q annualised)", "Macro · Growth", "level", "%", "1990-01-01"),
+    ("MICH",        "MICH",        "UMich 1-year inflation expectations", "Macro · Inflation", "level", "%", "1990-01-01"),
+    ("EXPINF1YR",   "EXPINF1YR",   "Cleveland Fed 1-year expected inflation", "Macro · Inflation", "level", "%", "1990-01-01"),
+    ("MMF_RETAIL",  "WRMFNS",      "Retail money market funds",   "Liquidity", "level", "USD bn", "2005-01-01"),
+    ("MMF_TOTAL",   "MMMFFAQ027S", "Money market fund assets (total, Z.1)", "Liquidity", "level", "USD mn", "2005-01-01"),
     ("USREC",       "USREC",       "NBER recession indicator",    "Macro · Recession", "level", "", MACRO_START),
     ("CURVE_3m10y_LONG", "T10Y3M", "3m10y curve (long history)",  "Macro · Recession", "yield", "%", MACRO_START),
 ]
