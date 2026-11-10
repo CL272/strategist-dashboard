@@ -1358,8 +1358,21 @@ function buildRegime() {
     render: c => { const ids = Object.keys(S).filter(k => k.startsWith(prefix)); if (!ids.length) return setEmpty(c, NO_FRED);
       drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
         { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, endLabels: false, areas: recessionAreas(state.from, state.to) }); } });
-  zcard('zg', 'Growth inputs', 'RZG_');
-  zcard('zi', 'Inflation inputs', 'RZI_');
+  void zcard;
+  state.regSide = 'G';
+  const sideSeg = { key: 'regSide', options: [['G', 'Growth'], ['I', 'Inflation']] };
+  makeCard(g, { key: 'reg_contrib', title: 'What is driving the regime', wide: true, defaultRange: '5Y', seg: sideSeg, render: renderRegContrib });
+  makeCard(g, { key: 'reg_now', range: false, title: 'Latest month: who added what', render: renderRegNow });
+  makeCard(g, { key: 'zin', title: 'Input z-scores', defaultRange: '10Y', seg: sideSeg, source: 'FRED',
+    render: c => { const side = state.regSide, prefix = side === 'G' ? 'RZG_' : 'RZI_', ids = Object.keys(S).filter(k => k.startsWith(prefix)); if (!ids.length) return setEmpty(c, NO_FRED);
+      c.titleEl.textContent = side === 'G' ? 'Growth inputs (z-scores)' : 'Inflation inputs (z-scores)';
+      c.subEl.textContent = 'Each input against its full history up to that month (capped at ±3). Grey = US recession.';
+      drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
+        { fmt: zf, axisFmt: v => v.toFixed(1), zero: true, endLabels: false, areas: recessionAreas(state.from, state.to) }); } });
+  // the Growth / Inflation switch is shared by both cards
+  for (const key of ['reg_contrib', 'zin']) cards[key].root.querySelectorAll('.card-tools .seg button').forEach(btn => btn.addEventListener('click', () => {
+    const other = key === 'reg_contrib' ? 'zin' : 'reg_contrib';
+    cards[other].root.querySelectorAll('.card-tools .seg button').forEach(x => x.classList.toggle('on', x.textContent === btn.textContent)); cards[other].render(); }));
   makeCard(g, { key: 'sahm', title: 'Sahm rule recession indicator', source: 'FRED (SAHMREALTIME)',
     sub: '3-month average unemployment rate minus its low of the prior 12 months. 0.50pp or more has marked every US recession since 1970.',
     render: c => { if (!has('SAHM')) return setEmpty(c, NO_FRED);
@@ -1380,10 +1393,74 @@ function buildRegime() {
       drawLines(c, [{ name: 'Initial claims, 4-week avg', data: pts(S.CLAIMS_4WK, state.from, state.to) }],
         { fmt: v => fmtNum(v, 0) + 'k', axisFmt: v => fmtNum(v, 0) + 'k', areas: recessionAreas(state.from, state.to) }); } });
 }
+// ---- contributions to regime momentum: each input's share of the 6-month change in its composite
+// composite = average of input z-scores, so input k adds (3m avg z_k now − 3m avg z_k 6 months ago) / number of inputs
+function regContrib(side) {
+  const prefix = side === 'G' ? 'RZG_' : 'RZI_', mom = side === 'G' ? S.REG_GM : S.REG_IM;
+  const ids = Object.keys(S).filter(k => k.startsWith(prefix)); if (!ids.length || !mom) return null;
+  const maps = ids.map(id => new Map(S[id].t.map((t, i) => [t, S[id].v[i]])));
+  // exact split: the composite each month is the average of the inputs that reported that month,
+  // so input k's share of month m is z_k(m) / n(m); momentum = 3m average now − 3m average 6 months earlier
+  // (months where too few inputs reported are skipped, exactly as the model does, so offsets count reported months)
+  const nOf = t => maps.filter(m => m.has(t)).length, need = Math.max(2, ids.length - 2);
+  const months = [...new Set(maps.flatMap(m => [...m.keys()]))].sort((a, b) => a - b).filter(t => nOf(t) >= need);
+  const pos = new Map(months.map((t, i) => [t, i]));
+  const share = (m, t) => { const v = m.get(t); return v != null ? v / nOf(t) : 0; };
+  const out = { t: [], ids, parts: ids.map(() => []), total: [] };
+  for (let i = 0; i < mom.t.length; i++) {
+    const t = mom.t[i], q = pos.get(t); if (q == null || q < 8) continue;
+    out.t.push(t); out.total.push(mom.v[i]);
+    maps.forEach((m, k) => { let x = 0; for (let j = 0; j < 3; j++) x += share(m, months[q - j]) - share(m, months[q - 6 - j]); out.parts[k].push(x / 3); });
+  }
+  return out;
+}
+const regShort = id => S[id].label.replace(/ \(3m avg\)| \(inverted\)/g, '').replace('Chicago Fed activity index', 'Chicago Fed activity');
+function renderRegContrib(c) {
+  const side = state.regSide, r = regContrib(side);
+  if (!r) return setEmpty(c, NO_FRED);
+  c.titleEl.textContent = side === 'G' ? 'What is driving growth momentum' : 'What is driving inflation momentum';
+  c.subEl.textContent = `Each bar splits the regime's ${side === 'G' ? 'growth' : 'inflation'} momentum (the 6-month change in the composite) into what each input added. Above zero pushes towards ${side === 'G' ? 'growth ↑' : 'inflation ↑'}; the line is the total.`;
+  const keep = r.t.map((t, i) => t >= state.from && t <= state.to ? i : -1).filter(i => i >= 0);
+  const o = baseOpt(); o.legend.show = true;
+  const names = r.ids.map(regShort).concat([side === 'G' ? 'Growth momentum (total)' : 'Inflation momentum (total)']);
+  o.grid.top = 12 + 22 * legendRows(c, names);
+  o.xAxis = timeAxis(); o.yAxis = valAxis(v => v.toFixed(1));
+  o.tooltip.formatter = tipFormatter(v => zf(v));
+  o.series = r.ids.map((id, k) => ({ name: regShort(id), type: 'bar', stack: 'c', barMaxWidth: 14, itemStyle: { color: col(k) }, emphasis: { disabled: true },
+    data: keep.map(i => [r.t[i], +r.parts[k][i].toFixed(3)]) }));
+  o.series.push(line(names[names.length - 1], keep.map(i => [r.t[i], r.total[i]]), tok('--ink'), { z: 5, lineStyle: { width: 2, color: tok('--ink') } }));
+  o.series[0].markLine = zeroLine();
+  setZoomable(c, o);
+  c.csv = [['Month', ...names], ...keep.map(i => [iso(r.t[i]), ...r.parts.map(p => p[i].toFixed(3)), r.total[i].toFixed(3)])];
+  const i = r.t.length - 1, top = r.ids.map((id, k) => [regShort(id), r.parts[k][i]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+  setNote(c, `Latest (${monthLab(r.t[i])} data): ${side === 'G' ? 'growth' : 'inflation'} momentum ${zf(r.total[i])}; the biggest single push came from ${top[0]} (${zf(top[1])}). The bars add up to the total line.`);
+  setSource(c, 'Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)');
+}
+function renderRegNow(c) {
+  const g = regContrib('G'), f = regContrib('I');
+  if (!g || !f) return setEmpty(c, NO_FRED);
+  const rows = [];
+  for (const [r, side] of [[g, 'Growth'], [f, 'Inflation']]) { const i = r.t.length - 1;
+    r.ids.forEach((id, k) => rows.push({ name: `${side}: ${regShort(id)}`, v: r.parts[k][i], side })); }
+  const view = rows.slice().reverse();
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 54, top: 8, bottom: 8, containLabel: true };
+  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v.toFixed(2) }, splitLine: { lineStyle: { color: tok('--grid') } } };
+  o.yAxis = { type: 'category', data: view.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${zf(p.value)}</b> ${esc(view[p.dataIndex].name)}` };
+  o.series = [{ type: 'bar', barWidth: '60%', data: view.map(r => ({ value: +r.v.toFixed(3), itemStyle: { color: r.v >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.v >= 0 ? [0, 3, 3, 0] : [3, 0, 0, 3] } })),
+    label: { show: true, position: 'right', fontSize: 11, color: tok('--ink-2'), formatter: p => zf(p.value) } }];
+  const ch = inst(c); ch.setOption(o, true);
+  const gi = g.t.length - 1, fi = f.t.length - 1;
+  c.subEl.textContent = `${monthLab(g.t[gi])} data. Contribution of each input to the 6-month momentum: growth ${zf(g.total[gi])}, inflation ${zf(f.total[fi])}.`;
+  c.csv = [['Input', 'Contribution'], ...rows.map(r => [r.name, r.v.toFixed(3)])];
+  setNote(c, `Blue pushes the score up, red pulls it down. The regime is ${QUADS[asOf(S.REG_QUAD, state.to).v].name}: growth momentum ${g.total[gi] >= 0 ? 'positive' : 'negative'}, inflation momentum ${f.total[fi] >= 0 ? 'positive' : 'negative'}.`);
+  setSource(c, 'Dashboard calculation from FRED');
+}
 function renderRegime() {
   regimeKpis();
   renderMethodPanel();
-  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'zg', 'zi', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
+  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'reg_contrib', 'reg_now', 'zin', 'sahm', 'recprob', 'infl', 'claims'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ FIXED INCOME
@@ -4040,7 +4117,7 @@ const SUBTABS = {
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']]],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
-    ['Market signals', ['cugold', 'cycdef']], ['Inputs & recession watch', ['zg', 'zi', 'sahm', 'recprob', 'infl', 'claims']]],
+    ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Malaysia: markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend']], ['Malaysia: economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],
