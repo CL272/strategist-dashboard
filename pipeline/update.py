@@ -49,7 +49,9 @@ def main() -> int:
                 full, reason = True, f"scheduled slot {last_slot(now):%H:%M} UTC due"
     print(f"Mode: {'FULL refresh (' + reason + ')' if full else 'headlines only'}")
     if full:
-        return fetch.main()
+        rc = fetch.main()
+        (fetch.OUT / ".full_run").write_text(now.isoformat())   # tells the workflow to refresh the data-cache branch
+        return rc
     news.build_news()
     return 0
 

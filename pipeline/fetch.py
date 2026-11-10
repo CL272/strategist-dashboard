@@ -495,8 +495,18 @@ def write(name: str, obj: dict):
     (OUT / name).write_text(json.dumps(obj, separators=(",", ":")))
 
 
+TIMINGS: dict[str, float] = {}
+
+
+def _lap(name: str, t0: list) -> None:
+    now = time.time()
+    TIMINGS[name] = round(now - t0[0], 1)
+    t0[0] = now
+
+
 def main() -> int:
     status = {}
+    t0 = [time.time()]
     fred_key = get_secret("FRED_API_KEY")
     print(f"FRED API key: {'found' if fred_key else 'not set - using public CSV download'}")
 
@@ -518,6 +528,7 @@ def main() -> int:
         print(f"  {sid:<12} {status[sid]}")
         time.sleep(0.3)
     write("yahoo.json", yahoo)
+    _lap("yahoo", t0)
 
     # --- FRED
     old = load_existing("fred.json")
@@ -545,6 +556,7 @@ def main() -> int:
         print(f"  {sid:<12} {status[sid]}")
         time.sleep(0.2)
     write("fred.json", fred)
+    _lap("fred", t0)
 
     # --- long daily histories (monthly, for regime statistics)
     for sid, sym, label in LONG_YAHOO:
@@ -578,27 +590,33 @@ def main() -> int:
     except Exception as e:   # the stress panel must never break the data refresh
         print(f"Stress panel failed: {type(e).__name__}: {e}")
     write("derived.json", derived)
+    _lap("derived, valuation, stress", t0)
     print(f"Derived: {', '.join(derived) or 'none (FRED data missing)'}")
 
     # --- yield curves (official sources, no keys)
     import curves
     import fetch as _self   # curves.py imports this module by name; collect its error notes too
     curves.build_curves(status)
+    _lap("curves", t0)
     import asia
     asia_series = asia.build_asia(status)
+    _lap("asia", t0)
     try:
         import econcal
         econcal.build(fred_key, asia_series, status)
+        _lap("econcal", t0)
     except Exception as e:   # the calendar must never break the data refresh
         print(f"Calendar failed: {type(e).__name__}: {e}")
     try:
         import fedpath
         fedpath.build(fred_key, fred_series, status)
+        _lap("fedpath", t0)
     except Exception as e:   # the Fed-path page must never break the data refresh
         print(f"Fed path failed: {type(e).__name__}: {e}")
     try:
         import tickers
         tickers.build(status)
+        _lap("tickers", t0)
     except Exception as e:   # ticker prices must never break the data refresh
         print(f"Tickers failed: {type(e).__name__}: {e}")
     if _self is not sys.modules.get("__main__"):
@@ -607,29 +625,34 @@ def main() -> int:
     try:
         import positioning
         positioning.build_positioning(status)
+        _lap("positioning", t0)
     except Exception as e:   # positioning must never break the data refresh
         print(f"Positioning failed: {type(e).__name__}")
     try:
         import ai
         ai.build_ai(status)
+        _lap("ai", t0)
     except Exception as e:   # AI indicators must never break the data refresh
         print(f"AI indicators failed: {type(e).__name__}")
     try:
         import news
         news.build_news()
+        _lap("news", t0)
     except Exception as e:   # headlines must never break the data refresh
         print(f"News failed: {type(e).__name__}")
 
     try:
         import health
         health.build_health(status)
+        _lap("health", t0)
     except Exception as e:
         print(f"Health check failed: {type(e).__name__}")
 
     ok = sum(v == "ok" for v in status.values())
     write("meta.json", {"updated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                         "ok": ok, "total": len(status), "status": status,
-                        "fred_key_found": bool(fred_key), "errors": DIAG})
+                        "fred_key_found": bool(fred_key), "errors": DIAG, "timings_s": TIMINGS})
+    print("Seconds per step: " + ", ".join(f"{k} {v}" for k, v in TIMINGS.items()))
     print(f"Done: {ok}/{len(status)} series refreshed")
     return 0 if ok > len(status) * 0.5 else 1
 

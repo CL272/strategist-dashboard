@@ -77,6 +77,11 @@ def _singstat_key(k: str) -> pd.Timestamp | None:
 
 def fetch_singstat(table: str, series_no: str) -> pd.Series | None:
     r = get(SINGSTAT.format(table=table), {"seriesNoORrowNo": series_no, "limit": 5000})
+    for _ in range(2):   # SingStat often times out for a minute or two: wait and try again
+        if r is not None:
+            break
+        time.sleep(20)
+        r = get(SINGSTAT.format(table=table), {"seriesNoORrowNo": series_no, "limit": 5000}, tries=1)
     if r is None:
         return None
     rows = (r.json().get("Data") or {}).get("row") or []

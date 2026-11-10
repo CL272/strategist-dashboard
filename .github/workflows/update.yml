@@ -35,11 +35,16 @@ jobs:
       - run: pip install -r requirements.txt
 
       # Start from the currently published data, so a source that fails today keeps yesterday's values
+      # (if the site is down, e.g. after the repo was briefly made private, use the copy on the data-cache branch)
       - name: Fetch previously published data
         run: |
           mkdir -p docs/data
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
-          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json; do curl -sfL "$base/$f" -o "docs/data/$f" || rm -f "docs/data/$f"; done
+          cache="https://raw.githubusercontent.com/${{ github.repository }}/data-cache"
+          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json cbwatch.json; do
+            curl -sfL "$base/$f" -o "docs/data/$f" || curl -sfL "$cache/$f" -o "docs/data/$f" || rm -f "docs/data/$f"
+          done
+          ls docs/data
 
       - name: Pull latest data
         env:
@@ -48,7 +53,10 @@ jobs:
           FULL: ${{ github.event_name != 'schedule' }}
         run: python pipeline/update.py
 
+      # two runs queued close together can both rewrite today's archive rows; if the rebase clashes,
+      # skip this run's archive commit (the next run writes the same rows) and never block the deploy
       - name: Save credit-spread archive
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
@@ -56,8 +64,24 @@ jobs:
           git add archive
           if ! git diff --cached --quiet; then
             git commit -m "Archive ICE BofA spread history"
-            git pull --rebase origin main && git push origin HEAD:main
+            if git pull --rebase -X theirs origin main; then git push origin HEAD:main || echo "push failed; next run retries"
+            else git rebase --abort || true; echo "archive clashed with a newer run; skipped this time"; fi
           fi
+
+      # back-up copy of the published data, used by the next run if the site is unavailable
+      - name: Save data cache
+        continue-on-error: true
+        run: |
+          [ -f docs/data/.full_run ] || { echo "headlines-only run: cache unchanged"; exit 0; }
+          rm -f docs/data/.full_run
+          tmp=$(mktemp -d)
+          cp docs/data/*.json "$tmp"/
+          cd "$tmp"
+          git init -q -b data-cache
+          git -c user.name="github-actions[bot]" -c user.email="41898699+github-actions[bot]@users.noreply.github.com" add .
+          git -c user.name="github-actions[bot]" -c user.email="41898699+github-actions[bot]@users.noreply.github.com" commit -qm "Data cache $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data-cache && echo "data cache saved"
+
 
       - name: Data health alert (opens an issue when series go stale; GitHub emails you)
         env:
