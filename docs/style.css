@@ -596,3 +596,11 @@ details.fold-box[open] > summary::before { content: "▾ "; }
 
 /* a grid whose cards are all on other sub-tabs takes no space */
 .grid:not(:has(> :not([hidden]))) { display: none; }
+
+/* What changed this week (Strategist View) */
+ul.changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+ul.changes li { display: flex; gap: 8px; align-items: baseline; line-height: 1.4; }
+ul.changes li .qdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; transform: translateY(-1px); }
+ul.changes a { color: var(--ink); text-decoration: none; }
+ul.changes a:hover { color: var(--brand); text-decoration: underline; }
+@media (min-width: 900px) { ul.changes { grid-template-columns: 1fr 1fr; column-gap: 28px; } }

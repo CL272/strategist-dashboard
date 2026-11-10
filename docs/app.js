@@ -992,12 +992,66 @@ function renderPoints(c) {
   c.copyText = `Market snapshot, ${nice(state.to)}\n` + pts_.map(p => '• ' + p).join('\n');
   setNote(c, 'Generated from the data on this page, as of the “To” date. Facts only, no views; edit before sharing.');
 }
+// ------------------------------------------------------------------ WHAT CHANGED (Strategist View → Today; weekly brief)
+// Rule-based list of changes over the week to `end`, most important first. Monthly signals (regime, signposts)
+// count as changed when the latest data month differs from the one before.
+function goSub(tab, name) { setTab(tab); if (name && SUBTABS[tab]) { const i = SUBTABS[tab].findIndex(x => x[0] === name); if (i >= 0) setSub(tab, i); } }
+function whatChanged(end = state.latest) {
+  const out = [], wk = end - 7 * DAY, add = (pri, text, tab, sub) => out.push({ pri, text, tab, sub });
+  // regime switch and method disagreement
+  if (has('REG_QUAD')) { const a = asOf(S.REG_QUAD, end); if (a && a.i > 0 && S.REG_QUAD.v[a.i - 1] !== a.v)
+    add(1, `Regime switched to ${QUADS[a.v].name} (from ${QUADS[S.REG_QUAD.v[a.i - 1]].name}) with the ${monthLab(a.t)} data.`, 'regime', 'Regime now'); }
+  if (has('REG_Q_A', 'REG_QUAD')) { const r = asOf(S.REG_Q_A, end), c = asOf(S.REG_QUAD, end), r0 = r && r.i > 0 ? S.REG_Q_A.v[r.i - 1] : null;
+    if (r && c && r.v !== c.v && r0 === c.v) add(2, `Raw regime signal newly points to ${QUADS[r.v].name} (${monthLab(r.t)}); needs a second month to confirm.`, 'regime', 'Regime now'); }
+  // stress composite band
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, wk);
+    if (a && b && legacyBand(a.v)[0] !== legacyBand(b.v)[0]) add(a.v > b.v ? 1 : 3, `Stress composite moved from ${legacyBand(b.v)[0].toLowerCase()} to ${legacyBand(a.v)[0].toLowerCase()} (${Math.round(b.v)}th → ${Math.round(a.v)}th percentile).`, 'stress', 'Stress composite'); }
+  // peak signposts
+  if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.triggered[j] == null) j--;
+    if (j > n && SIGN.triggered[j] != null && SIGN.triggered[j - 1] != null && SIGN.triggered[j] > SIGN.triggered[j - 1])
+      add(2, `Peak signposts: ${SIGN.triggered[j] - SIGN.triggered[j - 1]} more triggered in ${cols[j]} (${SIGN.triggered[j]} of ${SIGN.evaluated[j]}).`, 'stress', 'Peak signposts'); }
+  // breadth crossing 20% / 80%
+  if (TICK) for (const mk of Object.keys(BR_MKTS)) { const b = breadth(mk); if (!b || !b.t.length) continue;
+    const at = t => { const i = upperIdx(b.t, t) - 1; return i >= 0 ? b.a200[i] : null; }, x = at(end), y = at(wk);
+    if (x == null || y == null) continue;
+    for (const lv of [20, 80]) if ((y - lv) * (x - lv) < 0) add(lv === 20 && x < 20 ? 2 : 3, `${BR_MKTS[mk].name} breadth crossed ${lv}%: ${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago).`, 'markets', 'Breadth'); }
+  // VIX term structure
+  if (has('VIX', 'VIX3M')) { const r = t => { const a = asOf(S.VIX3M, t), b = asOf(S.VIX, t); return a && b ? a.v / b.v : null; }, x = r(end), y = r(wk);
+    if (x != null && y != null && (x < 1) !== (y < 1)) add(x < 1 ? 1 : 3, x < 1 ? `VIX curve inverted: VIX3M/VIX at ${fmtNum(x, 2)}, below 1 (near-term fear above longer-term).` : `VIX curve back to normal: VIX3M/VIX at ${fmtNum(x, 2)}, above 1 again.`, 'posvol', 'Volatility'); }
+  // central bank gauges
+  cbPrep();
+  for (const k of Object.keys(CBS)) { const a = cbStats(k, end), b = cbStats(k, wk); if (!a || !b || !a.spread || !b.spread) continue;
+    if (a.p && b.p && Math.abs(a.p.v - b.p.v) >= 0.05) { add(1, `${CBS[k].short} changed its ${CBS[k].policyLab} by ${bp((a.p.v - b.p.v) * 100)} to ${fmtNum(a.p.v, 2)}%; market gauge now ${bp(a.spread.v)} (read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub); continue; }
+    const d = a.spread.v - b.spread.v; if (Math.abs(d) > CB_DEAD) add(2, `${CBS[k].short} pricing moved ${bp(d)} on the week (${CBS[k].gaugeLab} ${bp(a.spread.v)}; read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub); }
+  // big market moves
+  const keep = state.to; state.to = end; const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3); state.to = keep;
+  for (const r of mv) add(Math.abs(r.z) >= 3 ? 1 : 2, `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} on the week (${zf(r.z)}σ vs its 5-year norm).`, 'markets', 'Performance');
+  // ideas hitting target or stop
+  for (const x of (IDEAS || []).filter(i => i.status !== 'closed')) { const h = ideaHits(x);
+    if (h && h.t > wk && h.t <= end) add(1, `Idea “${x.title}” hit its ${h.what} on ${dShort(h.t)}.`, 'ideas', null); }
+  // stale data
+  if (HEALTH && HEALTH.n_bad) add(4, `${HEALTH.n_bad} data series stale or missing (Data health page).`, 'health', null);
+  return out.sort((a, b) => a.pri - b.pri);
+}
+function renderChanges(c) {
+  const b = htmlBody(c), L = whatChanged();
+  if (!L.length) { b.append(el('div', { class: 'muted', text: 'Nothing crossed a threshold this week.' })); return; }
+  const ul = el('ul', { class: 'changes' });
+  for (const x of L.slice(0, 8)) ul.append(el('li', {}, el('span', { class: 'qdot', style: `background:${tok(x.pri === 1 ? '--critical' : x.pri === 2 ? '--warning' : '--muted')}` }),
+    el('a', { href: '#', text: x.text, onclick: e => { e.preventDefault(); goSub(x.tab, x.sub); } })));
+  b.append(ul);
+  if (L.length > 8) b.append(el('div', { class: 'muted small', text: `${L.length - 8} more not shown.` }));
+  c.csv = [['priority', 'change', 'page'], ...L.map(x => [x.pri, x.text, x.tab])];
+  setNote(c, 'Rules: regime switch or new raw signal; stress band change; more peak signposts; breadth crossing 20% or 80%; VIX curve inverting; a central bank rate change or gauge move over 15bp; a ≥2σ market move; an idea hitting its target or stop; stale data. Red = most important; click a line to open its page.');
+}
+
 function buildOverview() {
   const g = $('#ovGrid');
   const tp = makeCard(g, { key: 'points', range: false, title: 'Talking points', wide: true, source: 'FRED, Yahoo Finance', render: renderPoints });
   const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
     try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
   tp.root.querySelector('.card-tools').prepend(copy);
+  makeCard(g, { key: 'changes', range: false, wide: true, title: 'What changed this week', source: 'Dashboard rules on its own data', render: renderChanges });
   makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', render: renderHeadlinesCard });
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
@@ -1006,14 +1060,14 @@ function buildOverview() {
     seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
   makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
     source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
-  for (const k of ['points', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  for (const k of ['points', 'changes', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
 function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
-  ['points', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
+  ['points', 'changes', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
@@ -3548,7 +3602,7 @@ async function loadTickers() {
     TICK_SYM[sym.toUpperCase()] = id;
   }
   addBasket('MY_PLANT', CM_PLANT, 'Malaysia plantation basket', 'MYR'); addBasket('MY_TECH', CHIP_MY, 'Malaysia tech basket', 'MYR');
-  if (['ideas', 'weekly', 'correlation', 'markets', 'ai'].includes(state.tab)) renderTab();
+  if (['overview', 'ideas', 'weekly', 'correlation', 'markets', 'ai'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
   let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
@@ -3896,6 +3950,7 @@ function wkTakeaways(end) {
   const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3);
   state.to = keep;
   if (mv.length) out.push(`Unusual moves (≥2σ vs 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
+  { const wc = whatChanged(end).filter(x => x.pri <= 2 && x.tab !== 'markets' && x.tab !== 'cbwatch').slice(0, 3); if (wc.length) out.push('What changed: ' + wc.map(x => x.text.replace(/\.$/, '')).join('; ') + '.'); }
   if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); let t = `Macro regime: ${QUADS[q.v].name} (${monthLab(q.t)} data)`;
     if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${Math.round(a.v)}th percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
     out.push(t + '.'); }
@@ -4537,7 +4592,7 @@ function renderCalNext(c) {
 // ------------------------------------------------------------------ sub-tabs
 // Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
 const SUBTABS = {
-  overview: [['Today', ['points', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
+  overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
