@@ -161,6 +161,7 @@ FRED = [
     ("CPI",         "CPIAUCSL",    "CPI (headline)",              "Macro · Inflation", "level", "idx", MACRO_START),
     ("CORE_CPI",    "CPILFESL",    "Core CPI",                    "Macro · Inflation", "level", "idx", MACRO_START),
     ("CORE_PCE",    "PCEPILFE",    "Core PCE price index",        "Macro · Inflation", "level", "idx", MACRO_START),
+    ("EA_HICP",     "CP0000EZ19M086NEST", "Euro area HICP (index)",   "Macro · Euro area", "level", "idx", "2005-01-01"),
     # Leading index components (Conference Board method, free proxies)
     ("AWHMAN",      "AWHMAN",      "Avg weekly hours, manufacturing", "Macro · Leading", "level", "hours", MACRO_START),
     ("ACOGNO",      "ACOGNO",      "New orders: consumer goods & materials", "Macro · Leading", "level", "USD mn", MACRO_START),

@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)

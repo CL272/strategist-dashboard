@@ -3667,6 +3667,9 @@ function wkTakeaways(end) {
     if (med != null) t += ` vs the Fed's ${fmtNum(med, 2)}% median`;
     out.push(t + '.');
   }
+  { cbPrep(); const g = Object.keys(CBS).map(k => { const a = cbStats(k, end), b = cbStats(k, end - 7 * DAY);
+      return a && b && a.spread && b.spread ? { k, a, w: a.spread.v - b.spread.v } : null; }).filter(Boolean).sort((x, y) => Math.abs(y.w) - Math.abs(x.w));
+    if (g.length) out.push(`Central banks: biggest move in market pricing was ${CBS[g[0].k].short} (${CBS[g[0].k].gaugeLab} ${bp(g[0].a.spread.v)}, ${bp(g[0].w)} on the week; read: ${g[0].a.read.toLowerCase()}). Others: ${g.slice(1).map(x => `${CBS[x.k].short} ${x.a.read.toLowerCase()}`).join(', ')}.`); }
   if (has('DXY')) { const d = wkChange('DXY', end), m = has('USDMYR') ? wkChange('USDMYR', end) : null, g = has('USDSGD') ? wkChange('USDSGD', end) : null;
     out.push(`FX: DXY ${pct(d)}` + (m ? `; USD/MYR ${fmtNum(m.a.v, 4)} (${pct(m)})` : '') + (g ? `; USD/SGD ${fmtNum(g.a.v, 4)} (${pct(g)})` : '') + (has('USDJPY') ? `; USD/JPY ${fmtNum(asOf(S.USDJPY, end).v, 2)}` : '') + '.'); }
   const cm = ['BRENT', 'GOLD', 'COPPER'].filter(id => has(id)).map(id => `${S[id].label} ${pct(wkChange(id, end))}`);
@@ -3812,6 +3815,210 @@ function renderWeekly() {
   page.append(el('footer', { class: 'op-foot muted small', text: 'Sources: Yahoo Finance, FRED (Federal Reserve, BLS, BEA, ICE BofA), US Treasury, MOF Japan, MAS/SingStat, DOSM/Bank Negara, RBA, OECD, CBOT fed funds futures, public news feeds. Generated from public data by the Strategist Dashboard; facts only, no investment advice.' }));
   state.weekText = txt.join('\n');
 }
+
+// ------------------------------------------------------------------ CENTRAL BANK WATCH
+// Free market gauges for banks without fed-funds-style futures: money-market and bond-curve rates.
+// They carry a term/credit premium, so each spread to the policy rate is judged against its own
+// 2-year average ("pricing vs normal") and never turned into a probability.
+const CBS = {
+  BNM: { name: 'Bank Negara Malaysia', short: 'BNM', sub: 'Malaysia (BNM)', policy: 'MY_OPR', policyLab: 'OPR', infl: 'MY_CPI_YOY', head: 'MY_IB_3M', headLab: '3-month interbank',
+    tenors: [['MY_IB_1M', 1, '1M'], ['MY_IB_3M', 3, '3M'], ['MY_IB_6M', 6, '6M']], cal: 'BNM', gaugeLab: '3M interbank − OPR', gShort: '3M interbank',
+    src: 'Bank Negara Malaysia API (OPR; interbank rates)' },
+  RBA: { name: 'Reserve Bank of Australia', short: 'RBA', sub: 'Australia (RBA)', policy: 'AU_CASH', policyLab: 'cash rate', infl: 'AU_CPI_YOY', head: 'AU_BB_3M', headLab: '3-month bank bill',
+    tenors: [['AU_BB_1M', 1, '1M'], ['AU_BB_3M', 3, '3M'], ['AU_BB_6M', 6, '6M'], ['AU_2Y', 24, '2Y'], ['AU_3Y', 36, '3Y']], cal: 'RBA', gaugeLab: '3M bank bill − cash rate', gShort: '3M bills',
+    src: 'Reserve Bank of Australia (tables F1, F2)' },
+  BoJ: { name: 'Bank of Japan', short: 'BoJ', sub: 'Japan (BoJ)', policy: 'JP_CALL', policyLab: 'call rate', infl: 'JP_CPI_YOY', head: 'JP_GB_2Y', headLab: '2-year JGB',
+    tenors: [['JP_GB_1Y', 12, '1Y'], ['JP_GB_2Y', 24, '2Y']], cal: 'BoJ', gaugeLab: '2Y JGB − call rate', gShort: '2Y JGB',
+    src: 'Bank of Japan (call rate); Ministry of Finance Japan (JGB yields)' },
+  ECB: { name: 'European Central Bank', short: 'ECB', sub: 'Euro area (ECB)', policy: 'EA_DFR', policyLab: 'deposit rate', infl: 'EA_HICP_YOY', head: 'EA_FWD_1Y', headLab: '1-year-ahead forward',
+    tenors: [['EA_FWD_3M', 3, '3M fwd'], ['EA_FWD_6M', 6, '6M fwd'], ['EA_FWD_1Y', 12, '1Y fwd'], ['EA_FWD_2Y', 24, '2Y fwd']], cal: 'ECB', gaugeLab: '1Y-ahead forward − deposit rate', gShort: '1Y fwd',
+    src: 'ECB Data Portal (deposit facility rate; AAA government curve instantaneous forwards)' },
+};
+const CB_DEAD = 15;   // bp either side of normal that still reads "on hold"
+function cbPrep() {   // series built on the page: JGB 1Y/2Y from the MOF curve, euro HICP inflation
+  if (!S.JP_GB_1Y && CURVES.JP) for (const [id, y] of [['JP_GB_1Y', 1], ['JP_GB_2Y', 2]]) { const c = curveSeries('JP', y); if (c) S[id] = { ...c, id, label: `JGB ${y}Y yield`, group: 'Rates · Japan' }; }
+  if (!S.EA_HICP_YOY && has('EA_HICP')) { const y = yoyOf('EA_HICP'); S.EA_HICP_YOY = { ...y, id: 'EA_HICP_YOY', label: 'Euro area HICP inflation YoY' }; }
+}
+const cbSpread = new Map();
+function cbSpreadSeries(k, tid) {   // tenor rate minus policy rate, bp, daily
+  const key = k + '|' + tid; if (cbSpread.has(key)) return cbSpread.get(key);
+  const C = CBS[k]; if (!has(tid, C.policy)) return null;
+  const sp = combine(S[tid], S[C.policy], (a, b) => (a - b) * 100, { label: `${S[tid].label} − ${C.policyLab}`, unit: 'bp' }, 40 * DAY);
+  cbSpread.set(key, sp); return sp;
+}
+function avgWindow(s, t, days) { let x = 0, n = 0; for (let i = 0; i < s.t.length; i++) if (s.t[i] <= t && s.t[i] > t - days * DAY) { x += s.v[i]; n++; } return n >= 20 ? x / n : null; }
+function cbStats(k, t = state.latest) {
+  const C = CBS[k]; if (!has(C.policy)) return null;
+  const p = asOf(S[C.policy], t), sp = cbSpreadSeries(k, C.head), a = sp && asOf(sp, t);
+  const avg = a ? avgWindow(sp, a.t, 730) : null, prev = sp && a ? asOf(sp, a.t - 30 * DAY) : null;
+  const vsNorm = a && avg != null ? a.v - avg : null;
+  const read = vsNorm == null ? '–' : vsNorm > CB_DEAD ? 'Hikes priced' : vsNorm < -CB_DEAD ? 'Cuts priced' : 'On hold';
+  // last change in the policy rate
+  let last = null; const s = S[C.policy];
+  for (let i = p ? p.i : -1; i > 0; i--) if (Math.abs(s.v[i] - s.v[i - 1]) >= 0.05) { last = { t: s.t[i], d: s.v[i] - s.v[i - 1] }; break; }
+  let inf = C.infl && has(C.infl) ? asOf(S[C.infl], t) : null; if (inf && t - inf.t > 200 * DAY) inf = null;   // ignore stale prints
+  const today = sgToday(), next = CAL && CAL.events ? CAL.events.filter(e => e.kind === 'Policy' && e.name.startsWith(C.cal) && calSpan(e)[1] >= today)[0] : null;
+  return { p, spread: a, avg, vsNorm, chg1m: a && prev ? a.v - prev.v : null, read, last, inf, real: p && inf ? p.v - inf.v : null, next };
+}
+const readTok = r => r === 'Hikes priced' ? '--critical' : r === 'Cuts priced' ? '--s1' : '--muted';
+function fedRow() {   // the Fed from the futures page, for the monitor table
+  const now = fpSnap('now'), ago = fpSnap('1M ago'); if (!now || !now.path.length) return null;
+  const horizon = r => r.filter(x => dayMs(x.d) <= dayMs(now.asof) + 190 * DAY).pop();
+  const h = horizon(now.path), h1 = ago ? ago.path.find(x => h && x.d === h.d) : null;
+  const ev = CAL && CAL.events ? CAL.events.find(e => e.kind === 'Policy' && e.name.startsWith('FOMC') && calSpan(e)[1] >= sgToday()) : null;
+  const inf = has('CPI_YOY') ? asOf(S.CPI_YOY, state.latest) : null, cum = h ? h.cum * 100 : null;
+  return { name: 'Federal Reserve', short: 'Fed', rate: FP.target && FP.target[1] != null ? `${fmtNum(FP.target[0], 2)}–${fmtNum(FP.target[1], 2)}%` : (FP.effr != null ? fmtNum(FP.effr, 2) + '%' : '–'),
+    gauge: cum == null ? '–' : `futures ${bp(cum)} by ${dShort(dayMs(h.d))}`, chg: h && h1 ? bp((h.after - h1.after) * 100) : '–', infl: inf, real: inf && FP.effr != null ? FP.effr - inf.v : null,
+    read: cum == null ? '–' : cum > CB_DEAD ? 'Hikes priced' : cum < -CB_DEAD ? 'Cuts priced' : 'On hold', next: ev };
+}
+function cbKpis() {
+  const box = $('#cbKpis'); box.replaceChildren(); cbPrep();
+  const tile = (label, val, delta, foot, tk) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
+    el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', val), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  for (const k of Object.keys(CBS)) {
+    const C = CBS[k], st = cbStats(k); if (!st || !st.p) continue;
+    tile(`${C.short} read`, st.read, st.vsNorm != null ? `${C.gaugeLab}: ${bp(st.vsNorm)} vs normal` : '', `${C.policyLab} ${fmtNum(st.p.v, 2)}%`, readTok(st.read));
+    tile(`${C.short}: ${C.policyLab}`, fmtNum(st.p.v, 2) + '%', st.last ? `last move ${bp(st.last.d * 100)} on ${dShort(st.last.t)} ${new Date(st.last.t).getUTCFullYear()}` : 'no change in the data', nice(st.p.t));
+    if (st.spread) tile(`${C.short}: ${C.gaugeLab}`, bp(st.spread.v), st.avg != null ? `2-year average ${bp(st.avg)} · 1M ${st.chg1m == null ? '–' : bp(st.chg1m)}` : '', nice(st.spread.t));
+    tile(`${C.short}: next decision`, st.next ? dShort(dayMs(st.next.d)) + (st.next.end ? '–' + dShort(dayMs(st.next.end)) : '') : '–', st.next && st.next.sgt ? `${st.next.sgt} SGT` : '', st.next ? (st.next.conf === 'Confirmed' ? 'bank schedule' : 'estimated') : 'not in calendar');
+  }
+  const sub = SUBTABS.cbwatch[state.sub.cbwatch || 0][0], short = (Object.values(CBS).find(C => C.sub === sub) || {}).short;
+  filterKpis('#cbKpis', l => short ? (l.startsWith(short + ':') ? '*' : '') : (l.endsWith(' read') ? '*' : ''));
+}
+function renderCbTable(c) {
+  const b = htmlBody(c); cbPrep();
+  const tbl = el('table', { class: 'perf watch' });
+  const heads = ['Bank', 'Policy rate', 'Last move', 'Next decision', 'Inflation', 'Real rate', 'Gauge', 'vs normal', '1M chg', 'Read'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i === 6 || i === 9 ? 'l' : '' })))));
+  const tb = el('tbody'), csv = [heads], pc = v => v == null ? '–' : fmtNum(v, 1) + '%';
+  const cell = (t, cls = '') => el('td', { class: cls, text: t });
+  const nextTxt = e => e ? dShort(dayMs(e.d)) + (e.sgt ? ` · ${e.sgt}` : '') : '–';
+  const f = FP ? fedRow() : null;
+  let fLast = '–';   // last Fed move from the effective rate's steps (EFFR moves ~1bp day to day otherwise)
+  if (has('EFFR')) { const e = S.EFFR; for (let i = e.t.length - 1; i > 0; i--) if (Math.abs(e.v[i] - e.v[i - 1]) >= 0.15) { fLast = `${bp(Math.round((e.v[i] - e.v[i - 1]) * 4) * 25)} · ${dShort(e.t[i])} ${String(new Date(e.t[i]).getUTCFullYear()).slice(2)}`; break; } }
+  if (f) { const r = [f.short, f.rate, fLast, nextTxt(f.next), pc(f.infl && f.infl.v), pc(f.real), f.gauge, '–', f.chg, f.read];
+    tb.append(el('tr', { class: 'row' }, ...r.map((x, i) => i === 9 ? el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(readTok(x))}` }, x)) : cell(x, i === 0 || i === 6 ? 'l' : '')))); csv.push(r); }
+  for (const k of ['ECB', 'BoJ', 'BNM', 'RBA']) {
+    const C = CBS[k], st = cbStats(k); if (!st || !st.p) continue;
+    const r = [C.short, fmtNum(st.p.v, 2) + '%', st.last ? `${bp(st.last.d * 100)} · ${dShort(st.last.t)} ${String(new Date(st.last.t).getUTCFullYear()).slice(2)}` : '–', nextTxt(st.next),
+      pc(st.inf && st.inf.v), pc(st.real), st.spread ? `${C.gShort} ${bp(st.spread.v)}` : '–', st.vsNorm == null ? '–' : bp(st.vsNorm), st.chg1m == null ? '–' : bp(st.chg1m), st.read];
+    tb.append(el('tr', { class: 'row', onclick: () => setSub('cbwatch', SUBTABS.cbwatch.findIndex(x => x[0] === C.sub)) },
+      ...r.map((x, i) => i === 9 ? el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(readTok(x))}` }, x)) : cell(x, i === 0 || i === 6 ? 'l' : ''))));
+    csv.push(r);
+  }
+  // MAS and PBoC: no comparable policy-rate gauge
+  const sn = typeof sneerProxy === 'function' ? sneerProxy() : null;
+  if (sn && sn.t.length > 30) { const i = sn.t.length - 1, pace = (Math.pow(sn.v[i] / sn.v[i - 26], 2) - 1) * 100;
+    const ev = CAL && CAL.events ? CAL.events.find(e => e.region === 'Singapore' && e.kind === 'Policy' && calSpan(e)[1] >= sgToday()) : null;
+    const r = ['MAS', 'S$NEER band', '–', nextTxt(ev), pc(has('SG_CORE_YOY') ? asOf(S.SG_CORE_YOY, state.latest).v : null) + ' core', '–', `S$NEER pace ${sign(pace)}${fmtNum(Math.abs(pace), 1)}%/yr`, '–', '–', 'FX policy'];
+    tb.append(el('tr', { class: 'row' }, ...r.map((x, i) => cell(x, i === 0 || i === 6 || i === 9 ? 'l' : '')))); csv.push(r); }
+  if (has('CN_3M')) { const a = asOf(S.CN_3M, state.latest), ev = CAL && CAL.events ? CAL.events.find(e => e.region === 'China' && e.kind === 'Policy' && calSpan(e)[1] >= sgToday()) : null;
+    const r = ['PBoC', `${fmtNum(a.v, 2)}% (3M ib)`, '–', nextTxt(ev) + ' (LPR)', pc(has('CN_CPI_YOY') ? asOf(S.CN_CPI_YOY, state.latest).v : null), has('CN_CPI_YOY') ? pc(a.v - asOf(S.CN_CPI_YOY, state.latest).v) : '–', 'no free gauge', '–', '–', '–'];
+    tb.append(el('tr', { class: 'row' }, ...r.map((x, i) => cell(x, i === 0 || i === 6 ? 'l' : '')))); csv.push(r); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = csv;
+  setNote(c, `Fed: what fed funds futures price over the next ~6 months. ECB, BoJ, BNM, RBA: the named money-market or bond-curve rate minus the policy rate, compared with its own 2-year average (“vs normal”). These rates include a term and credit premium, so the gauge reads direction, not probabilities; beyond ±${CB_DEAD}bp of normal reads as hikes or cuts priced. Real rate = policy rate minus latest headline inflation (Singapore: MAS core). Click a row for that bank.`);
+}
+function renderCbRates(c) {
+  cbPrep();
+  const list = [];
+  if (has('EFFR')) list.push({ name: 'Fed (effective fed funds)', data: pts(S.EFFR, state.from, state.to), extra: { step: 'end' } });
+  for (const k of ['ECB', 'BoJ', 'BNM', 'RBA']) { const C = CBS[k]; if (has(C.policy)) list.push({ name: `${C.short} ${C.policyLab}`, data: pts(S[C.policy], state.from, state.to), extra: { step: 'end' } }); }
+  if (!list.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, list, { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', endLabels: false });
+  setSource(c, 'FRED (EFFR); ECB Data Portal; Bank of Japan; Bank Negara Malaysia; RBA');
+}
+function renderCbReal(c) {
+  cbPrep();
+  const list = [], pairs = [['Fed', 'EFFR', 'CPI_YOY'], ['ECB', 'EA_DFR', 'EA_HICP_YOY'], ['BoJ', 'JP_CALL', 'JP_CPI_YOY'], ['BNM', 'MY_OPR', 'MY_CPI_YOY'], ['RBA', 'AU_CASH', 'AU_CPI_YOY']];
+  for (const [nm, p, i] of pairs) { if (!has(p, i)) continue;
+    const me = monthEnds(S[p]), t = [], v = [];
+    for (const [m, pv] of [...me].sort((x, y) => x[0] - y[0])) { const inf = asOf(S[i], m + 20 * DAY); if (inf && m - inf.t < 200 * DAY) { t.push(m); v.push(pv - inf.v); } }
+    list.push({ name: nm, data: pts({ t, v }, state.from, state.to) }); }
+  if (!list.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, list, { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true, endLabels: false });
+  setNote(c, 'Policy rate minus headline inflation, month-end. Above zero = policy is restrictive in real terms; below zero = still easy. Australia’s CPI is quarterly.');
+  setSource(c, 'Policy rates as on the left; inflation from FRED (CPI, euro HICP), Statistics Bureau of Japan, DOSM, ABS via RBA');
+}
+function renderCbPath(c, k) {
+  cbPrep();
+  const C = CBS[k]; if (!has(C.policy)) return setEmpty(c, 'Waiting for data.');
+  const latest = asOf(S[C.policy], state.latest), start = addMonths(state.latest, -36);
+  const snaps = [['now', 0, col(0), 'solid'], ['1M ago', 1, col(1), 'dashed'], ['3M ago', 3, col(2), 'dotted']];
+  const series = [line(`${C.policyLab} (actual)`, pts(S[C.policy], start, state.latest), tok('--ink-2'), { step: 'end' })];
+  let maxT = state.latest;
+  const rows = [];
+  for (const [nm, back, color, dash] of snaps) {
+    const t0 = addMonths(state.latest, -back), p0 = asOf(S[C.policy], t0); if (!p0) continue;
+    const ptsL = [[t0, p0.v]];
+    for (const [tid, m, lab] of C.tenors) {
+      const sp = cbSpreadSeries(k, tid); if (!sp) continue;
+      const a = asOf(sp, t0), avg = a ? avgWindow(sp, a.t, 730) : null; if (!a || avg == null || t0 - a.t > 20 * DAY) continue;
+      const lvl = p0.v + (a.v - avg) / 100, tt = addMonths(t0, m); ptsL.push([tt, lvl]); maxT = Math.max(maxT, tt);
+      if (back === 0) rows.push(`${lab} ${bp(a.v - avg)}`);
+    }
+    if (ptsL.length > 1) series.push(line(`Market-implied path ${nm}`, ptsL, color, { symbol: 'circle', showSymbol: true, symbolSize: 6, lineStyle: { width: back ? 1.5 : 2.5, type: dash, color } }));
+  }
+  const o = baseOpt(); o.legend.show = true; o.grid.top = 12 + 22 * legendRows(c, series.map(x => x.name));
+  o.xAxis = timeAxis({ min: start, max: maxT + 20 * DAY }); o.yAxis = valAxis(v => fmtNum(v, 2) + '%');
+  o.tooltip.formatter = tipFormatter(v => fmtNum(v, 2) + '%');
+  series[0].markArea = { silent: true, itemStyle: { color: hexA(tok('--muted'), 0.08) }, data: [[{ xAxis: state.latest, name: 'market-implied →', label: { color: tok('--muted'), fontSize: 11, position: 'insideTopLeft' } }, { xAxis: maxT + 20 * DAY }]] };
+  o.series = series;
+  setZoomable(c, o);
+  c.titleEl.textContent = `${C.name}: policy rate and what markets imply`;
+  c.subEl.textContent = `${C.policyLab[0].toUpperCase() + C.policyLab.slice(1)} with the path implied by ${C.tenors.map(x => x[2]).join(', ')} rates, each placed at its horizon after removing its usual premium (the tenor’s 2-year average spread to the policy rate).`;
+  c.csv = [['Series', 'Date', 'Rate'], ...series.flatMap(sr => sr.data.map(([t, v]) => [sr.name, iso(t), v.toFixed(3)]))];
+  setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. A rough read of direction from money-market rates that include term and credit premia; not OIS pricing, not a probability.`);
+  setSource(c, C.src);
+}
+function renderCbSpread(c, k) {
+  cbPrep();
+  const C = CBS[k], sp = cbSpreadSeries(k, C.head); if (!sp) return setEmpty(c, 'Waiting for data.');
+  const avgS = { t: [], v: [] }; for (let i = 0; i < sp.t.length; i += 5) { const a = avgWindow(sp, sp.t[i], 730); if (a != null) { avgS.t.push(sp.t[i]); avgS.v.push(a); } }
+  c.titleEl.textContent = `${C.gaugeLab}`;
+  c.subEl.textContent = `The ${C.headLab} rate minus the ${C.policyLab}, bp, with its rolling 2-year average (dashed). Above the dashed line = more tightening priced than usual.`;
+  drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) }, { name: '2-year average', data: pts(avgS, state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
+    { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false });
+  const st = cbStats(k);
+  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)} vs a 2-year average of ${bp(st.avg)}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band). Money-market / bond-curve read, includes a term premium; not OIS pricing.` : '');
+  setSource(c, C.src);
+}
+function renderCbInfo(c, k) {
+  const b = htmlBody(c), C = CBS[k], st = cbStats(k);
+  c.titleEl.textContent = `${C.short}: decisions`;
+  if (!st || !st.p) { b.append(el('div', { class: 'empty', text: 'Waiting for data.' })); return; }
+  const today = sgToday(), next = CAL && CAL.events ? CAL.events.filter(e => e.kind === 'Policy' && e.name.startsWith(C.cal) && calSpan(e)[1] >= today).slice(0, 4) : [];
+  const s = S[C.policy], changes = [];
+  for (let i = s.v.length - 1; i > 0 && changes.length < 4; i--) if (Math.abs(s.v[i] - s.v[i - 1]) >= 0.05) changes.push([s.t[i], s.v[i - 1], s.v[i]]);
+  const t1 = el('table', { class: 'perf' });
+  t1.append(el('thead', {}, el('tr', {}, ...['Next decisions', 'Time (SGT)', 'Previous'].map(h => el('th', { text: h })))));
+  const tb1 = el('tbody');
+  for (const e of next) tb1.append(el('tr', { class: 'row' }, el('td', { text: dLong(dayMs(e.d)) + ' ' + new Date(dayMs(e.d)).getUTCFullYear() + (e.end ? ` – ${dShort(dayMs(e.end))}` : '') }), el('td', { text: e.sgt || '–' }), el('td', { text: e.prev || '–' })));
+  if (!next.length) tb1.append(el('tr', {}, el('td', { colspan: 3, class: 'muted', text: 'No dates on file in the calendar window.' })));
+  t1.append(tb1);
+  const t2 = el('table', { class: 'perf' });
+  t2.append(el('thead', {}, el('tr', {}, ...['Recent moves', 'From', 'To'].map(h => el('th', { text: h })))));
+  const tb2 = el('tbody');
+  for (const [t, a, z] of changes) tb2.append(el('tr', { class: 'row' }, el('td', { text: `${dShort(t)} ${new Date(t).getUTCFullYear()} (${bp((z - a) * 100)})` }), el('td', { text: fmtNum(a, 2) + '%' }), el('td', { text: fmtNum(z, 2) + '%' })));
+  if (!changes.length) tb2.append(el('tr', {}, el('td', { colspan: 3, class: 'muted', text: 'No change in the data on file.' })));
+  t2.append(tb2);
+  b.append(el('div', { class: 'table-wrap' }, t1), el('div', { class: 'table-wrap', style: 'margin-top:10px' }, t2));
+  setNote(c, `Read: ${st.read}${st.real != null ? `. Real ${C.policyLab}: ${fmtNum(st.real, 1)}% (latest inflation ${fmtNum(st.inf.v, 1)}%)` : ''}. Decision dates from the Calendar page. The read is a money-market / bond-curve gauge that includes a term premium; not OIS pricing.`);
+  setSource(c, 'Calendar (central bank schedules); ' + C.src);
+}
+function buildCbWatch() {
+  const g = $('#cbGrid');
+  makeCard(g, { key: 'cb_table', range: false, title: 'Policy monitor', wide: true, sub: 'Where each central bank stands and what markets price next.', render: renderCbTable });
+  makeCard(g, { key: 'cb_rates', title: 'Policy rates', defaultRange: '5Y', render: renderCbRates });
+  makeCard(g, { key: 'cb_real', title: 'Real policy rates', defaultRange: '5Y', render: renderCbReal });
+  for (const k of Object.keys(CBS)) {
+    makeCard(g, { key: `cb_path_${k}`, range: false, title: k, wide: true, render: c => renderCbPath(c, k) });
+    makeCard(g, { key: `cb_spread_${k}`, title: k, defaultRange: '3Y', render: c => renderCbSpread(c, k) });
+    makeCard(g, { key: `cb_info_${k}`, range: false, title: k, render: c => renderCbInfo(c, k) });
+  }
+  for (const k of ['cb_table', ...Object.keys(CBS).map(x => `cb_info_${x}`)]) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderCbWatch() { cbKpis(); ['cb_table', 'cb_rates', 'cb_real', ...Object.keys(CBS).flatMap(k => [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`])].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ FED PATH vs MARKET PRICING
 let FP = null;
@@ -4115,6 +4322,7 @@ const SUBTABS = {
   overview: [['Today', ['points', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']]],
+  cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
     ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['sahm', 'recprob', 'infl', 'claims']]],
@@ -4185,9 +4393,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, ideas: renderIdeas, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', cbwatch: 'Central bank watch', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -4240,7 +4448,7 @@ function wire() {
 }
 async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 async function init() {
-  const [meta, y, f, d, cv, as] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json'].map(loadJSON));
+  const [meta, y, f, d, cv, as, cb] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json'].map(loadJSON));
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
@@ -4251,7 +4459,7 @@ async function init() {
   try { FP = await loadJSON('data/fedpath.json'); } catch (e) { FP = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
-  for (const res of [y, f, d, as]) if (res.status === 'fulfilled') {
+  for (const res of [y, f, d, as, cb]) if (res.status === 'fulfilled') {
     for (const [id, s] of Object.entries(res.value)) { S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
   }
   if (cv.status === 'fulfilled') {
@@ -4281,12 +4489,12 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildLeadLag(); buildFedPath(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);   // ~2 MB of ticker history: loaded after the first page is drawn
-  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'fedpath', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'fedpath', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

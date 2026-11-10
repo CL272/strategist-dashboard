@@ -614,6 +614,12 @@ def main() -> int:
     except Exception as e:   # the Fed-path page must never break the data refresh
         print(f"Fed path failed: {type(e).__name__}: {e}")
     try:
+        import cbwatch
+        cbwatch.build(status)
+        _lap("cbwatch", t0)
+    except Exception as e:   # central bank gauges must never break the data refresh
+        print(f"Central bank watch failed: {type(e).__name__}: {e}")
+    try:
         import tickers
         tickers.build(status)
         _lap("tickers", t0)
