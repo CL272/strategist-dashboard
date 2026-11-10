@@ -65,6 +65,7 @@ YAHOO = [
     ("AMZN",     "AMZN",      "Amazon",               "Equities · AI",        "price", "USD"),
     ("META",     "META",      "Meta",                 "Equities · AI",        "price", "USD"),
     ("SMH",      "SMH",       "Semiconductors ETF (SMH)", "Equities · AI",    "price", "USD"),
+    ("SOX",      "^SOX",      "Philadelphia Semiconductor index (SOX)", "Equities · AI", "price", "USD"),
     # Bonds / credit (ETF total return proxies)
     ("TLT",      "TLT",       "UST 20Y+ (TLT)",       "Bonds & credit",       "price", "USD"),
     ("IEF",      "IEF",       "UST 7-10Y (IEF)",      "Bonds & credit",       "price", "USD"),

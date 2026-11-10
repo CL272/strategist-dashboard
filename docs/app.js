@@ -1283,6 +1283,52 @@ function laggedCorr(lead, follow, maxLag = 12) {   // monthly: corr(lead_t, foll
   }
   return res;
 }
+// ------------------------------------------------------------------ CHIP CYCLE (AI → Chip cycle)
+const CHIP_MY = ['0166.KL', '0097.KL', '3867.KL'];   // Inari, ViTrox, MPI
+function monthlyOf(id, mode) { const m = llSeries(id, mode), t = [...m.keys()].sort((a, b) => a - b); return { t, v: t.map(x => m.get(x)) }; }
+function renderChipRS(c) {
+  if (!has('SOX', 'SPX')) return setEmpty(c, 'Waiting for data (next daily run).');
+  const r = ratioSeries(['SOX'], ['SPX']), x = pts(S.SOX, state.from - 400 * DAY, state.to), yoy = [];
+  for (const [t, v] of x) { const a = asOf(S.SOX, t - 365 * DAY); if (a && t >= state.from && t - 365 * DAY - a.t < 7 * DAY) yoy.push([t, (v / a.v - 1) * 100]); }
+  const rp = pts(r, state.from, state.to), r0 = rp.length ? rp[0][1] : 1;
+  drawPair(c, { name: 'SOX ÷ S&P 500 (=100)', data: rp.map(([t, v]) => [t, v / r0 * 100]) }, { name: 'SOX, % YoY', data: yoy },
+    { fmtA: v => fmtNum(v, 1), fmtB: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) + '%', zeroB: true });
+  const a = rp.length ? rp[rp.length - 1][1] / r0 * 100 - 100 : null;
+  setNote(c, `Rising line = chips beating the S&P 500. ${a != null ? `Over this range semis ${a >= 0 ? 'beat' : 'lagged'} the index by ${fmtNum(Math.abs(a), 1)}%. ` : ''}SOX year-on-year growth is the cycle gauge used against trade data on the right.`);
+  setSource(c, 'Yahoo Finance (^SOX, ^GSPC); calculated');
+}
+function renderChipKr(c) {
+  if (!has('SOX', 'KR_EXP_YOY')) return setEmpty(c, 'Waiting for data.');
+  const k = +state.chipLead || 0, sx = monthlyOf('SOX', 'yoy'), kr = monthlyOf('KR_EXP_YOY', 'level');
+  const lead = k ? { t: sx.t.map(t => addMonths(t, k)), v: sx.v } : sx, xmax = k ? addMonths(state.to, k) : state.to;
+  drawPair(c, { name: k ? `SOX % YoY, moved forward ${k} months` : 'SOX % YoY (month-end)', data: pts(lead, state.from, xmax) }, { name: 'Korea exports % YoY', data: pts(kr, state.from, state.to) },
+    { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true, zeroB: true });
+  if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
+  const cc = laggedCorr(sx, kr).filter(x => x[1] != null), best = cc.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]), c0 = cc.find(x => x[0] === 0);
+  setNote(c, (k ? `SOX growth is drawn ${k} months later than measured, so its turns line up with exports; the part past today hints at the next ${k} months. ` : '')
+    + `Korea's exports are about a fifth chips and report first in Asia each month, so they set the tone for Taiwan, Malaysia and Singapore. Full-history correlation: ${c0 ? fmtNum(c0[1], 2) : '–'} same month, best ${best[1] > -2 ? `${fmtNum(best[1], 2)} with SOX leading ${best[0]} month${best[0] === 1 ? '' : 's'}` : '–'}.`);
+  setSource(c, 'Yahoo Finance (^SOX); Korea exports from OECD (MEI); calculated');
+}
+function renderChipMy(c) {
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  if (!S.MY_TECH || !has('SOX')) return setEmpty(c, 'Malaysian tech tickers not available.');
+  const from = Math.max(state.from, S.MY_TECH.t[0]), list = [];
+  const reb = (s, name) => { const p = pts(s, from, state.to), b = p.length ? p[0][1] : null; if (b) list.push({ name, data: p.map(([t, v]) => [t, v / b * 100]) }); };
+  reb(inCcy('MY_TECH', 'USD'), 'Malaysia tech basket (in USD)'); reb(S.SOX, 'SOX'); if (has('KLCI')) reb(inCcy('KLCI', 'USD'), 'KLCI (in USD)');
+  for (const sym of CHIP_MY) { const id = TICK_SYM[sym]; if (id) reb(inCcy(id, 'USD'), S[id].short.replace(/ (Corporation|Amertron|Berhad|Bhd)\b/g, '')); }
+  list.slice(3).forEach(x => x.extra = { lineStyle: { width: 1, type: 'dotted' } });
+  drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), endLabels: false });
+  const r = corrW(inCcy('MY_TECH', 'USD'), S.SOX, from, state.to);
+  setNote(c, `All = 100 at ${nice(from)}, in US dollars. Basket = equal weight Inari, ViTrox and MPI (dotted lines): Malaysian test, automation and back-end suppliers to the global chip makers.${r != null ? ` Correlation of weekly changes with the SOX over this range: ${fmtNum(r, 2)}.` : ''} Ticker history covers about 3 years.`);
+  setSource(c, 'Yahoo Finance (Bursa Malaysia, ^SOX, ^KLSE), converted at daily USD/MYR; calculated');
+}
+function buildChip() {
+  const g = $('#aiGrid');
+  makeCard(g, { key: 'chip_rs', title: 'Semiconductors vs the market', defaultRange: '5Y', render: renderChipRS });
+  makeCard(g, { key: 'chip_kr', title: 'Chip stocks vs Korea exports', defaultRange: '10Y', seg: { key: 'chipLead', options: [['0', 'As measured'], ['2', 'Lead +2m']] }, render: renderChipKr });
+  makeCard(g, { key: 'chip_my', title: 'Malaysian tech vs the global chip cycle', wide: true, defaultRange: '3Y', render: renderChipMy });
+}
+state.chipLead = '0';
 function renderLeadLag(c) {
   if (!has('LEI_6M', 'REG_GM')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
   const k = +state.llShift || 0, L = S.LEI_6M, lead = k ? { t: L.t.map(t => addMonths(t, k)), v: L.v } : L, xmax = k ? addMonths(state.to, k) : state.to;
@@ -2160,7 +2206,7 @@ function buildAI() {
 }
 function renderAI() {
   aiKpis();
-  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq'].forEach(k => cards[k].render());
+  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq', 'chip_rs', 'chip_kr', 'chip_my'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ VALUATION
@@ -2970,15 +3016,15 @@ const CM_IDS = ['BRENT', 'WTI', 'NATGAS', 'GOLD', 'COPPER', 'IRONORE', 'PALM', '
 const CM_TABLE = ['BRENT', 'WTI', 'NATGAS', 'GOLD', 'SILVER', 'COPPER', 'IRONORE', 'PALM', 'BDRY'];
 const CM_PLANT = ['1961.KL', '2445.KL', '5285.KL'];   // IOI, KLK, SD Guthrie
 state.cmCcy = 'USD';
-function plantBasket() {   // equal-weight Malaysian plantation basket, daily, = 100 at the first common date
-  const ids = CM_PLANT.map(x => TICK_SYM[x]).filter(Boolean); if (ids.length < 2) return null;
+function tickBasket(syms) {   // equal-weight basket of tickers, daily, = 100 at the first common date
+  const ids = syms.map(x => TICK_SYM[x]).filter(Boolean); if (ids.length < 2) return null;
   const start = Math.max(...ids.map(id => S[id].t[0])), base = ids.map(id => asOf(S[id], start).v), s0 = S[ids[0]], t = [], v = [];
   for (let i = 0; i < s0.t.length; i++) { const d = s0.t[i]; if (d < start) continue;
     let x = 0, ok = true; for (let k = 0; k < ids.length; k++) { const a = asOf(S[ids[k]], d); if (!a || d - a.t > 7 * DAY) { ok = false; break; } x += a.v / base[k]; }
     if (ok) { t.push(d); v.push(x / ids.length * 100); } }
-  return { id: 'MY_PLANT', label: `Malaysia plantation basket (${ids.map(id => S[id].short).join(', ')})`, group: 'Derived', kind: 'price', unit: 'index', ccy: 'MYR',
-    source: 'Yahoo Finance tickers; equal weight, calculated', t, v };
+  return { names: ids.map(id => S[id].short).join(', '), group: 'Derived', kind: 'price', unit: 'index', source: 'Yahoo Finance tickers; equal weight, calculated', t, v };
 }
+function addBasket(id, syms, label, ccy) { const b = tickBasket(syms); if (b) { S[id] = { ...b, id, label: `${label} (${b.names})`, ccy }; LOCAL_CCY[id] = ccy; } }
 function cmRet(s, back) { const a = asOf(s, state.to); if (!a) return null; const b = asOf(s, back(a.t)); return b && b.v && a.t - b.t < 400 * DAY ? (a.v / b.v - 1) * 100 : null; }
 function renderCmRebased(c) {
   const ids = CM_IDS.filter(id => has(id)); if (!ids.length) return setEmpty(c, 'Waiting for data.');
@@ -3414,8 +3460,8 @@ async function loadTickers() {
       source: `Yahoo Finance (${sym})`, stale: !!x.stale, mine: x.src === 'watchlist', t: x.d.map(d => d * DAY), v: x.v };
     TICK_SYM[sym.toUpperCase()] = id;
   }
-  const pb = plantBasket(); if (pb) { S.MY_PLANT = pb; LOCAL_CCY.MY_PLANT = 'MYR'; }
-  if (['ideas', 'weekly', 'correlation', 'markets'].includes(state.tab)) renderTab();
+  addBasket('MY_PLANT', CM_PLANT, 'Malaysia plantation basket', 'MYR'); addBasket('MY_TECH', CHIP_MY, 'Malaysia tech basket', 'MYR');
+  if (['ideas', 'weekly', 'correlation', 'markets', 'ai'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
   let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
@@ -4416,7 +4462,7 @@ const SUBTABS = {
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['asiafx', 'asiaidx']]],
   cnjp: [['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread']], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj']]],
-  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']]],
+  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
@@ -4574,7 +4620,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();

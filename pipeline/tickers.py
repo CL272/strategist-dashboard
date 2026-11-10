@@ -63,10 +63,33 @@ def user_list() -> list[str]:
     return out
 
 
+def fix_splits(d: list[int], v: list[float], splits: dict) -> None:
+    """Yahoo sometimes logs a split or bonus issue on the wrong date, leaving an unadjusted jump in the
+    closes (ViTrox's 2-for-1 bonus in 2024 shows as a 50% one-day fall). For each listed split, find a
+    one-day move within 60 days of its date that matches the ratio (within 12%) and rescale the earlier prices."""
+    for sp in splits.values():
+        try:
+            ratio = float(sp["numerator"]) / float(sp["denominator"])
+            day = int(sp["date"] // 86400)
+        except Exception:
+            continue
+        if not ratio or abs(ratio - 1) < 0.05:
+            continue
+        best = None
+        for i in range(1, len(v)):
+            if abs(d[i] - day) <= 60 and v[i - 1]:
+                err = abs((v[i] / v[i - 1]) * ratio - 1)
+                if err < 0.12 and (best is None or err < best[1]):
+                    best = (i, err)
+        if best:
+            for k in range(best[0]):
+                v[k] = float(f"{v[k] / ratio:.6g}")
+
+
 def fetch(sym: str) -> dict | None:
     try:
         r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(sym)}",
-                         params={"range": "3y", "interval": "1d"}, headers=UA, timeout=30)
+                         params={"range": "3y", "interval": "1d", "events": "split"}, headers=UA, timeout=30)
         if r.status_code != 200:
             return None
         res = (r.json().get("chart") or {}).get("result")
@@ -86,6 +109,7 @@ def fetch(sym: str) -> dict | None:
                 v.append(float(f"{c:.6g}"))
         if len(d) < 5:
             return None
+        fix_splits(d, v, (res[0].get("events") or {}).get("splits") or {})
         return {"name": meta.get("longName") or meta.get("shortName") or sym, "ccy": meta.get("currency") or "",
                 "exch": meta.get("fullExchangeName") or meta.get("exchangeName") or "", "type": meta.get("instrumentType") or "", "d": d, "v": v}
     except Exception as e:
