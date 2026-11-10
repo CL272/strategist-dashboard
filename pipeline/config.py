@@ -55,6 +55,16 @@ YAHOO = [
     ("XLI",      "XLI",       "US Industrials (XLI)", "Equities · US sectors","price", "USD"),
     ("XLP",      "XLP",       "US Cons. Staples (XLP)", "Equities · US sectors","price", "USD"),
     ("XLU",      "XLU",       "US Utilities (XLU)",   "Equities · US sectors","price", "USD"),
+    ("XLV",      "XLV",       "US Health Care (XLV)", "Equities · US sectors","price", "USD"),
+    ("XLB",      "XLB",       "US Materials (XLB)",   "Equities · US sectors","price", "USD"),
+    ("XLC",      "XLC",       "US Comm. Services (XLC)", "Equities · US sectors","price", "USD"),
+    # US style factors
+    ("IWF",      "IWF",       "US Growth (IWF)",      "Equities · US styles", "price", "USD"),
+    ("IWD",      "IWD",       "US Value (IWD)",       "Equities · US styles", "price", "USD"),
+    ("MTUM",     "MTUM",      "US Momentum (MTUM)",   "Equities · US styles", "price", "USD"),
+    ("QUAL",     "QUAL",      "US Quality (QUAL)",    "Equities · US styles", "price", "USD"),
+    ("VLUE",     "VLUE",      "US Value factor (VLUE)", "Equities · US styles", "price", "USD"),
+    ("USMV",     "USMV",      "US Min volatility (USMV)", "Equities · US styles", "price", "USD"),
     # AI complex
     ("NVDA",     "NVDA",      "Nvidia",               "Equities · AI",        "price", "USD"),
     ("AVGO",     "AVGO",      "Broadcom",             "Equities · AI",        "price", "USD"),

@@ -2709,7 +2709,7 @@ function renderStress() { stressKpis(); ['st_hist', 'st_heat', 'st_ofr', 'st_tab
 
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
-  'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors',
+  'Equities · ASEAN', 'Equities · India', 'Equities · Australia', 'Equities · LatAm', 'Equities · Global', 'Equities · AI', 'Equities · US sectors', 'Equities · US styles',
   'Rates · US', 'Rates · Japan', 'Rates · Euro area', 'Rates · Singapore', 'Rates · Malaysia', 'Rates · China', 'Credit', 'Bonds & credit', 'FX', 'Commodities', 'Crypto', 'Volatility'];
 const PERF_FRED = ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y', 'BE10Y', 'CURVE_2s10s', 'HY_OAS', 'IG_OAS', 'JGB2Y', 'JGB10Y', 'JGB30Y', 'EA2Y', 'EA10Y', 'EA30Y', 'SORA3M', 'SGS2Y', 'SGS10Y', 'MY_OPR', 'CN_10Y', 'JP_CALL'];
 const PERIODS = [['1D', null], ['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
@@ -2873,7 +2873,7 @@ function buildMarkets() {
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderCommod(); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); }
 
 // ------------------------------------------------------------------ BREADTH (from the ticker universe)
 // Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
@@ -3092,6 +3092,64 @@ function buildCommod() {
   const r = cards.cm_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
 function renderCommod() { ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table'].forEach(k => cards[k].render()); }
+
+// ------------------------------------------------------------------ STYLES & SECTORS (Markets → Styles & sectors)
+const STY_PAIRS = [   // [numerator, denominator, label, short]
+  ['IWF', 'IWD', 'Growth ÷ value', 'growth vs value'], ['RTY', 'SPX', 'Small ÷ large caps', 'small vs large caps'],
+  ['SPXEW', 'SPX', 'Equal ÷ cap weight', 'equal vs cap weight'], ['MTUM', 'SPX', 'Momentum ÷ market', 'momentum vs market'],
+  ['QUAL', 'SPX', 'Quality ÷ market', 'quality vs market'], ['USMV', 'SPX', 'Low volatility ÷ market', 'low-vol vs market'],
+];
+const STY_SECT = ['XLK', 'XLC', 'XLY', 'XLF', 'XLI', 'XLE', 'XLB', 'XLV', 'XLP', 'XLU', 'VNQ'];
+const STY_P = [['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)], ['YTD', t => Date.UTC(new Date(t).getUTCFullYear(), 0, 1) - 1], ['1Y', t => addMonths(t, -12)]];
+function relRet(a, b, back) { const x = cmRet(S[a], back), y = cmRet(S[b], back); return x == null || y == null ? null : ((1 + x / 100) / (1 + y / 100) - 1) * 100; }
+function styRead() {   // rule-based one-liner from 3-month relative moves
+  const r = Object.fromEntries(STY_PAIRS.filter(p => has(p[0], p[1])).map(p => [p[0] + '/' + p[1], relRet(p[0], p[1], STY_P[1][1])]));
+  const sec = id => has(id, 'SPX') ? relRet(id, 'SPX', STY_P[1][1]) : null, out = [], T = 1;
+  const def = (r['USMV/SPX'] > T) + (sec('XLP') > T) + (sec('XLU') > T) + (sec('XLV') > T), cyc = (r['RTY/SPX'] > T) + (sec('XLF') > T) + (sec('XLI') > T) + (sec('XLE') > T) + (sec('XLB') > T);
+  if (def >= 2 && def > cyc) out.push('defensive leadership: low-vol and defensive sectors beating the index');
+  else if (cyc >= 3) out.push('cyclical leadership: small caps and cyclical sectors beating the index');
+  if (r['IWF/IWD'] != null) out.push(Math.abs(r['IWF/IWD']) < T ? 'growth and value level' : r['IWF/IWD'] > 0 ? `growth ahead of value by ${fmtNum(r['IWF/IWD'], 1)}%` : `value ahead of growth by ${fmtNum(-r['IWF/IWD'], 1)}%`);
+  if (r['SPXEW/SPX'] != null) out.push(r['SPXEW/SPX'] > T ? 'breadth widening (equal weight beating cap weight)' : r['SPXEW/SPX'] < -T ? 'narrow, mega-cap-led market (equal weight lagging)' : 'equal and cap weight level');
+  if (r['MTUM/SPX'] != null && Math.abs(r['MTUM/SPX']) > 2 * T) out.push(r['MTUM/SPX'] > 0 ? 'momentum working' : 'momentum unwinding');
+  return out.length ? 'Last 3 months: ' + out.join('; ') + '.' : '';
+}
+function renderStyRatio(c) {
+  const list = STY_PAIRS.filter(p => has(p[0], p[1])).map(([a, b, lab], k) => { const r = ratioSeries([a], [b]), p = r ? pts(r, state.from, state.to) : [], b0 = p.length ? p[0][1] : null;
+    return { name: lab, data: b0 ? p.map(([t, v]) => [t, v / b0 * 100]) : [], color: col(k) }; }).filter(x => x.data.length);
+  if (!list.length) return setEmpty(c, 'Waiting for data (next daily run).');
+  drawLines(c, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
+  setNote(c, `Each line = first ÷ second, = 100 at the start of the range; rising = the first is winning. ${styRead()}`);
+  setSource(c, 'Yahoo Finance (iShares IWF, IWD, MTUM, QUAL, USMV; Russell 2000; S&P 500 and equal weight); price returns; calculated');
+}
+function styTable(c, rows, heads0, note, src) {
+  const b = htmlBody(c), tbl = el('table', { class: 'perf watch' }), pos = tok('--pos'), neg = tok('--neg'), SC = [4, 8, 12, 15];
+  const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
+  const pc = v => v == null ? '–' : sign(v) + fmtNum(Math.abs(v), 1) + '%', heads = [heads0, ...STY_P.map(p => p[0])];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h + (i === 2 ? ' ▼' : ''), class: i === 0 ? 'l' : '' })))));
+  const tb = el('tbody'); rows.sort((x, y) => (y.r[1] ?? -1e9) - (x.r[1] ?? -1e9));
+  for (const r of rows) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: r.name }), ...r.r.map((v, i) => el('td', { class: 'heat', style: heat(v, SC[i]), text: pc(v) }))));
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(r => [r.name, ...r.r.map(v => v == null ? '' : v.toFixed(2))])];
+  setNote(c, note); setSource(c, src);
+}
+function renderStySect(c) {
+  if (!has('SPX')) return setEmpty(c, 'Waiting for data.');
+  const rows = STY_SECT.filter(id => has(id)).map(id => ({ name: S[id].label.replace(/^US /, ''), r: STY_P.map(([, f]) => relRet(id, 'SPX', f)) }));
+  styTable(c, rows, 'Sector', 'Each sector ETF’s price return minus the S&P 500’s (relative, %), sorted by 3 months. Blue = beating the index.', 'Yahoo Finance (SPDR sector ETFs, VNQ, ^GSPC); calculated');
+}
+function renderStyStyle(c) {
+  const rows = STY_PAIRS.filter(p => has(p[0], p[1])).map(([a, b, lab]) => ({ name: lab, r: STY_P.map(([, f]) => relRet(a, b, f)) }));
+  if (has('VLUE', 'SPX')) rows.push({ name: 'Value factor ÷ market', r: STY_P.map(([, f]) => relRet('VLUE', 'SPX', f)) });
+  styTable(c, rows, 'Style', 'Relative return of the first over the second, %, sorted by 3 months. Positive = the first is winning.', 'Yahoo Finance (iShares style ETFs, ^RUT, ^SPXEW, ^GSPC); calculated');
+}
+function buildStyles() {
+  const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'styGrid' }); panel.append(g);
+  makeCard(g, { key: 'sty_ratio', title: 'US style leadership', wide: true, defaultRange: '1Y', render: renderStyRatio });
+  makeCard(g, { key: 'sty_sect', title: 'Sectors vs the S&P 500', range: false, render: renderStySect });
+  makeCard(g, { key: 'sty_style', title: 'Styles: who is winning', range: false, render: renderStyStyle });
+  for (const k of ['sty_sect', 'sty_style']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+function renderStyles() { ['sty_ratio', 'sty_sect', 'sty_style'].forEach(k => cards[k].render()); }
 
 function buildBreadth() {
   const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'brGrid' });
@@ -4452,7 +4510,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
   fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
@@ -4620,7 +4678,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
