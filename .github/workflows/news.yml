@@ -1,10 +1,10 @@
 name: Live headlines
 
-# Headlines on their own fast lane. GitHub's scheduler often fires only every few hours, so one run
-# here loops for almost 6 hours, rebuilding the headlines every 10 minutes and force-pushing them to
-# the "live-news" branch (a single file, no history). The dashboard reads that file directly, so new
-# headlines show up without a full rebuild of the site. A new scheduled run waits in the queue while
-# one is looping, so the next loop starts as soon as the current one ends.
+# Headlines on their own fast lane. One run loops for almost 6 hours, rebuilding the headlines every
+# 10 minutes and force-pushing them to the "live-news" branch (a single file, no history). The dashboard
+# reads that file directly, so new headlines show up without a full rebuild of the site.
+# GitHub's scheduler often skips runs for hours, so each run starts the next one itself when it ends
+# (a workflow_dispatch, which GITHUB_TOKEN is allowed to trigger); the schedule is only a backup.
 
 on:
   schedule:
@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to start the next run when this one ends
 
 concurrency:
   group: live-news
@@ -57,3 +58,9 @@ jobs:
             fi
             sleep 600
           done
+
+      - name: Start the next run
+        if: (success() || failure()) && github.ref == 'refs/heads/main'   # not after a manual cancel, so the chain can be stopped
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run news.yml --repo "${{ github.repository }}" --ref main || echo "could not start the next run; the schedule will"
