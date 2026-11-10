@@ -219,6 +219,9 @@ FRED = [
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
+    ("ISM_BAL",     "BSCICP02USM460S", "ISM manufacturing (OECD balance form; PMI = 50 + value / 2)", "Macro · Business cycle", "level", "balance", "1985-01-01"),
+    ("IPMAN",       "IPMAN",       "US manufacturing output (industrial production)", "Macro · Business cycle", "level", "idx", "1985-01-01"),
+    ("SRVPRD",      "SRVPRD",      "US services payrolls",       "Macro · Business cycle", "level", "thous", "1985-01-01"),
     ("GDPNOW",      "GDPNOW",      "Atlanta Fed GDPNow (q/q annualised)", "Macro · Growth", "level", "%", "2011-01-01"),
     ("RGDP_SAAR",   "A191RL1Q225SBEA", "US real GDP growth (q/q annualised)", "Macro · Growth", "level", "%", "1990-01-01"),
     ("MICH",        "MICH",        "UMich 1-year inflation expectations", "Macro · Inflation", "level", "%", "1990-01-01"),
