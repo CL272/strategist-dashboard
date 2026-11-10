@@ -11,6 +11,7 @@ Returns series in the same format as cnjp.build(), written into asia.json by asi
 from __future__ import annotations
 
 import csv
+import functools
 import io
 
 import pandas as pd
@@ -41,6 +42,7 @@ DAILY = {"AU_CASH": "FIRMMCRTD", "AU_3M": "FIRMMBAB90D"}
 TABLE_NAMES = {"f1": "F1", "f1.1": "F1.1", "f2": "F2", "g1": "G1", "h5": "H5", "h1": "H1", "d1": "D1", "f11.1": "F11.1"}
 
 
+@functools.lru_cache(maxsize=None)   # the asia and cbwatch steps both read F1/F2: download each table once per run
 def rba_table(t: str) -> dict[str, pd.Series] | None:
     r = get(URL.format(t=t))
     if r is None:

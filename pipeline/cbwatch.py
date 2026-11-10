@@ -92,8 +92,8 @@ def bnm_interbank(old: dict) -> dict[str, pd.Series]:
     return out
 
 
-def ecb_series(flow: str, key: str) -> pd.Series | None:
-    r = get(ECB.format(flow=flow, key=key), {"startPeriod": "2010-01-01", "format": "csvdata"})
+def ecb_series(flow: str, key: str, start: str = "2010-01-01", min_len: int = 50) -> pd.Series | None:
+    r = get(ECB.format(flow=flow, key=key), {"startPeriod": start, "format": "csvdata"})
     if r is None:
         return None
     try:
@@ -101,7 +101,7 @@ def ecb_series(flow: str, key: str) -> pd.Series | None:
     except Exception:
         return None
     s = pd.Series(pd.to_numeric(df["OBS_VALUE"], errors="coerce").values, index=pd.to_datetime(df["TIME_PERIOD"])).dropna().sort_index()
-    return s if len(s) > 50 else None
+    return s if len(s) > min_len else None
 
 
 def build(status: dict) -> None:
@@ -130,7 +130,14 @@ def build(status: dict) -> None:
         keep(sid, s[s.index >= "2010-01-01"] if s is not None else None,
              dict(label=label, group="Rates · Australia", kind="yield", unit="%", source=f"Reserve Bank of Australia (table {t.upper()}, {code})"))
     for sid, flow, key, label, group in ECB_SERIES:
-        keep(sid, ecb_series(flow, key), dict(label=label, group=group, kind="yield", unit="%", source=f"ECB Data Portal ({flow} {key})"))
+        s = None
+        if sid in old:   # only fetch the last two months and merge into the published history
+            prev = unpack(old[sid])
+            new = ecb_series(flow, key, (prev.index[-1] - pd.Timedelta(days=60)).strftime("%Y-%m-%d"), 0) if len(prev) else None
+            s = new.combine_first(prev) if new is not None else None
+        if s is None:
+            s = ecb_series(flow, key)
+        keep(sid, s, dict(label=label, group=group, kind="yield", unit="%", source=f"ECB Data Portal ({flow} {key})"))
         time.sleep(0.2)
     write("cbwatch.json", out)
     missing = [k for k in out if status.get(k) != "ok"]
