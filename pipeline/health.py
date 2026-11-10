@@ -19,6 +19,10 @@ FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json"]
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
 SLOW = {"JP_RETAIL_YOY": 220, "CN_CCI": 160, "MY_GDP_YOY": 280, "SH_PE": 200, "SH_DY": 200}  # Shiller earnings/dividends lag ~3 months
+# BNM monthly statistics reach data.gov.my about 4 months late; BIS effective exchange rates reach FRED about 3-4 months late
+SLOW.update({k: 200 for k in ("MY_ALR", "MY_BR", "MY_FD12", "MY_M2", "MY_M3", "MY_M2_YOY", "MY_M3_YOY")})
+SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD", "MYR", "KRW", "INR", "AUD", "IDR")})
+SLOW["ID_IP_YOY"] = 200
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")
 IGNORE = {"USREC", "SH_FWD10"}     # recession flag only changes at NBER announcements; forward returns end 10 years back

@@ -31,7 +31,7 @@ SERIES = [
     ("AU_EMP_YOY",    "h5",   "GLFSEPTSYP",   "Australia employment growth YoY",        "%",   "Macro · Australia"),
     ("AU_GDP_YOY",    "h1",   "GGDPCVGDPY",   "Australia real GDP YoY",                 "%",   "Macro · Australia"),
     ("AU_TOT",        "h1",   "GOPITT",       "Australia terms of trade",               "idx", "Macro · Australia"),
-    ("AU_CREDIT_YOY", "d1",   "DGFAC12",      "Australia total credit growth YoY",      "%",   "Macro · Australia"),
+    ("AU_CREDIT_YOY", "d1",   "DGFACNF12",      "Australia total credit growth YoY",      "%",   "Macro · Australia"),
     ("AU_HOUSING_YOY","d1",   "DGFACH12",     "Australia housing credit growth YoY",    "%",   "Macro · Australia"),
     ("AU_BROAD_YOY",  "d1",   "DGFABM12",     "Australia broad money growth YoY",       "%",   "Macro · Australia"),
     ("AU_TWI",        "f11.1","FXRTWI",       "AUD trade-weighted index (May 1970=100)", "idx", "FX · Australia"),
