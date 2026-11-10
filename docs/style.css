@@ -604,3 +604,8 @@ ul.changes li .qdot { flex: none; display: inline-block; width: 8px; height: 8px
 ul.changes a { color: var(--ink); text-decoration: none; }
 ul.changes a:hover { color: var(--brand); text-decoration: underline; }
 @media (min-width: 900px) { ul.changes { grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+
+/* group labels inside a sub-tab bar (e.g. Central banks: Fed | Other banks) */
+.subtab-group { align-self: center; margin: 0 2px 0 10px; padding-left: 12px; border-left: 1px solid var(--border);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.subtab-group:empty { padding-left: 0; margin-left: 6px; }

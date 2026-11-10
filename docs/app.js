@@ -4176,16 +4176,16 @@ function renderWeekly() {
 // tenor's horizon. Government-curve rates (JGBs, euro AAA forwards, Australian bonds) carry little premium at short
 // horizons, so their spread is read as is. Never turned into a probability.
 const CBS = {
-  BNM: { name: 'Bank Negara Malaysia', short: 'BNM', sub: 'Malaysia (BNM)', policy: 'MY_OPR', policyLab: 'OPR', infl: 'MY_CPI_YOY', head: 'MY_IB_3M', headLab: '3-month interbank',
+  BNM: { name: 'Bank Negara Malaysia', short: 'BNM', sub: 'BNM', policy: 'MY_OPR', policyLab: 'OPR', infl: 'MY_CPI_YOY', head: 'MY_IB_3M', headLab: '3-month interbank',
     tenors: [['MY_IB_1M', 1, '1M'], ['MY_IB_3M', 3, '3M'], ['MY_IB_6M', 6, '6M']], cal: 'BNM', gaugeLab: '3M interbank − OPR', gShort: '3M interbank',
     src: 'Bank Negara Malaysia API (OPR; interbank rates)' },
-  RBA: { name: 'Reserve Bank of Australia', short: 'RBA', sub: 'Australia (RBA)', policy: 'AU_CASH', policyLab: 'cash rate', infl: 'AU_CPI_YOY', head: 'AU_BB_3M', headLab: '3-month bank bill',
+  RBA: { name: 'Reserve Bank of Australia', short: 'RBA', sub: 'RBA', policy: 'AU_CASH', policyLab: 'cash rate', infl: 'AU_CPI_YOY', head: 'AU_BB_3M', headLab: '3-month bank bill',
     tenors: [['AU_BB_1M', 1, '1M'], ['AU_BB_3M', 3, '3M'], ['AU_BB_6M', 6, '6M'], ['AU_2Y', 24, '2Y'], ['AU_3Y', 36, '3Y']], cal: 'RBA', gaugeLab: '3M bank bill − cash rate', gShort: '3M bills',
     src: 'Reserve Bank of Australia (tables F1, F2)' },
-  BoJ: { name: 'Bank of Japan', short: 'BoJ', sub: 'Japan (BoJ)', policy: 'JP_CALL', policyLab: 'call rate', infl: 'JP_CPI_YOY', head: 'JP_GB_2Y', headLab: '2-year JGB',
+  BoJ: { name: 'Bank of Japan', short: 'BoJ', sub: 'BoJ', policy: 'JP_CALL', policyLab: 'call rate', infl: 'JP_CPI_YOY', head: 'JP_GB_2Y', headLab: '2-year JGB',
     tenors: [['JP_GB_1Y', 12, '1Y'], ['JP_GB_2Y', 24, '2Y']], cal: 'BoJ', gaugeLab: '2Y JGB − call rate', gShort: '2Y JGB',
     src: 'Bank of Japan (call rate); Ministry of Finance Japan (JGB yields)' },
-  ECB: { name: 'European Central Bank', short: 'ECB', sub: 'Euro area (ECB)', policy: 'EA_DFR', policyLab: 'deposit rate', infl: 'EA_HICP_YOY', head: 'EA_FWD_1Y', headLab: '1-year-ahead forward',
+  ECB: { name: 'European Central Bank', short: 'ECB', sub: 'ECB', policy: 'EA_DFR', policyLab: 'deposit rate', infl: 'EA_HICP_YOY', head: 'EA_FWD_1Y', headLab: '1-year-ahead forward',
     tenors: [['EA_FWD_3M', 3, '3M fwd'], ['EA_FWD_6M', 6, '6M fwd'], ['EA_FWD_1Y', 12, '1Y fwd'], ['EA_FWD_2Y', 24, '2Y fwd']], cal: 'ECB', gaugeLab: '1Y-ahead forward − deposit rate', gShort: '1Y fwd',
     src: 'ECB Data Portal (deposit facility rate; AAA government curve instantaneous forwards)' },
 };
@@ -4256,7 +4256,8 @@ function cbKpis() {
     if (st.spread) tile(`${C.short}: ${C.gaugeLab}`, bp(st.spread.v), st.avg != null ? `normal ${bp(st.avg)} · 1M ${st.chg1m == null ? '–' : bp(st.chg1m)}` : '', nice(st.spread.t));
     tile(`${C.short}: next decision`, st.next ? dShort(dayMs(st.next.d)) + (st.next.end ? '–' + dShort(dayMs(st.next.end)) : '') : '–', st.next && st.next.sgt ? `${st.next.sgt} SGT` : '', st.next ? (st.next.conf === 'Confirmed' ? 'bank schedule' : 'estimated') : 'not in calendar');
   }
-  const sub = SUBTABS.cbwatch[state.sub.cbwatch || 0][0], short = (Object.values(CBS).find(C => C.sub === sub) || {}).short;
+  const sub = SUBTABS.cbwatch[state.sub.cbwatch || 0][0], short = (Object.values(CBS).find(C => C.sub === sub) || {}).short, fed = cbFedSub();
+  $('#cbKpis').hidden = fed; $('#fpKpis').hidden = !fed;
   filterKpis('#cbKpis', l => short ? (l.startsWith(short + ':') ? '*' : '') : (l.endsWith(' read') ? '*' : ''));
 }
 function renderCbTable(c) {
@@ -4271,7 +4272,7 @@ function renderCbTable(c) {
   let fLast = '–';   // last Fed move from the effective rate's steps (EFFR moves ~1bp day to day otherwise)
   if (has('EFFR')) { const e = S.EFFR; for (let i = e.t.length - 1; i > 0; i--) if (Math.abs(e.v[i] - e.v[i - 1]) >= 0.15) { fLast = `${bp(Math.round((e.v[i] - e.v[i - 1]) * 4) * 25)} · ${dShort(e.t[i])} ${String(new Date(e.t[i]).getUTCFullYear()).slice(2)}`; break; } }
   if (f) { const r = [f.short, f.rate, fLast, nextTxt(f.next), pc(f.infl && f.infl.v), pc(f.real), f.gauge, '–', f.chg, f.read];
-    tb.append(el('tr', { class: 'row' }, ...r.map((x, i) => i === 9 ? el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(readTok(x))}` }, x)) : cell(x, i === 0 || i === 6 ? 'l' : '')))); csv.push(r); }
+    tb.append(el('tr', { class: 'row', onclick: () => setSub('cbwatch', SUBTABS.cbwatch.findIndex(x => x[2] === 'Fed')) }, ...r.map((x, i) => i === 9 ? el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(readTok(x))}` }, x)) : cell(x, i === 0 || i === 6 ? 'l' : '')))); csv.push(r); }
   for (const k of ['ECB', 'BoJ', 'BNM', 'RBA']) {
     const C = CBS[k], st = cbStats(k); if (!st || !st.p) continue;
     const r = [C.short, fmtNum(st.p.v, 2) + '%', st.last ? `${bp(st.last.d * 100)} · ${dShort(st.last.t)} ${String(new Date(st.last.t).getUTCFullYear()).slice(2)}` : '–', nextTxt(st.next),
@@ -4394,7 +4395,9 @@ function buildCbWatch() {
   }
   for (const k of ['cb_table', ...Object.keys(CBS).map(x => `cb_info_${x}`)]) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-function renderCbWatch() { cbKpis(); ['cb_table', 'cb_rates', 'cb_real', ...Object.keys(CBS).flatMap(k => [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`])].forEach(k => cards[k].render()); }
+const cbFedSub = () => (SUBTABS.cbwatch[state.sub.cbwatch || 0][2] || '') === 'Fed';
+function renderCbWatch() { cbKpis(); if (cbFedSub()) fpKpis();
+  ['cb_table', 'cb_rates', 'cb_real', ...Object.keys(CBS).flatMap(k => [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]), 'fp_path', 'fp_years', 'fp_table', 'fp_bars', 'fp_hist', 'fp_2y'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ FED PATH vs MARKET PRICING
 let FP = null;
@@ -4545,7 +4548,7 @@ function renderFp2y(c) {
   setNote(c, `A simple, long-history read of what the market expects over the next two years: below zero = cuts priced, above zero = hikes priced (plus a small term premium). Latest ${a ? bp(a.v) : '–'}. Grey = US recessions: the spread typically turns deeply negative before and during easing cycles.`);
 }
 function buildFedPath() {
-  const g = $('#fpGrid');
+  const g = $('#cbGrid');
   makeCard(g, { key: 'fp_path', range: false, title: 'Fed funds path: market pricing vs the Fed’s projections', wide: true, tall: true,
     source: 'CBOT 30-day fed funds futures via Yahoo Finance; Federal Reserve Summary of Economic Projections via FRED (FEDTARMD, FEDTARCTH, FEDTARCTL, FEDTARMDLR); FRED (EFFR)', render: renderFpPath });
   makeCard(g, { key: 'fp_years', range: false, title: 'Year-end rate: market vs Fed median', wide: true,
@@ -4698,8 +4701,9 @@ const SUBTABS = {
   overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
-  cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']], ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`]])],
-  fedpath: [['Path vs the Fed', ['fp_path', 'fp_years']], ['Meeting by meeting', ['fp_table', 'fp_bars']], ['How pricing moved', ['fp_hist', 'fp_2y']]],
+  cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
+    ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
+    ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
     ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
@@ -4727,7 +4731,9 @@ function buildSubtabs() {
     panel.querySelectorAll('.grid > h3.section').forEach(h => h.remove());
     const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Sections' });
     (first.parentElement.classList.contains('grid') ? first.parentElement : first).before(nav);
-    groups.forEach(([label], i) => {
+    groups.forEach(([label, , grp], i) => {
+      if (grp && grp !== (groups[i - 1] || [])[2]) nav.append(el('span', { class: 'subtab-group', text: grp }));
+      else if (!grp && i && groups[i - 1][2]) nav.append(el('span', { class: 'subtab-group', text: '' }));
       nav.append(el('button', { type: 'button', role: 'tab', text: label, 'data-i': i, onclick: () => setSub(tab, i) }));
       for (const n of nodes[i]) {
         n.dataset.sub = i; n.dataset.subtab = tab;
@@ -4769,9 +4775,9 @@ function syncFilterUI() {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, fedpath: renderFedPath, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', fedpath: 'Fed path vs market pricing', cbwatch: 'Central bank watch', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -4868,11 +4874,12 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);   // ~2 MB of ticker history: loaded after the first page is drawn
-  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'fedpath', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

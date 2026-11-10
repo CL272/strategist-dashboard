@@ -35,8 +35,8 @@
     <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
     <button role="tab" data-tab="stress" aria-selected="false"><span class="ic">⚠</span>Stress &amp; Signposts</button>
     <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
-    <button role="tab" data-tab="fedpath" aria-selected="false"><span class="ic">⤳</span>Fed path vs market</button>
-    <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central bank watch</button>
+    <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central banks</button>
+    <div class="nav-group">Regions</div>
     <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia Pacific</button>
     <button role="tab" data-tab="cnjp" aria-selected="false"><span class="ic">◑</span>China &amp; Japan</button>
     <div class="nav-group">Markets</div>
@@ -90,12 +90,8 @@
 
   <section id="tab-cbwatch" class="tab-panel" hidden>
     <div class="kpis" id="cbKpis"></div>
+    <div class="kpis" id="fpKpis" hidden></div>
     <div class="grid" id="cbGrid"></div>
-  </section>
-
-  <section id="tab-fedpath" class="tab-panel" hidden>
-    <div class="kpis" id="fpKpis"></div>
-    <div class="grid" id="fpGrid"></div>
   </section>
 
   <section id="tab-liquidity" class="tab-panel" hidden>
