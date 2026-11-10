@@ -1285,10 +1285,12 @@ function laggedCorr(lead, follow, maxLag = 12) {   // monthly: corr(lead_t, foll
 }
 function renderLeadLag(c) {
   if (!has('LEI_6M', 'REG_GM')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
-  drawPair(c, { name: 'Leading index, 6m annualised', data: pts(S.LEI_6M, state.from, state.to) }, { name: 'Growth momentum (regime model)', data: pts(S.REG_GM, state.from, state.to) },
+  const k = +state.llShift || 0, L = S.LEI_6M, lead = k ? { t: L.t.map(t => addMonths(t, k)), v: L.v } : L, xmax = k ? addMonths(state.to, k) : state.to;
+  drawPair(c, { name: k ? `Leading index, moved forward ${k} months` : 'Leading index, 6m annualised', data: pts(lead, state.from, xmax) }, { name: 'Growth momentum (regime model)', data: pts(S.REG_GM, state.from, state.to) },
     { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => zf(v), axisA: v => fmtNum(v, 0) + '%', axisB: v => v.toFixed(1), zeroA: true, zeroB: true });
+  if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
   const cc = laggedCorr(S.LEI_6M, S.REG_GM).filter(x => x[1] != null), best = cc.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]);
-  setNote(c, `Does the leading index turn before the regime's growth signal? Correlation of the leading index with growth momentum k months later: ${cc.filter(x => [0, 3, 6, 9, 12].includes(x[0])).map(x => `${x[0]}m ${fmtNum(x[1], 2)}`).join(' · ')}. Strongest at ${best[0]} months. Caution: scanning many lags always finds a best one; treat the lead as a tendency, not a forecast.`);
+  setNote(c, (k ? `The leading index is drawn ${k} months later than measured, so its turns line up with growth; the stretch past today is its hint for the next ${k} months. ` : '') + `Does the leading index turn before the regime's growth signal? Correlation of the leading index with growth momentum k months later: ${cc.filter(x => [0, 3, 6, 9, 12].includes(x[0])).map(x => `${x[0]}m ${fmtNum(x[1], 2)}`).join(' · ')}. Strongest at ${best[0]} months. Caution: scanning many lags always finds a best one; treat the lead as a tendency, not a forecast.`);
   setSource(c, 'Dashboard calculations from FRED and Yahoo Finance');
 }
 function ratioSeries(numIds, denIds) {   // equal-weight ratio of baskets, daily
@@ -1346,7 +1348,8 @@ function buildRegime() {
   g.append(el('h3', { class: 'section', text: 'Leading indicators: where growth is heading' }));
   makeCard(g, { key: 'lei', title: 'DIY leading index', wide: true, sub: 'US leading index built with the Conference Board method from free data: 6-month change and the share of components rising.', render: renderLEI });
   makeCard(g, { key: 'leidrv', title: 'What is driving the leading index', range: false, render: renderLEIDrivers });
-  makeCard(g, { key: 'leadlag', title: 'Leading index vs regime growth signal', render: renderLeadLag });
+  state.llShift = '0';
+  makeCard(g, { key: 'leadlag', title: 'Leading index vs regime growth signal', seg: { key: 'llShift', options: [['0', 'As measured'], ['3', 'Lead +3m']] }, render: renderLeadLag });
   makeCard(g, { key: 'cli', title: 'OECD leading indicators', wide: true, sub: 'Composite leading indicators for six economies: they tend to turn 6–9 months before activity. 100 = long-term trend.', render: renderCLI });
   makeCard(g, { key: 'cugold', title: 'Copper / gold ratio vs UST 10Y', render: renderCopperGold });
   makeCard(g, { key: 'cycdef', title: 'Cyclicals vs defensives', render: renderCycDef });
@@ -3072,6 +3075,115 @@ function renderPair(c) {
   if (conv.length) c.subEl.textContent += ` ${conv.map(id => S[id].label).join(' and ')} shown as bond return (−Δyield).`;
   setNote(c, `Latest ${fmtCorr(data[data.length - 1][1])}, range average ${fmtCorr(mean)}.` + hint);
 }
+// ---- lead-lag finder: monthly, does series A move before series B?
+// [leader, mode, follower, mode, why]; modes: level, yoy (% change on a year), chg (change on a year, points)
+const LL_PAIRS = [
+  ['LEI_6M', 'level', 'REG_GM', 'level', 'US leading index → growth momentum'],
+  ['M2_YOY', 'level', 'LH_SPX', 'yoy', 'Money growth → US equities'],
+  ['NET_LIQ', 'yoy', 'SPX', 'yoy', 'Fed net liquidity → US equities'],
+  ['CURVE_3m10y_LONG', 'level', 'UNRATE', 'chg', 'Yield curve → unemployment (inverse)'],
+  ['SLOOS_CI', 'level', 'UNRATE', 'chg', 'Bank lending standards → unemployment'],
+  ['BAA_10Y', 'level', 'RZG_PAYEMS', 'level', 'Credit spreads → payroll growth (inverse)'],
+  ['BRENT', 'yoy', 'CPI_YOY', 'level', 'Oil → US inflation'],
+  ['CLI_USA', 'level', 'RZG_INDPRO', 'level', 'OECD US leading indicator → industrial production'],
+  ['CLI_CHN', 'level', 'COPPER', 'yoy', 'China leading indicator → copper'],
+  ['SMH', 'yoy', 'KR_EXP_YOY', 'level', 'Semiconductor stocks → Korea exports'],
+  ['KR_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'Korea exports → Malaysia exports'],
+  ['KR_EXP_YOY', 'level', 'SG_NODX_YOY', 'level', 'Korea exports → Singapore NODX'],
+  ['MY_LEADING', 'yoy', 'MY_COINCIDENT', 'yoy', 'Malaysia leading → coincident index'],
+  ['KLCI', 'yoy', 'MY_COINCIDENT', 'yoy', 'KLCI → Malaysia coincident index'],
+  ['MY_LEADING', 'yoy', 'MY_IPI_YOY', 'level', 'Malaysia leading index → industrial production'],
+  ['DXY', 'yoy', 'EEM', 'yoy', 'US dollar → EM equities (inverse)'],
+  ['REAL10Y', 'chg', 'GOLD', 'yoy', 'Real yields → gold (inverse)'],
+  ['CN_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'China exports → Malaysia exports'],
+];
+const llCache = new Map();
+const llMode = id => S[id].kind === 'price' ? 'yoy' : S[id].kind === 'yield' ? 'chg' : 'level';
+function llSeries(id, mode) {   // Map(month start -> value), gaps of up to 3 months carried forward (quarterly data)
+  const key = id + '|' + mode; if (llCache.has(key)) return llCache.get(key);
+  const me = monthEnds(S[id]), ks = [...me.keys()].sort((a, b) => a - b), raw = new Map();
+  if (ks.length) { let last = null, gap = 9; for (let t = ks[0]; t <= ks[ks.length - 1]; t = addMonths(t, 1)) { if (me.has(t)) { last = me.get(t); gap = 0; } else gap++; if (last != null && gap <= 3) raw.set(t, last); } }
+  let out = raw;
+  if (mode !== 'level') { out = new Map(); for (const [t, v] of raw) { const p = raw.get(addMonths(t, -12)); if (p != null && (mode === 'chg' || p !== 0)) out.set(t, mode === 'yoy' ? (v / p - 1) * 100 : v - p); } }
+  llCache.set(key, out); return out;
+}
+function llScan(a, ma, b, mb, max = 24) {   // correlation of A(t) with B(t+k), k = -max..max; k > 0 means A leads
+  const A = llSeries(a, ma), B = llSeries(b, mb), res = [];
+  for (let k = -max; k <= max; k++) { const x = [], y = [];
+    for (const [t, v] of A) { const w = B.get(addMonths(t, k)); if (w != null) { x.push(v); y.push(w); } }
+    res.push({ k, r: x.length >= 36 ? pearson(x, y) : null, n: x.length }); }
+  const ok = res.filter(z => z.r != null);
+  if (!ok.length) return null;
+  const best = ok.reduce((m, z) => Math.abs(z.r) > Math.abs(m.r) ? z : m), zero = res.find(z => z.k === 0);
+  return { res, best, zero };
+}
+const llLabel = (id, mode) => S[id].label + (mode === 'yoy' ? ', YoY %' : mode === 'chg' ? ', 12m change' : '');
+const llFmt = mode => v => (mode === 'level' ? '' : sign(v)) + fmtNum(mode === 'level' ? v : Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + (mode === 'yoy' ? '%' : mode === 'chg' ? ' pts' : '');
+state.ll = { a: 'LEI_6M', ma: 'level', b: 'REG_GM', mb: 'level', lag: 'best' };
+function llNow() { const L = state.ll; if (!has(L.a, L.b) || L.a === L.b) return null; const sc = llScan(L.a, L.ma, L.b, L.mb); if (!sc) return null;
+  return { sc, k: L.lag === 'best' ? sc.best.k : +L.lag }; }
+function renderLLChart(c) {
+  const L = state.ll;
+  for (const [sel, key] of [[c.selA, 'a'], [c.selB, 'b']]) { const ids = allIdsSorted().filter(id => S[id].group !== 'Tickers' || id === L[key]);
+    if (sel.options.length !== ids.length) sel.replaceChildren(...ids.map(id => el('option', { value: id, text: S[id].label }))); sel.value = L[key]; }
+  const now = llNow();
+  if (!now) return setEmpty(c, 'Pick two different series with at least three years of overlapping monthly history.');
+  const { sc, k } = now, A = llSeries(L.a, L.ma), B = llSeries(L.b, L.mb);
+  const da = [...A].map(([t, v]) => [addMonths(t, k), v]).filter(p => p[0] >= state.from && p[0] <= addMonths(state.to, Math.max(k, 0))), db = [...B].filter(p => p[0] >= state.from && p[0] <= state.to);
+  const xmax = Math.max(state.to, da.length ? da[da.length - 1][0] : 0);
+  drawPair(c, { name: llLabel(L.a, L.ma) + (k ? ` · moved ${k > 0 ? 'forward' : 'back'} ${Math.abs(k)}m` : ''), data: da }, { name: llLabel(L.b, L.mb), data: db },
+    { fmtA: llFmt(L.ma), fmtB: llFmt(L.mb), axisA: v => fmtNum(v, Math.abs(v) < 10 ? 1 : 0), axisB: v => fmtNum(v, Math.abs(v) < 10 ? 1 : 0) });
+  if (xmax > state.to) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
+  const at = sc.res.find(z => z.k === k);
+  c.subEl.textContent = k === 0 ? 'Both series as measured, monthly.' : k > 0 ? `First series drawn ${k} months later than measured, so its turns line up with the second. The stretch past today is what it hints for the next ${k} months.` : `The second series tends to move first: the first is drawn ${-k} months earlier.`;
+  setNote(c, `Correlation at this shift: ${at && at.r != null ? fmtCorr(at.r) : 'n/a'} (${at ? at.n : 0} months, full history); as measured: ${sc.zero && sc.zero.r != null ? fmtCorr(sc.zero.r) : 'n/a'}. Strongest link at ${sc.best.k === 0 ? 'no lead' : sc.best.k > 0 ? `a ${sc.best.k}-month lead` : `a ${-sc.best.k}-month lag (the second series leads)`}: ${fmtCorr(sc.best.r)}.` + (sc.best.r < 0 ? ' Negative = they move in opposite directions.' : ''));
+  setSource(c, srcOf([L.a, L.b]) + '; monthly transforms and correlations calculated');
+}
+function renderLLBars(c) {
+  const now = llNow(); if (!now) return setEmpty(c, 'Pick two series.');
+  const { sc, k } = now, o = baseOpt(); o.legend.show = false; o.grid.top = 14;
+  o.xAxis = { type: 'category', data: sc.res.map(z => z.k), name: '← second leads · months · first leads →', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tok('--muted'), fontSize: 11 },
+    axisLabel: { color: tok('--muted'), fontSize: 11 }, axisLine: { lineStyle: { color: tok('--axis') } }, axisTick: { show: false } };
+  o.grid.bottom = 26;
+  o.yAxis = valAxis(v => v.toFixed(1), { min: -1, max: 1, scale: false });
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const z = sc.res[p.dataIndex]; return `<b>${z.r == null ? 'n/a' : fmtCorr(z.r)}</b> ${z.k === 0 ? 'same month' : z.k > 0 ? `first leads by ${z.k}m` : `second leads by ${-z.k}m`} · ${z.n} months`; } };
+  o.series = [{ type: 'bar', barWidth: '70%', data: sc.res.map(z => ({ value: z.r == null ? 0 : +z.r.toFixed(3), itemStyle: { color: z.k === k ? tok('--brand-red') : hexA(tok('--s1'), z.k === sc.best.k ? 0.9 : 0.45), borderRadius: 2 } })) }];
+  const ch = inst(c); ch.setOption(o, true);
+  ch.off('click'); ch.on('click', p => { state.ll.lag = String(sc.res[p.dataIndex].k); syncLLSeg(); cards.ll_chart.render(); c.render(); });
+  c.csv = [['Lead of first series (months)', 'Correlation', 'Months'], ...sc.res.map(z => [z.k, z.r == null ? '' : z.r.toFixed(3), z.n])];
+  setNote(c, 'Correlation when the first series is shifted by each number of months, over the full shared history. Red = the shift shown in the chart; click any bar to use it. A peak to the right of 0 means the first series tends to move first.');
+  setSource(c, 'Calculated from the two series (monthly)');
+}
+function syncLLSeg() { const c = cards.ll_chart; c.root.querySelectorAll('.card-tools .seg button').forEach(b => b.classList.toggle('on', (b.textContent === 'As measured' && state.ll.lag === '0') || (b.textContent === 'Best lead' && state.ll.lag === 'best'))); }
+function renderLLTable(c) {
+  const b = htmlBody(c), rows = LL_PAIRS.filter(p => has(p[0], p[2])).map(p => ({ p, sc: llScan(p[0], p[1], p[2], p[3]) })).filter(r => r.sc)
+    .sort((x, y) => Math.abs(y.sc.best.r) - Math.abs(x.sc.best.r));
+  const tbl = el('table', { class: 'perf watch' }), heads = ['Relationship', 'First series', 'Second series', 'As measured', 'Best shift', 'Correlation there', 'Months'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 3 ? 'l' : '' })))));
+  const tb = el('tbody'), L = state.ll;
+  for (const { p, sc } of rows) { const k = sc.best.k;
+    tb.append(el('tr', { class: 'row' + (L.a === p[0] && L.b === p[2] ? ' sel' : ''), onclick: () => { state.ll = { a: p[0], ma: p[1], b: p[2], mb: p[3], lag: 'best' }; syncLLSeg(); renderCorrelation(); cards.ll_chart.root.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },
+      el('td', { class: 'l', text: p[4] }), el('td', { class: 'l nm', text: llLabel(p[0], p[1]) }), el('td', { class: 'l nm', text: llLabel(p[2], p[3]) }),
+      el('td', { text: sc.zero.r == null ? '–' : fmtCorr(sc.zero.r) }),
+      el('td', { text: k === 0 ? 'none' : k > 0 ? `first leads ${k}m` : `second leads ${-k}m` }),
+      el('td', { class: 'heat', style: `background:${hexA(tok(sc.best.r >= 0 ? '--pos' : '--neg'), Math.min(1, Math.abs(sc.best.r)) * 0.42)}`, text: fmtCorr(sc.best.r) }), el('td', { text: String(sc.best.n) }))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(({ p, sc }) => [p[4], llLabel(p[0], p[1]), llLabel(p[2], p[3]), sc.zero.r == null ? '' : sc.zero.r.toFixed(2), sc.best.k, sc.best.r.toFixed(2), sc.best.n])];
+  setNote(c, 'Well-known lead-lag relationships, tested on this dashboard’s own monthly data over each pair’s full shared history, strongest first. Click a row to chart it at its best shift. Caution: searching 49 shifts always finds a “best” one, short histories overstate links, and a past lead is a tendency, not a forecast.');
+}
+function buildLeadLag() {
+  const g = $('#tab-correlation .grid');
+  const c = makeCard(g, { key: 'll_chart', title: 'Lead-lag chart', defaultRange: '10Y', seg: { key: 'llLagSeg', options: [['0', 'As measured'], ['best', 'Best lead']], onchange: null }, render: renderLLChart });
+  c.root.querySelectorAll('.card-tools .seg button').forEach(btn => btn.addEventListener('click', () => { state.ll.lag = btn.textContent === 'As measured' ? '0' : 'best'; syncLLSeg(); cards.ll_chart.render(); cards.ll_bars.render(); }));
+  c.selA = el('select', { 'aria-label': 'First series (possible leader)' }); c.selB = el('select', { 'aria-label': 'Second series' });
+  const pick = (sel, key, mk) => sel.addEventListener('change', () => { state.ll[key] = sel.value; state.ll[mk] = llMode(sel.value); state.ll.lag = 'best'; syncLLSeg(); renderCorrelation(); });
+  pick(c.selA, 'a', 'ma'); pick(c.selB, 'b', 'mb');
+  c.root.querySelector('.card-head').after(el('div', { class: 'pairsel' }, c.selA, el('span', { class: 'muted', text: 'leads?' }), c.selB));
+  makeCard(g, { key: 'll_bars', range: false, title: 'Correlation at each shift', render: renderLLBars });
+  makeCard(g, { key: 'll_table', range: false, title: 'Lead-lag relationships worth knowing', wide: true, render: renderLLTable });
+  const r = cards.ll_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+  syncLLSeg();
+}
 function buildCorrelation() {
   const u = $('#corrUniverse');
   Object.keys(UNIVERSES).forEach(k => u.append(el('option', { value: k, text: k })));
@@ -3087,7 +3199,7 @@ function buildCorrelation() {
   p.root.querySelector('.card-head').after(el('div', { class: 'pairsel' }, p.selA, el('span', { class: 'muted', text: 'vs' }), p.selB));
   ['#corrUniverse', '#corrWindow', '#corrFreq', '#corrShow', '#corrYields'].forEach(s => $(s).addEventListener('change', renderCorrelation));
 }
-function renderCorrelation() { cards.matrix.render(); cards.pair.render(); }
+function renderCorrelation() { cards.matrix.render(); cards.pair.render(); ['ll_chart', 'll_bars', 'll_table'].forEach(k => cards[k] && cards[k].render()); }
 
 // ------------------------------------------------------------------ IDEA LOG
 // Ideas are kept only in this browser (localStorage); Export/Import moves them between laptops.
@@ -3938,7 +4050,7 @@ const SUBTABS = {
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
-  correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']]],
+  correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']]],
 };
 state.sub = {};
 function subActive(node) {
@@ -4092,7 +4204,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildFedPath(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildCorrelation(); buildLeadLag(); buildFedPath(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
