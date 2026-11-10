@@ -4171,8 +4171,10 @@ function renderWeekly() {
 
 // ------------------------------------------------------------------ CENTRAL BANK WATCH
 // Free market gauges for banks without fed-funds-style futures: money-market and bond-curve rates.
-// They carry a term/credit premium, so each spread to the policy rate is judged against its own
-// 2-year average ("pricing vs normal") and never turned into a probability.
+// Money-market rates (interbank, bank bills) carry a credit premium, so their spread to the policy rate is judged
+// against its "normal" premium: the median spread in past periods when the policy rate did not change over the
+// tenor's horizon. Government-curve rates (JGBs, euro AAA forwards, Australian bonds) carry little premium at short
+// horizons, so their spread is read as is. Never turned into a probability.
 const CBS = {
   BNM: { name: 'Bank Negara Malaysia', short: 'BNM', sub: 'Malaysia (BNM)', policy: 'MY_OPR', policyLab: 'OPR', infl: 'MY_CPI_YOY', head: 'MY_IB_3M', headLab: '3-month interbank',
     tenors: [['MY_IB_1M', 1, '1M'], ['MY_IB_3M', 3, '3M'], ['MY_IB_6M', 6, '6M']], cal: 'BNM', gaugeLab: '3M interbank − OPR', gShort: '3M interbank',
@@ -4188,6 +4190,25 @@ const CBS = {
     src: 'ECB Data Portal (deposit facility rate; AAA government curve instantaneous forwards)' },
 };
 const CB_DEAD = 15;   // bp either side of normal that still reads "on hold"
+const CB_GOV = /^(JP_GB_|EA_FWD_|AU_2Y|AU_3Y)/;   // government-curve tenors: premium taken as 0
+const cbNormCache = new Map();
+function cbNormal(k, tid) {   // {v: bp, how: text} — the tenor's usual spread to the policy rate when no move is coming
+  const key = k + '|' + tid; if (cbNormCache.has(key)) return cbNormCache.get(key);
+  const C = CBS[k], ten = C.tenors.find(x => x[0] === tid), m = ten ? ten[1] : 3;
+  let out;
+  if (CB_GOV.test(tid)) out = { v: 0, how: 'government curve: little term premium at this horizon, so read as is' };
+  else {
+    const sp = cbSpreadSeries(k, tid), P = S[C.policy], xs = []; let first = null;
+    if (sp) { const end = P.t[P.t.length - 1], from = addMonths(end, -120);
+      for (let i = 0; i < sp.t.length; i += 5) { const t = sp.t[i], h = addMonths(t, m); if (t < from || h > end) continue;
+        const a = idxLE(P, t), b = idxLE(P, h); if (a < 0) continue;
+        let lo = P.v[a], hi = P.v[a]; for (let j = a; j <= b; j++) { lo = Math.min(lo, P.v[j]); hi = Math.max(hi, P.v[j]); }
+        if (hi - lo <= 0.05) { xs.push(sp.v[i]); if (first == null) first = t; } } }
+    if (xs.length >= 10) { xs.sort((x, y) => x - y); out = { v: xs[Math.floor(xs.length / 2)], how: `median spread in ${xs.length} weeks since ${new Date(first).getUTCFullYear()} when the ${C.policyLab} did not change over the next ${m} month${m > 1 ? 's' : ''}` }; }
+    else out = null;   // too little history to estimate a premium: leave this tenor out
+  }
+  cbNormCache.set(key, out); return out;
+}
 function cbPrep() {   // series built on the page: JGB 1Y/2Y from the MOF curve, euro HICP inflation
   if (!S.JP_GB_1Y && CURVES.JP) for (const [id, y] of [['JP_GB_1Y', 1], ['JP_GB_2Y', 2]]) { const c = curveSeries('JP', y); if (c) S[id] = { ...c, id, label: `JGB ${y}Y yield`, group: 'Rates · Japan' }; }
   if (!S.EA_HICP_YOY && has('EA_HICP')) { const y = yoyOf('EA_HICP'); S.EA_HICP_YOY = { ...y, id: 'EA_HICP_YOY', label: 'Euro area HICP inflation YoY' }; }
@@ -4203,7 +4224,7 @@ function avgWindow(s, t, days) { let x = 0, n = 0; for (let i = 0; i < s.t.lengt
 function cbStats(k, t = state.latest) {
   const C = CBS[k]; if (!has(C.policy)) return null;
   const p = asOf(S[C.policy], t), sp = cbSpreadSeries(k, C.head), a = sp && asOf(sp, t);
-  const avg = a ? avgWindow(sp, a.t, 730) : null, prev = sp && a ? asOf(sp, a.t - 30 * DAY) : null;
+  const nm = a ? cbNormal(k, C.head) : null, avg = nm ? nm.v : null, prev = sp && a ? asOf(sp, a.t - 30 * DAY) : null;
   const vsNorm = a && avg != null ? a.v - avg : null;
   const read = vsNorm == null ? '–' : vsNorm > CB_DEAD ? 'Hikes priced' : vsNorm < -CB_DEAD ? 'Cuts priced' : 'On hold';
   // last change in the policy rate
@@ -4232,7 +4253,7 @@ function cbKpis() {
     const C = CBS[k], st = cbStats(k); if (!st || !st.p) continue;
     tile(`${C.short} read`, st.read, st.vsNorm != null ? `${C.gaugeLab}: ${bp(st.vsNorm)} vs normal` : '', `${C.policyLab} ${fmtNum(st.p.v, 2)}%`, readTok(st.read));
     tile(`${C.short}: ${C.policyLab}`, fmtNum(st.p.v, 2) + '%', st.last ? `last move ${bp(st.last.d * 100)} on ${dShort(st.last.t)} ${new Date(st.last.t).getUTCFullYear()}` : 'no change in the data', nice(st.p.t));
-    if (st.spread) tile(`${C.short}: ${C.gaugeLab}`, bp(st.spread.v), st.avg != null ? `2-year average ${bp(st.avg)} · 1M ${st.chg1m == null ? '–' : bp(st.chg1m)}` : '', nice(st.spread.t));
+    if (st.spread) tile(`${C.short}: ${C.gaugeLab}`, bp(st.spread.v), st.avg != null ? `normal ${bp(st.avg)} · 1M ${st.chg1m == null ? '–' : bp(st.chg1m)}` : '', nice(st.spread.t));
     tile(`${C.short}: next decision`, st.next ? dShort(dayMs(st.next.d)) + (st.next.end ? '–' + dShort(dayMs(st.next.end)) : '') : '–', st.next && st.next.sgt ? `${st.next.sgt} SGT` : '', st.next ? (st.next.conf === 'Confirmed' ? 'bank schedule' : 'estimated') : 'not in calendar');
   }
   const sub = SUBTABS.cbwatch[state.sub.cbwatch || 0][0], short = (Object.values(CBS).find(C => C.sub === sub) || {}).short;
@@ -4270,7 +4291,7 @@ function renderCbTable(c) {
     tb.append(el('tr', { class: 'row' }, ...r.map((x, i) => cell(x, i === 0 || i === 6 ? 'l' : '')))); csv.push(r); }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = csv;
-  setNote(c, `Fed: what fed funds futures price over the next ~6 months. ECB, BoJ, BNM, RBA: the named money-market or bond-curve rate minus the policy rate, compared with its own 2-year average (“vs normal”). These rates include a term and credit premium, so the gauge reads direction, not probabilities; beyond ±${CB_DEAD}bp of normal reads as hikes or cuts priced. Real rate = policy rate minus latest headline inflation (Singapore: MAS core). Click a row for that bank.`);
+  setNote(c, `Fed: what fed funds futures price over the next ~6 months. ECB, BoJ, BNM, RBA: the named market rate minus the policy rate. “vs normal” removes the usual premium: for money-market rates (BNM interbank, RBA bills) the median spread in past periods with no rate move; government-curve rates (BoJ JGBs, ECB forwards) are read as is. The gauge reads direction, not probabilities; beyond ±${CB_DEAD}bp of normal reads as hikes or cuts priced. Real rate = policy rate minus latest headline inflation (Singapore: MAS core). Click a row for that bank.`);
 }
 function renderCbRates(c) {
   cbPrep();
@@ -4306,8 +4327,9 @@ function renderCbPath(c, k) {
     const ptsL = [[t0, p0.v]];
     for (const [tid, m, lab] of C.tenors) {
       const sp = cbSpreadSeries(k, tid); if (!sp) continue;
-      const a = asOf(sp, t0), avg = a ? avgWindow(sp, a.t, 730) : null; if (!a || avg == null || t0 - a.t > 20 * DAY) continue;
-      const lvl = p0.v + (a.v - avg) / 100, tt = addMonths(t0, m); ptsL.push([tt, lvl]); maxT = Math.max(maxT, tt);
+      const nmT = cbNormal(k, tid), a = asOf(sp, t0); if (!nmT || !a || t0 - a.t > 20 * DAY) continue; const avg = nmT.v;
+      // forwards are a rate at the horizon; yields and money-market rates are an average over it, so sit at mid-horizon
+      const lvl = p0.v + (a.v - avg) / 100, tt = /^EA_FWD_/.test(tid) ? addMonths(t0, m) : t0 + (addMonths(t0, m) - t0) / 2; ptsL.push([tt, lvl]); maxT = Math.max(maxT, addMonths(t0, m));
       if (back === 0) rows.push(`${lab} ${bp(a.v - avg)}`);
     }
     if (ptsL.length > 1) series.push(line(`Market-implied path ${nm}`, ptsL, color, { symbol: 'circle', showSymbol: true, symbolSize: 6, lineStyle: { width: back ? 1.5 : 2.5, type: dash, color } }));
@@ -4319,21 +4341,22 @@ function renderCbPath(c, k) {
   o.series = series;
   setZoomable(c, o);
   c.titleEl.textContent = `${C.name}: policy rate and what markets imply`;
-  c.subEl.textContent = `${C.policyLab[0].toUpperCase() + C.policyLab.slice(1)} with the path implied by ${C.tenors.map(x => x[2]).join(', ')} rates, each placed at its horizon after removing its usual premium (the tenor’s 2-year average spread to the policy rate).`;
+  c.subEl.textContent = `${C.policyLab[0].toUpperCase() + C.policyLab.slice(1)} with the path implied by ${C.tenors.map(x => x[2]).join(', ')} rates, after removing each tenor’s usual premium. Forwards sit at their horizon; yields and money-market rates are an average over their term, so they sit at mid-term.`;
   c.csv = [['Series', 'Date', 'Rate'], ...series.flatMap(sr => sr.data.map(([t, v]) => [sr.name, iso(t), v.toFixed(3)]))];
-  setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. A rough read of direction from money-market rates that include term and credit premia; not OIS pricing, not a probability.`);
+  setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. ${C.tenors.some(([t]) => !CB_GOV.test(t)) ? 'Money-market rates are net of their usual credit premium (median spread in past no-move periods); government-curve rates are read as is.' : 'Government-curve rates are read as is (little term premium at these horizons).'} A rough read of direction; not OIS pricing, not a probability.`);
   setSource(c, C.src);
 }
 function renderCbSpread(c, k) {
   cbPrep();
   const C = CBS[k], sp = cbSpreadSeries(k, C.head); if (!sp) return setEmpty(c, 'Waiting for data.');
-  const avgS = { t: [], v: [] }; for (let i = 0; i < sp.t.length; i += 5) { const a = avgWindow(sp, sp.t[i], 730); if (a != null) { avgS.t.push(sp.t[i]); avgS.v.push(a); } }
+  const nm = cbNormal(k, C.head) || { v: 0, how: 'not enough history' }, gov = CB_GOV.test(C.head);
   c.titleEl.textContent = `${C.gaugeLab}`;
-  c.subEl.textContent = `The ${C.headLab} rate minus the ${C.policyLab}, bp, with its rolling 2-year average (dashed). Above the dashed line = more tightening priced than usual.`;
-  drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) }, { name: '2-year average', data: pts(avgS, state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
-    { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false });
+  c.subEl.textContent = gov ? `The ${C.headLab} rate minus the ${C.policyLab}, bp. Above zero = markets expect the ${C.policyLab} to be higher over the next ${C.tenors.find(x => x[0] === C.head)[2]}.`
+    : `The ${C.headLab} rate minus the ${C.policyLab}, bp, against its normal premium (dashed). Above the dashed line = hikes priced; below = cuts.`;
+  drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) }], { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false,
+    hlines: gov ? [] : [{ y: nm.v, label: `normal ${bp(nm.v)}`, color: col(1) }] });
   const st = cbStats(k);
-  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)} vs a 2-year average of ${bp(st.avg)}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band). Money-market / bond-curve read, includes a term premium; not OIS pricing.` : '');
+  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band). Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : '');
   setSource(c, C.src);
 }
 function renderCbInfo(c, k) {
@@ -4356,7 +4379,7 @@ function renderCbInfo(c, k) {
   if (!changes.length) tb2.append(el('tr', {}, el('td', { colspan: 3, class: 'muted', text: 'No change in the data on file.' })));
   t2.append(tb2);
   b.append(el('div', { class: 'table-wrap' }, t1), el('div', { class: 'table-wrap', style: 'margin-top:10px' }, t2));
-  setNote(c, `Read: ${st.read}${st.real != null ? `. Real ${C.policyLab}: ${fmtNum(st.real, 1)}% (latest inflation ${fmtNum(st.inf.v, 1)}%)` : ''}. Decision dates from the Calendar page. The read is a money-market / bond-curve gauge that includes a term premium; not OIS pricing.`);
+  setNote(c, `Read: ${st.read}${st.real != null ? `. Real ${C.policyLab}: ${fmtNum(st.real, 1)}% (latest inflation ${fmtNum(st.inf.v, 1)}%)` : ''}. Decision dates from the Calendar page. The read is a market-rate gauge net of its usual premium; not OIS pricing or a probability.`);
   setSource(c, 'Calendar (central bank schedules); ' + C.src);
 }
 function buildCbWatch() {
