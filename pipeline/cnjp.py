@@ -60,6 +60,10 @@ KEI = [
 CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
              "AUS": "Australia", "IDN": "Indonesia"}
 
+# OECD business confidence (manufacturing, amplitude adjusted, 100 = long-run average). The US series is built from
+# the ISM manufacturing survey, so BCI_USA is the free long-history stand-in for the ISM PMI (100 ~ ISM 50).
+BCI_AREAS = {"USA": "US (ISM-based)", "EA20": "Euro area", "DEU": "Germany", "JPN": "Japan", "CHN": "China", "KOR": "Korea", "G7": "G7"}
+
 # Bank of Japan: (id, db, code, label, unit, group)
 BOJ_SERIES = [
     ("JP_TANKAN_LM",   "CO",   "TK99F1000601GCQ01000", "Tankan: large manufacturers, actual",         "DI",  "Macro · Japan"),
@@ -264,6 +268,15 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
                 s = pd.Series(g["OBS_VALUE"].astype(float).values, index=g["t"]).sort_index()
                 out[f"CLI_{area}"] = (s, dict(label=f"{name} leading indicator", unit="idx", kind="level", group="Macro · Leading indicators",
                                               source="OECD Composite Leading Indicators (amplitude adjusted, 100 = trend)"))
+    bci = oecd_frame("OECD.SDD.STES,DSD_STES@DF_CLI,", f"{'+'.join(BCI_AREAS)}.M.BCICP...AA...H")
+    if bci is not None:
+        for area, name in BCI_AREAS.items():
+            g = bci[bci["REF_AREA"] == area]
+            if len(g):
+                s = pd.Series(g["OBS_VALUE"].astype(float).values, index=g["t"]).sort_index()
+                out[f"BCI_{area}"] = (s[~s.index.duplicated(keep="last")], dict(label=f"{name} business confidence", unit="idx", kind="level",
+                                      group="Macro · Business cycle", source="OECD business confidence, manufacturing (amplitude adjusted, 100 = long-run average)"
+                                      + ("; based on the ISM manufacturing survey" if area == "USA" else "")))
     print("Asia: Japan (Bank of Japan)")
     for sid, db, code, label, unit, group in BOJ_SERIES:
         s = boj_series(db, code)
@@ -286,6 +299,6 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
         print("      " + n)
         if cpi_missing and len(DIAG) < 12:   # only surface e-Stat notes when something failed
             DIAG.append(n)
-    for sid in [k[0] for k in KEI] + [f"CLI_{a}" for a in CLI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
+    for sid in [k[0] for k in KEI] + [f"CLI_{a}" for a in CLI_AREAS] + [f"BCI_{a}" for a in BCI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
         status[sid] = "ok" if sid in out else "missing"
     return out

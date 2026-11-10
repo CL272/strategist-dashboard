@@ -1063,7 +1063,7 @@ function buildOverview() {
   for (const k of ['points', 'changes', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
-function applyPairToggles() { for (const k of ['netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
+function applyPairToggles() { for (const k of ['bc_mkt', 'bc_my', 'bc_ea', 'netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
@@ -1399,6 +1399,88 @@ function buildChip() {
   makeCard(g, { key: 'chip_my', title: 'Malaysian tech vs the global chip cycle', wide: true, defaultRange: '3Y', render: renderChipMy });
 }
 state.chipLead = '0';
+// ------------------------------------------------------------------ GLOBAL BUSINESS CYCLE (Regime & Leading → Global business cycle)
+// OECD business confidence (manufacturing; 100 = long-run average). The US series is built from the ISM manufacturing survey.
+const BC_AREAS = [['BCI_USA', 'US (ISM-based)'], ['BCI_EA20', 'Euro area'], ['BCI_DEU', 'Germany'], ['BCI_JPN', 'Japan'], ['BCI_CHN', 'China'], ['BCI_KOR', 'Korea'], ['BCI_G7', 'G7']];
+const BC_SRC = 'OECD business confidence, manufacturing (amplitude adjusted; US series based on the ISM manufacturing survey)';
+state.bcLeadMy = '0'; state.bcLeadEa = '0'; state.bcMkt = 'spx';
+function bcState(id, t = state.to) {
+  const a = has(id) ? asOf(S[id], t) : null; if (!a) return null;
+  const b = asOf(S[id], addMonths(a.t, -3)), ch = b ? a.v - b.v : null;
+  const lab = (a.v >= 100 ? 'Above average' : 'Below average') + (ch == null ? '' : ch > 0.05 ? ', improving' : ch < -0.05 ? ', worsening' : ', flat');
+  const short = (a.v >= 100 ? 'Above' : 'Below') + (ch == null ? '' : ch > 0.05 ? ' · rising' : ch < -0.05 ? ' · falling' : ' · flat');
+  const tk = a.v >= 100 ? (ch >= 0 ? '--good' : '--warning') : (ch > 0 ? '--warning' : '--critical');
+  return { a, ch, lab, short, tk };
+}
+function renderBcAll(c) {
+  const ids = BC_AREAS.filter(([id]) => has(id)); if (!ids.length) return setEmpty(c, 'Waiting for the OECD business confidence data (next daily run).');
+  drawLines(c, ids.map(([id, nm], i) => ({ name: nm, data: pts(S[id], state.from, state.to), color: col(i), extra: id === 'BCI_G7' ? { lineStyle: { width: 1.5, type: 'dashed' } } : (id === 'BCI_USA' ? { lineStyle: { width: 2.6 } } : {}) })),
+    { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 1), hlines: [{ y: 100, label: 'long-run average' }], endLabels: false, areas: recessionAreas(state.from, state.to) });
+  setNote(c, 'Manufacturing business confidence by economy, on one scale: 100 = each economy’s long-run average, so readings compare across regions. The US line comes from the ISM manufacturing survey (100 is roughly an ISM of 50). Japan reports a month later than the others.');
+  setSource(c, BC_SRC);
+}
+function renderBcTable(c) {
+  const b = htmlBody(c), rows = BC_AREAS.map(([id, nm]) => ({ id, nm, st: bcState(id) })).filter(r => r.st);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Waiting for data.' })); return; }
+  const heads = ['Economy', 'Latest', 'vs avg', '3m chg', 'Month', 'State'];
+  const tbl = el('table', { class: 'perf watch' });
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i === 5 ? 'l' : '' })))));
+  const tb = el('tbody');
+  for (const r of rows) { const { a, ch, short, tk } = r.st;
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: r.nm }), el('td', { text: fmtNum(a.v, 1) }), el('td', { text: sign(a.v - 100) + fmtNum(Math.abs(a.v - 100), 1) }),
+      el('td', { text: ch == null ? '–' : sign(ch) + fmtNum(Math.abs(ch), 2) }), el('td', { class: 'muted', text: monthLab(a.t).replace(/ 20(\d\d)$/, ' $1') }),
+      el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(tk)}` }, short)))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(r => [r.nm, r.st.a.v, (r.st.a.v - 100).toFixed(2), r.st.ch == null ? '' : r.st.ch.toFixed(2), iso(r.st.a.t), r.st.lab])];
+  const up = rows.filter(r => r.st.ch > 0.05).length;
+  setNote(c, `${rows.filter(r => r.st.a.v >= 100).length} of ${rows.length} above their long-run average; ${up} improving over 3 months. Green = above average and improving; amber = mixed; red = below average and worsening.`);
+  setSource(c, BC_SRC);
+}
+function leadPair(c, a, b, k, o) {   // monthly dual-axis chart; series a drawn k months later than measured
+  const A = monthlyOf(a[0], a[1]), B = monthlyOf(b[0], b[1]);
+  const lead = k ? { t: A.t.map(t => addMonths(t, k)), v: A.v } : A, xmax = k ? addMonths(state.to, k) : state.to;
+  drawPair(c, { name: k ? `${a[2]}, moved forward ${k} months` : a[2], data: pts(lead, state.from, xmax) }, { name: b[2], data: pts(B, state.from, state.to) }, o);
+  if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
+  const cc = laggedCorr(A, B).filter(x => x[1] != null), best = cc.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]), c0 = cc.find(x => x[0] === 0);
+  const rev = laggedCorr(B, A).filter(x => x[1] != null), bestR = rev.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]);
+  return { c0: c0 ? c0[1] : null, best, bestR };
+}
+const pctF = v => sign(v) + fmtNum(Math.abs(v), 1) + '%', corrF = v => (v >= 0 ? '+' : '−') + fmtNum(Math.abs(v), 2);
+function renderBcMy(c) {
+  if (!has('BCI_USA', 'MY_EXPORTS_YOY')) return setEmpty(c, 'Waiting for data.');
+  const k = +state.bcLeadMy || 0;
+  const r = leadPair(c, ['BCI_USA', 'level', 'US business confidence'], ['MY_EXPORTS_YOY', 'level', 'Malaysia exports, % YoY'], k,
+    { fmtA: v => fmtNum(v, 1), fmtB: pctF, axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 0) + '%', zeroB: true });
+  setNote(c, (k ? `US confidence is drawn ${k} months later than measured, so its turns line up with Malaysian exports; the part past today hints at the next ${k} months. ` : '')
+    + `US manufacturers’ orders feed Asian supply chains, so US confidence has tended to turn before Malaysia’s exports. Correlation since 2000: ${r.c0 == null ? '–' : corrF(r.c0)} same month; best ${corrF(r.best[1])} with US confidence leading ${r.best[0]} month${r.best[0] === 1 ? '' : 's'}.`);
+  setSource(c, BC_SRC + '; DOSM via OpenDOSM (exports)');
+}
+function renderBcEa(c) {
+  if (!has('BCI_USA', 'BCI_EA20')) return setEmpty(c, 'Waiting for data.');
+  const k = +state.bcLeadEa || 0;
+  const r = leadPair(c, ['BCI_USA', 'level', 'US business confidence'], ['BCI_EA20', 'level', 'Euro area business confidence'], k,
+    { fmtA: v => fmtNum(v, 1), fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 1) });
+  setNote(c, (k ? `US confidence is drawn ${k} months later than measured. ` : '') + `The US manufacturing cycle has tended to turn before Europe’s. Correlation since 2000: ${r.c0 == null ? '–' : corrF(r.c0)} same month; best ${corrF(r.best[1])} with the US leading ${r.best[0]} month${r.best[0] === 1 ? '' : 's'}.`);
+  setSource(c, BC_SRC);
+}
+function renderBcMkt(c) {
+  const opt = { spx: ['LH_SPX', 'S&P 500, % YoY'], copper: ['COPPER', 'Copper, % YoY'], klci: ['KLCI', 'KLCI, % YoY'] }[state.bcMkt] || ['LH_SPX', 'S&P 500, % YoY'];
+  const id = has(opt[0]) ? opt[0] : (opt[0] === 'LH_SPX' && has('SPX') ? 'SPX' : null);
+  if (!id || !has('BCI_USA')) return setEmpty(c, 'Waiting for data.');
+  const r = leadPair(c, ['BCI_USA', 'level', 'US business confidence (ISM-based)'], [id, 'yoy', opt[1]], 0,
+    { fmtA: v => fmtNum(v, 1), fmtB: pctF, axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 0) + '%', zeroB: true });
+  const mLead = r.bestR[0], bLead = r.best[0];
+  const who = r.bestR[1] > r.best[1] && mLead > 0 ? `the market leads by about ${mLead} month${mLead === 1 ? '' : 's'}` : bLead > 0 ? `confidence leads by about ${bLead} month${bLead === 1 ? '' : 's'}` : 'they move together';
+  setNote(c, `Correlation since 2000: ${r.c0 == null ? '–' : corrF(r.c0)} same month; ${who}. Business confidence confirms the market’s trend rather than predicting it: in a test back to 1990 it had no useful link with the S&P 500’s next 3–12 months, and readings that are low but rising did no better than average.`);
+  setSource(c, BC_SRC + '; Yahoo Finance');
+}
+function bcKpis() {   // tiles for the Global business cycle sub-tab
+  const out = [];
+  for (const [id, nm] of [['BCI_USA', 'US business confidence'], ['BCI_EA20', 'Euro area confidence'], ['BCI_CHN', 'China confidence'], ['BCI_G7', 'G7 confidence']]) {
+    const st = bcState(id); if (st) out.push([nm, fmtNum(st.a.v, 1), st.lab.toLowerCase() + (st.ch != null ? ` (3m ${sign(st.ch)}${fmtNum(Math.abs(st.ch), 2)})` : ''), monthLab(st.a.t) + ' · 100 = average']); }
+  return out;
+}
+
 function renderLeadLag(c) {
   if (!has('LEI_6M', 'REG_GM')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
   const k = +state.llShift || 0, L = S.LEI_6M, lead = k ? { t: L.t.map(t => addMonths(t, k)), v: L.v } : L, xmax = k ? addMonths(state.to, k) : state.to;
@@ -1466,6 +1548,12 @@ function buildRegime() {
   makeCard(g, { key: 'leidrv', title: 'What is driving the leading index', range: false, render: renderLEIDrivers });
   state.llShift = '0';
   makeCard(g, { key: 'leadlag', title: 'Leading index vs regime growth signal', seg: { key: 'llShift', options: [['0', 'As measured'], ['3', 'Lead +3m']] }, render: renderLeadLag });
+  makeCard(g, { key: 'bc_all', title: 'Business confidence around the world', wide: true, defaultRange: '10Y', render: renderBcAll });
+  makeCard(g, { key: 'bc_table', title: 'Where each economy stands', range: false, render: renderBcTable });
+  makeCard(g, { key: 'bc_mkt', title: 'Confidence vs markets', defaultRange: '10Y', seg: { key: 'bcMkt', options: [['spx', 'S&P 500'], ['copper', 'Copper'], ['klci', 'KLCI']] }, render: renderBcMkt });
+  makeCard(g, { key: 'bc_my', title: 'US → Malaysia exports', defaultRange: '10Y', seg: { key: 'bcLeadMy', options: [['0', 'As measured'], ['3', 'Lead +3m']] }, render: renderBcMy });
+  makeCard(g, { key: 'bc_ea', title: 'US → euro area', defaultRange: '10Y', seg: { key: 'bcLeadEa', options: [['0', 'As measured'], ['4', 'Lead +4m']] }, render: renderBcEa });
+  { const r = cards.bc_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard(g, { key: 'cli', title: 'OECD leading indicators', wide: true, sub: 'Composite leading indicators for six economies: they tend to turn 6–9 months before activity. 100 = long-term trend.', render: renderCLI });
   makeCard(g, { key: 'cugold', title: 'Copper / gold ratio vs UST 10Y', render: renderCopperGold });
   makeCard(g, { key: 'cycdef', title: 'Cyclicals vs defensives', render: renderCycDef });
@@ -1586,10 +1674,15 @@ function renderRegNow(c) {
   setNote(c, `Blue pushes the score up, red pulls it down. The regime is ${QUADS[asOf(S.REG_QUAD, state.to).v].name}: growth momentum ${g.total[gi] >= 0 ? 'positive' : 'negative'}, inflation momentum ${f.total[fi] >= 0 ? 'positive' : 'negative'}.`);
   setSource(c, 'Dashboard calculation from FRED');
 }
+function bcTiles() {   // business-cycle tiles show only on their sub-tab; the regime tiles everywhere else
+  const box = $('#regKpis'), onBc = (SUBTABS.regime[state.sub.regime || 0] || [])[0] === 'Global business cycle';
+  box.querySelectorAll('.kpi').forEach(k => k.hidden = onBc);
+  for (const [l, v, d, f] of bcKpis()) box.append(el('div', { class: 'kpi', hidden: !onBc }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+}
 function renderRegime() {
-  regimeKpis();
+  regimeKpis(); bcTiles();
   renderMethodPanel();
-  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'reg_contrib', 'reg_now', 'zin', 'sahm', 'recprob', 'infl', 'claims', 'gdpnow'].forEach(k => cards[k].render());
+  ['quad', 'comp_gi', 'reghist', 'regtable', 'lei', 'leidrv', 'leadlag', 'cli', 'cugold', 'cycdef', 'reg_contrib', 'reg_now', 'zin', 'sahm', 'recprob', 'infl', 'claims', 'gdpnow', 'bc_all', 'bc_table', 'bc_mkt', 'bc_my', 'bc_ea'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ FIXED INCOME
@@ -3523,6 +3616,11 @@ const LL_PAIRS = [
   ['REAL10Y', 'chg', 'GOLD', 'yoy', 'Real yields → gold (inverse)'],
   ['CN_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'China exports → Malaysia exports'],
   ['PALM', 'yoy', 'MY_PLANT', 'yoy', 'Palm oil → Malaysian plantation stocks'],
+  ['BCI_USA', 'level', 'MY_EXPORTS_YOY', 'level', 'US business confidence (ISM-based) → Malaysia exports'],
+  ['BCI_USA', 'level', 'BCI_EA20', 'level', 'US → euro-area business confidence'],
+  ['BCI_CHN', 'level', 'BCI_USA', 'level', 'China → US business confidence'],
+  ['BCI_USA', 'level', 'SG_NODX_YOY', 'level', 'US business confidence → Singapore NODX'],
+  ['LH_SPX', 'yoy', 'BCI_USA', 'level', 'S&P 500 → US business confidence (the market leads)'],
   ['IRONORE', 'yoy', 'AUDUSD', 'yoy', 'Iron ore → Australian dollar'],
 ];
 const llCache = new Map();
@@ -4726,7 +4824,7 @@ const SUBTABS = {
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
-  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']],
+  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']], ['Global business cycle', ['bc_all', 'bc_table', 'bc_mkt', 'bc_my', 'bc_ea']],
     ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Malaysia: markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend']], ['Malaysia: economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
