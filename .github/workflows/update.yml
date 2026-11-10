@@ -41,7 +41,7 @@ jobs:
           mkdir -p docs/data
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
           cache="https://raw.githubusercontent.com/${{ github.repository }}/data-cache"
-          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json cbwatch.json; do
+          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json cbwatch.json sentiment.json; do
             curl -sfL "$base/$f" -o "docs/data/$f" || curl -sfL "$cache/$f" -o "docs/data/$f" || rm -f "docs/data/$f"
           done
           ls docs/data
@@ -55,7 +55,7 @@ jobs:
 
       # two runs queued close together can both rewrite today's archive rows; if the rebase clashes,
       # skip this run's archive commit (the next run writes the same rows) and never block the deploy
-      - name: Save credit-spread archive
+      - name: Save history archive (credit spreads, AI, sentiment)
         continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
@@ -63,7 +63,7 @@ jobs:
           [ -d archive ] || exit 0
           git add archive
           if ! git diff --cached --quiet; then
-            git commit -m "Archive ICE BofA spread history"
+            git commit -m "Archive spread, AI and sentiment history"
             if git pull --rebase -X theirs origin main; then git push origin HEAD:main || echo "push failed; next run retries"
             else git rebase --abort || true; echo "archive clashed with a newer run; skipped this time"; fi
           fi

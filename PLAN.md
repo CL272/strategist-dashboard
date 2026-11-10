@@ -4,8 +4,8 @@ Written 10 Nov 2026 as a design brief. Build in the order below, one work packag
 Follow `CLAUDE.md` for every package: own sub-tab, about 2,300 px per sub-tab at 1440×900 (measure it),
 half-width cards paired, long tables capped, sources on every card, public data only.
 
-**Progress (10 Nov 2026, evening):** WP-R1 to WP-R5 done; WP1 to WP6 built and published. WP7 waits for the
-owner's go-ahead. Palm oil, GDPNow, MICH, EXPINF1YR and the money-fund series come from FRED: confirm in the
+**Progress (10 Nov 2026, evening):** WP-R1 to WP-R5 done; WP1 to WP6 built and published. WP7 (sentiment) built
+after the owner's go-ahead. Palm oil, GDPNow, MICH, EXPINF1YR and the money-fund series come from FRED: confirm in the
 run log that each loaded.
 
 Status of each data source is marked **[verified]** (fetched from the sandbox on 10 Nov 2026) or

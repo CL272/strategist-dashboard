@@ -635,6 +635,12 @@ def main() -> int:
     except Exception as e:   # positioning must never break the data refresh
         print(f"Positioning failed: {type(e).__name__}")
     try:
+        import sentiment
+        sentiment.build(status)
+        _lap("sentiment", t0)
+    except Exception as e:   # scraped sentiment gauges must never break the data refresh
+        print(f"Sentiment failed: {type(e).__name__}")
+    try:
         import ai
         ai.build_ai(status)
         _lap("ai", t0)

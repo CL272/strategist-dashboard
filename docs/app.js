@@ -2501,6 +2501,7 @@ function posvolKpis() {
   if (has('VIX', 'SPX')) { rvCache = rvCache || realizedVol('SPX'); const a = asOf(S.VIX, state.to), r = asOf(rvCache, state.to);
     if (r) tile('VIX − realised vol', sign(a.v - r.v) + fmtNum(Math.abs(a.v - r.v), 1) + ' pts', `S&P 500 realised (1m) ${fmtNum(r.v, 1)}%`, 'insurance premium'); }
   if (has('MOVE')) { const p = pctRank(S.MOVE, state.to, 10); if (p) tile('MOVE (rates vol)', fmtNum(p.v, 0), `${Math.round(p.p)}th percentile (10y)`, nice(p.t)); }
+  sentKpis(tile);
   if (POS) { const st = Object.values(POS.markets).map(m => posStats(m)).filter(Boolean);
     tile('Crowded positions', `${st.filter(s => s.pct >= 90 || s.pct <= 10).length} of ${st.length}`, 'speculators at a 3-year extreme (top/bottom 10%)', 'CFTC, week of ' + nice(Math.max(...st.map(s => s.t)))); }
 }
@@ -2617,6 +2618,84 @@ function renderPosExt(c) {
   setNote(c, 'The 12 markets where speculators are furthest from their 3-year average, in standard deviations. Blue = unusually long, red = unusually short.');
   setSource(c, COT_SRC + '; z-scores calculated');
 }
+// ------------------------------------------------------------------ SENTIMENT (Positioning & Vol → Sentiment)
+// Scraped from public pages (CNN, AAII, NAAIM); each gauge shows when it was last read, since any source can break.
+let SENT = null;
+const FG_BANDS = [[25, 'Extreme fear'], [45, 'Fear'], [55, 'Neutral'], [75, 'Greed'], [101, 'Extreme greed']];
+const fgBand = v => FG_BANDS.find(([x]) => v < x)[1];
+const AAII_AVG = { bull: 37.5, bear: 31.0 };   // AAII's published long-term averages since 1987
+function sentUpd(src) { const m = SENT && SENT.meta && SENT.meta[src]; if (!m) return 'Source not loaded';
+  const d = m.fetched_utc ? nice(dayMs(m.fetched_utc.slice(0, 10))) : '–';
+  return m.ok ? `Source last read ${d}` : `⚠ Source failed on the last try; last read ${d}`; }
+function sentStale(id, days) { const a = has(id) ? asOf(S[id], state.latest) : null; return a && state.latest - a.t > days * DAY; }
+function aaiiSpread() { if (!has('AAII_BULL', 'AAII_BEAR')) return null; return combine(S.AAII_BULL, S.AAII_BEAR, (a, b) => a - b, { label: 'AAII bulls − bears', unit: 'pts' }, 3 * DAY); }
+function sentRows() {
+  const rows = [], at = (id, t) => has(id) ? asOf(S[id], t) : null;
+  const add = (name, id, s, fmt, read, src) => { const a = s && asOf(s, state.latest); if (!a) return;
+    const w = asOf(s, a.t - 7 * DAY), m = asOf(s, addMonths(a.t, -1));
+    rows.push({ name, id, a, w: w && w.t < a.t ? w.v : null, m: m && m.t < a.t ? m.v : null, fmt, read: read(a.v), src }); };
+  add('CNN Fear & Greed', 'FG', has('FG') ? S.FG : null, v => fmtNum(v, 0), v => fgBand(v), 'CNN');
+  add('Put/call ratio (5-day)', 'FG_PUTCALL', has('FG_PUTCALL') ? S.FG_PUTCALL : null, v => fmtNum(v, 2), v => v > 1 ? 'Heavy hedging' : v < 0.7 ? 'Complacent' : 'Normal', 'CNN');
+  const sp = aaiiSpread();
+  add('AAII bulls − bears', 'AAII', sp, v => sign(v) + fmtNum(Math.abs(v), 1), v => v <= -20 ? 'Very bearish' : v >= 30 ? 'Euphoric' : v < 0 ? 'Bears ahead' : 'Bulls ahead', 'AAII');
+  add('NAAIM exposure', 'NAAIM', has('NAAIM') ? S.NAAIM : null, v => fmtNum(v, 0) + '%', v => v < 40 ? 'Defensive' : v > 90 ? 'Fully invested' : 'Mid-range', 'NAAIM');
+  return rows;
+}
+function sentKpis(tile) {
+  for (const r of sentRows()) tile(r.name, r.fmt(r.a.v), r.read + (r.w != null ? ` · a week earlier ${r.fmt(r.w)}` : ''), `Reading of ${nice(r.a.t)}. ${sentUpd(r.src)}`);
+}
+function renderSentFG(c) {
+  if (!has('FG')) return setEmpty(c, 'CNN Fear & Greed not loaded (scraped source; it arrives with the next daily run).');
+  const L = [{ name: 'CNN Fear & Greed (0–100)', data: pts(S.FG, state.from, state.to) }];
+  drawLines(c, L, { fmt: v => fmtNum(v, 0) + ' · ' + fgBand(v), axisFmt: v => fmtNum(v, 0), yExtra: { min: 0, max: 100, scale: false },
+    hlines: [{ y: 25, label: 'extreme fear' }, { y: 75, label: 'extreme greed' }], endLabels: false });
+  const a = asOf(S.FG, state.to);
+  setNote(c, `Now ${fmtNum(a.v, 0)} (${fgBand(a.v).toLowerCase()}), ${nice(a.t)}. A blend of seven market gauges (momentum, new highs, breadth, put/call, VIX, junk-bond demand, safe-haven demand). Used as a contrarian signal: extreme fear has tended to come near lows. ${sentUpd('CNN')}.`);
+  setSource(c, 'CNN Business Fear & Greed (scraped; history about 5 years)');
+}
+function renderSentAAII(c) {
+  if (!has('AAII_BULL', 'AAII_BEAR')) return setEmpty(c, 'AAII survey not loaded (scraped source; it arrives with the next daily run).');
+  const sp = aaiiSpread();
+  drawLines(c, [{ name: 'Bulls %', data: pts(S.AAII_BULL, state.from, state.to), color: col(0) }, { name: 'Bears %', data: pts(S.AAII_BEAR, state.from, state.to), color: col(1) }],
+    { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', hlines: [{ y: AAII_AVG.bull, label: `bull avg ${AAII_AVG.bull}%`, color: col(0) }, { y: AAII_AVG.bear, label: `bear avg ${AAII_AVG.bear}%`, color: col(1) }], endLabels: false });
+  const a = asOf(sp, state.to);
+  setNote(c, `Weekly poll of individual investors on the next 6 months. Latest (${nice(a.t)}): bulls − bears ${sign(a.v)}${fmtNum(Math.abs(a.v), 1)} pts. Dashed lines = long-term averages. Bears far above average has tended to be a contrarian buy signal. AAII shows only about 6 months online; the dashboard archives each week, so history grows from Jun 2026. ${sentUpd('AAII')}.`);
+  setSource(c, 'AAII Sentiment Survey (scraped; archived weekly by this dashboard)');
+}
+function renderSentNAAIM(c) {
+  if (!has('NAAIM')) return setEmpty(c, 'NAAIM index not loaded (scraped source; it arrives with the next daily run).');
+  const L = pts(S.NAAIM, state.from, state.to);
+  if (has('SPX')) drawPair(c, { name: 'NAAIM exposure (%)', data: L }, { name: 'S&P 500', data: pts(S.SPX, Math.max(state.from, S.NAAIM.t[0]), state.to) },
+    { fmtA: v => fmtNum(v, 0) + '%', fmtB: v => fmtNum(v, 0), axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) });
+  else drawLines(c, [{ name: 'NAAIM exposure (%)', data: L }], { fmt: v => fmtNum(v, 0) + '%' });
+  const a = asOf(S.NAAIM, state.latest), old = state.latest - a.t > 21 * DAY;
+  setNote(c, `Average equity exposure reported each Wednesday by active managers who are NAAIM members (0 = flat, 100 = fully invested, up to 200 with leverage). Latest ${fmtNum(a.v, 0)}% on ${nice(a.t)}.${old ? ` ⚠ NAAIM has not published a newer reading since ${nice(a.t)}.` : ''} ${sentUpd('NAAIM')}.`);
+  setSource(c, 'NAAIM Exposure Index (scraped from naaim.org)');
+}
+function renderSentTable(c) {
+  const b = htmlBody(c), rows = sentRows();
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Sentiment gauges not loaded yet.' })); return; }
+  const heads = ['Gauge', 'Latest', 'Date', '1W ago', '1M ago', 'Read'];
+  const tbl = el('table', { class: 'perf watch' });
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i >= 5 ? 'l' : '' })))));
+  const tb = el('tbody');
+  for (const r of rows) { const m = SENT && SENT.meta[r.src];
+    tb.append(el('tr', { class: 'row', title: sentUpd(r.src) }, el('td', { class: 'l', text: (m && !m.ok ? '⚠ ' : '') + r.name }), el('td', { text: r.fmt(r.a.v) }), el('td', { class: 'muted', text: dShort(r.a.t) }),
+      el('td', { text: r.w == null ? '–' : r.fmt(r.w) }), el('td', { text: r.m == null ? '–' : r.fmt(r.m) }), el('td', { class: 'l', text: r.read }))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [[...heads, 'Source last read'], ...rows.map(r => [r.name, r.a.v, new Date(r.a.t).toISOString().slice(0, 10), r.w ?? '', r.m ?? '', r.read, (SENT && SENT.meta[r.src] || {}).fetched_utc || ''])];
+  setNote(c, 'These gauges are read as contrarian signals: crowd fear near lows, crowd greed near highs. They come from web pages with no official data feed, so a source can stop or change. ' + ['CNN', 'AAII', 'NAAIM'].map(x => `${x}: ${sentUpd(x).replace('Source last read', 'last read').replace('⚠ Source failed', '⚠ failed')}`).join('; ') + '. ⚠ = the last attempt failed and the previous readings are kept.');
+  setSource(c, 'CNN Business, AAII, NAAIM (scraped daily; archived in the repository)');
+}
+function buildSentiment() {
+  const g = $('#pvGrid');
+  makeCard(g, { key: 'sent_fg', title: 'CNN Fear & Greed', defaultRange: '3Y', render: renderSentFG });
+  makeCard(g, { key: 'sent_aaii', title: 'AAII survey: bulls vs bears', defaultRange: '1Y', render: renderSentAAII });
+  makeCard(g, { key: 'sent_naaim', title: 'NAAIM: active managers’ equity exposure', defaultRange: '3Y', render: renderSentNAAIM });
+  makeCard(g, { key: 'sent_table', title: 'Sentiment scorecard', range: false, render: renderSentTable });
+  const r = cards.sent_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+}
+
 function buildPosVol() {
   const g = $('#pvGrid');
   g.append(el('h3', { class: 'section', text: 'Volatility' }));
@@ -2630,7 +2709,8 @@ function buildPosVol() {
   makeCard(g, { key: 'pos_hist', title: 'Positioning history', render: renderPosHist });
   for (const k of ['pos_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist'].forEach(k => cards[k].render()); }
+function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist', 'sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table'].forEach(k => cards[k].render());
+  filterKpis('#pvKpis', l => /Fear & Greed|Put\/call|AAII|NAAIM/i.test(l) ? 'Sentiment' : /Crowded/.test(l) ? 'Positioning (CFTC)' : 'Volatility'); }
 
 // ------------------------------------------------------------------ STRESS PANEL & PEAK SIGNPOSTS (ported from the Streamlit version)
 let SIGN = null, STR = null;
@@ -4606,7 +4686,7 @@ const SUBTABS = {
   cnjp: [['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread']], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj']]],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
-  posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']]],
+  posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
   correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']]],
 };
@@ -4726,12 +4806,14 @@ async function init() {
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
   try { POS = await loadJSON('data/positioning.json'); } catch (e) { POS = null; }
+  try { SENT = await loadJSON('data/sentiment.json'); } catch (e) { SENT = null; }
   try { SIGN = await loadJSON('data/signposts.json'); } catch (e) { SIGN = null; }
   try { STR = await loadJSON('data/stress.json'); } catch (e) { STR = null; }
   try { CAL = await loadJSON('data/calendar.json'); } catch (e) { CAL = null; }
   try { FP = await loadJSON('data/fedpath.json'); } catch (e) { FP = null; }
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
+  if (SENT && SENT.series) for (const [id, x] of Object.entries(SENT.series)) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
   for (const res of [y, f, d, as, cb]) if (res.status === 'fulfilled') {
     for (const [id, s] of Object.entries(res.value)) { S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
   }
@@ -4762,7 +4844,7 @@ async function init() {
     const fr = Date.parse(h.get('from')), to = Date.parse(h.get('to'));
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
