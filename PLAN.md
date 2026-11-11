@@ -328,6 +328,33 @@ and blended price only as small parts of two cards. The owner wants:
 Layout: its own AI sub-tab ("Token market"), wide chart plus three half cards, ≤ 5 tiles; move `ai_vendor` and
 `ai_tokprice` there so the topic is in one place.
 
+### WP18 to WP21. Follow-ups (owner approved 11 Nov 2026; build after WP17, one commit each)
+
+**WP18. Data health for the new feeds.** Add `korea.json`, `ramp.json`, `gpu.json` and `taiwan.json` to `FILES` in
+`pipeline/health.py`. Allowances: Korea chip exports (UN Comtrade, about 10 months late) about 400 days; Ramp monthly
+adoption and spend series about 75 days, weekly token series about 21 days; GPU weekly series about 21 days; Vast.ai
+daily about 7 days; Taiwan monthly series the usual monthly rule, GDP quarterly. Skip keys starting with "_".
+Check that nothing new shows as stale today (the alert issue must stay closed).
+
+**WP19. Calendar: Taiwan, India and MAS 2027.** In `pipeline/econcal.py`, add Taiwan (exports, about the 7th to 9th
+for the previous month; CPI, about the 5th to 8th; advance GDP, end of the month after the quarter) and India (CPI,
+the 12th; GDP, end of the second month after the quarter; RBI policy decisions, 2026/27 schedule from the RBI site)
+using the existing helpers and their "estimated date" labelling where dates are rule-based. Add MAS's 2027 monetary
+policy statement dates from the MAS website (Singapore coverage runs out on 29 Jan 2027) and update `COVERAGE` and
+`VERIFIED_ON`. Use official pages only; if a page cannot be reached, leave that schedule out and say so.
+
+**WP20. Retry the blocked Taiwan sources from GitHub's runner.** Export orders (MOEA), the NDC leading index and
+monitoring score, central bank (CBC) rates and TSMC monthly revenue were blocked or timed out from the build
+environment. Add a one-off probe step (a small script run once in the workflow, output to the log, removed
+afterwards) or isolated fetchers in `pipeline/taiwan.py` that fail quietly. Keep whatever works: export orders vs
+exports and vs Taiwan Weighted (test with the lead rule), TSMC revenue YoY vs SOX, the monitoring score with its
+colour bands, CBC discount rate. Drop the rest and say so in PLAN.md.
+
+**WP21. Korea and India current account.** Re-fetch OECD `CA_GDP` (quarterly). Korea's provisional 2026 values were
+16 to 21% of GDP against about 6 to 8% in 2025. Cross-check against another public source (IMF via DBnomics, or the
+OECD's balance of payments dataset). Add the series to the Korea and India activity cards (toggle or "⋯") only if
+the figures agree; otherwise leave them out and note why.
+
 ### Suggested order
 
 WP13 → WP15 → WP14 → WP16. WP13 and WP15 need no new source and no approvals, so Korea, India and the lead
