@@ -1,21 +1,33 @@
-"""One-off probe (WP20): can GitHub's runner reach Taiwan sources that the build environment cannot? Prints status only."""
+"""One-off probe (WP20): find the CBC interest-rate file and the layout of TSMC's monthly revenue table from GitHub's runner."""
+import html
+import json
+import re
+
 import requests
 
-URLS = [
-    "https://index.ndc.gov.tw/n/en",
-    "https://index.ndc.gov.tw/n/zh_tw/data/eco",
-    "https://index.ndc.gov.tw/n/json/data/eco/indicators",
-    "https://www.cbc.gov.tw/en/mp-2.html",
-    "https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EF15M01en",
-    "https://investor.tsmc.com/english/monthly-revenue",
-    "https://investor.tsmc.com/english/monthly-revenue/2026",
-    "https://dmz26.moea.gov.tw/GMWeb/investigate/InvestigateDA.aspx?lang=E",
-]
 UA = {"User-Agent": "Mozilla/5.0 (compatible; dashboard data refresh)"}
-for u in URLS:
-    try:
-        r = requests.get(u, headers=UA, timeout=40)
-        head = " ".join(r.text[:160].split())
-        print(f"PROBE {r.status_code} {len(r.content):>8} {r.headers.get('content-type', '')[:30]:<30} {u} :: {head}")
-    except Exception as e:
-        print(f"PROBE ERR {type(e).__name__} {u}")
+for pre in ("EF", "EG", "BP"):
+    for n in range(1, 31):
+        name = f"{pre}{n:02d}M01en"
+        try:
+            r = requests.get(f"https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName={name}", headers=UA, timeout=30)
+            if r.ok and r.text.startswith("{"):
+                j = json.loads(r.text)
+                t = (j.get("meta") or {}).get("title", "")
+                print(f"PROBE CBC {name} :: {t[:110]}")
+        except Exception as e:
+            print(f"PROBE CBC {name} ERR {type(e).__name__}")
+try:
+    r = requests.get("https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EF15M01en", headers=UA, timeout=30)
+    print("PROBE CBCJSON", json.dumps(r.json())[:1500])
+except Exception as e:
+    print("PROBE CBCJSON ERR", type(e).__name__)
+try:
+    t = requests.get("https://investor.tsmc.com/english/monthly-revenue/2026", headers=UA, timeout=40).text
+    rows = [[" ".join(html.unescape(re.sub(r"<[^>]+>", " ", c)).split()) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", row, re.S)]
+            for row in re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S)]
+    for row in rows[:20]:
+        print("PROBE TSMC", row)
+    print("PROBE TSMC links", sorted(set(re.findall(r'href="([^"]*(?:xls|csv|json|monthly-revenue)[^"]*)"', t)))[:20])
+except Exception as e:
+    print("PROBE TSMC ERR", type(e).__name__)
