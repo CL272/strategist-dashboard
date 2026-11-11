@@ -313,7 +313,7 @@ PLAN.md status line. Check the live run: new OECD series loaded, Taiwan feed sta
 
 ### WP17. Ramp token volume, spend and prices in more detail (owner's request, later; not now)
 
-**Status: to do later, after WP13 to WP16.** The AI → Business vs developers sub-tab now shows Ramp's token spend share
+**Status: built on 11 Nov 2026 (AI → Token market).** Ramp's page publishes token data only by model maker (spend share, volume share) and blended prices for OpenAI, Anthropic and the two together: no model-level rows and no input/output split, so the by-model view uses OpenRouter (labelled) and a spend ÷ volume ratio stands in for relative price by maker. OpenRouter's archive now stores list-price blends (all top 20 models; OpenAI & Anthropic; each separately) and the usage-weighted output price. Business vs developers was renamed Business adoption. Original brief: The AI → Business vs developers sub-tab now shows Ramp's token spend share
 and blended price only as small parts of two cards. The owner wants:
 1. **Token volume and spend by model maker** (OpenAI, Anthropic, Google, xAI, DeepSeek, Cursor and others): share of
    token volume and share of token spend side by side, latest week and the trend as the weekly archive grows

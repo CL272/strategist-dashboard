@@ -119,6 +119,16 @@ def openrouter(notes: list) -> dict:
     tot = sum(r["tokens"] for r in rows)
     wp = [(r["tokens"], r["wprice"]) for r in rows if r["wprice"]]
     cp = [(r["requests"] or 0, r["cpr_cents"]) for r in rows if r["cpr_cents"]]
+    # list-price blends (input and output tokens at each model's listed prices), comparable with Ramp's blended price
+    def blend(rs):
+        rs = [r for r in rs if r["price_in"] is not None and r["price_out"] is not None and r["prompt"] is not None and r["completion"] is not None]
+        t = sum(r["prompt"] + r["completion"] for r in rs)
+        return sum(r["prompt"] * r["price_in"] + r["completion"] * r["price_out"] for r in rs) / t if t else None
+    co = [r for r in rows if r["price_out"] is not None and r["completion"]]
+    prices_now = {"blended_list_price": blend(rows), "blended_list_price_openai_anthropic": blend([r for r in rows if r["org"] in ("openai", "anthropic")]),
+                  "blended_list_price_openai": blend([r for r in rows if r["org"] == "openai"]), "blended_list_price_anthropic": blend([r for r in rows if r["org"] == "anthropic"]),
+                  "usage_weighted_output_price": sum(r["completion"] * r["price_out"] for r in co) / sum(r["completion"] for r in co) if co else None}
+    out["prices_now"] = prices_now
     frontier = max((s["intel"] for s in scatter), default=None)
     near = [s["wprice"] for s in scatter if frontier is not None and s["intel"] >= frontier - 5]
     snap = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "week_ending": out.get("week_date"),
@@ -126,14 +136,14 @@ def openrouter(notes: list) -> dict:
             "usage_weighted_input_price": sum(t * p for t, p in wp) / sum(t for t, _ in wp) if wp else None,
             "request_weighted_cost_per_request_cents": sum(n * c for n, c in cp) / sum(n for n, _ in cp) if cp and sum(n for n, _ in cp) else None,
             "frontier_intelligence": frontier,
-            "cheapest_near_frontier_price": min(near) if near else None}
+            "cheapest_near_frontier_price": min(near) if near else None, **prices_now}
     ARCH.mkdir(exist_ok=True)
     pd.DataFrame([snap]).pipe(_append, ARCH / "ai_openrouter_daily.csv", ["date"])
     if rows:
         pd.DataFrame([{"week_ending": r["date"], "slug": r["slug"], "org": r["org"], "tokens": r["tokens"]} for r in rows]) \
           .pipe(_append, ARCH / "ai_models_weekly.csv", ["week_ending", "slug"])
     hist = pd.read_csv(ARCH / "ai_openrouter_daily.csv")
-    out["history"] = hist.where(hist.notna(), None).to_dict(orient="list")
+    out["history"] = hist.astype(object).where(hist.notna(), None).to_dict(orient="list")
     wk = pd.read_csv(ARCH / "ai_models_weekly.csv") if (ARCH / "ai_models_weekly.csv").exists() else pd.DataFrame()
     if len(wk):
         by = wk.groupby(["week_ending", "org"])["tokens"].sum().unstack(fill_value=0)

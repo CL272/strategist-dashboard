@@ -1480,10 +1480,14 @@ function renderAiTokPrice(c) {
   for (const [id, n] of [['RAMP_TOK_PRICE_OPENAI_ANTHROPIC', 'Ramp: blended price, OpenAI & Anthropic'], ['RAMP_TOK_PRICE_OPENAI', 'Ramp: OpenAI'], ['RAMP_TOK_PRICE_ANTHROPIC', 'Ramp: Anthropic']])
     if (has(id)) L.push({ name: n, data: pts(S[id], state.from, state.to), extra: { showSymbol: true } });
   const h = AI && AI.openrouter && AI.openrouter.history;
-  if (h && h.usage_weighted_input_price) L.push({ name: 'OpenRouter: average input price paid', data: h.date.map((d, i) => [dayMs(d), h.usage_weighted_input_price[i]]).filter(p => p[1] != null && p[0] >= state.from), extra: { showSymbol: true } });
+  const hs = (k, n) => { if (h && h[k]) { const d = h.date.map((x, i) => [dayMs((h.week_ending && h.week_ending[i]) || x), h[k][i]]).filter(p => p[1] != null && p[0] >= state.from); if (d.length) L.push({ name: n, data: d, extra: { showSymbol: true, lineStyle: { type: 'dashed', width: 2 } } }); } };
+  hs('blended_list_price_openai_anthropic', 'OpenRouter: OpenAI & Anthropic, input + output at list prices');
+  hs('blended_list_price', 'OpenRouter: top 20 models, input + output at list prices');
+  hs('usage_weighted_input_price', 'OpenRouter: average input price paid');
   if (!L.length) return setEmpty(c, 'Waiting for data.');
   drawLines(c, L, { fmt: v => '$' + fmtNum(v, 3), axisFmt: v => '$' + fmtNum(v, 2), endLabels: false });
-  setNote(c, 'US dollars per million tokens. Both histories are young: Ramp publishes the latest week and the same week a month earlier, and this dashboard stores each reading; OpenRouter’s builds daily. Ramp’s figure blends input and output; OpenRouter’s is input only.');
+  const pn = AI && AI.openrouter && AI.openrouter.prices_now, r = has('RAMP_TOK_PRICE_OPENAI_ANTHROPIC') ? asOf(S.RAMP_TOK_PRICE_OPENAI_ANTHROPIC, state.latest) : null;
+  setNote(c, `${r && pn && pn.blended_list_price_openai_anthropic ? `For OpenAI and Anthropic, businesses on Ramp paid $${fmtNum(r.v, 2)} per million tokens (blended, week to ${dShort(r.t)}), against $${fmtNum(pn.blended_list_price_openai_anthropic, 2)} at list prices for the same makers’ top models on OpenRouter. ` : ''}US dollars per million tokens. Ramp’s price is what companies actually paid, input and output blended, after caching and volume discounts; OpenRouter’s dashed lines price each model’s input and output tokens at list prices, weighted by usage, so they run higher. Ramp does not split input from output. Both histories are young and build each week.`);
   setSource(c, RAMP_SRC + '; OpenRouter');
 }
 function renderAiRampSpend(c) {
@@ -1539,9 +1543,88 @@ function renderGpuNvda(c) {
     { fmtA: v => '$' + fmtNum(v, 2), fmtB: v => '$' + fmtNum(v, 0), axisA: v => '$' + fmtNum(v, 1), axisB: v => '$' + fmtNum(v, 0) });
   setNote(c, 'Scarce compute (rising rents) supports pricing power for Nvidia and the neoclouds; falling rents would warn of oversupply.'); setSource(c, GPU_SRC + '; Yahoo Finance (NVDA)');
 }
+// ------------------------------------------------------------------ AI → Token market (Ramp token data with OpenRouter)
+const TM_MAKERS = [['Anthropic', 'ANTHROPIC', 'anthropic'], ['OpenAI', 'OPENAI', 'openai'], ['Google', 'GOOGLE', 'google'], ['xAI', 'XAI', 'x-ai'], ['DeepSeek', 'DEEPSEEK', 'deepseek']];
+state.tmView = 'now';
+function rampPair(kind, v) {   // latest and the reading a month earlier for a Ramp token series
+  const id = `RAMP_TOK_${kind}_${v}`; if (!has(id)) return null;
+  const s = S[id], a = asOf(s, state.latest), b = a && asOf(s, a.t - 21 * DAY);
+  return { a, b: b && b.t < a.t ? b : null };
+}
+function renderTmShare(c) {
+  if (!TM_MAKERS.some(([, v]) => has('RAMP_TOK_SPEND_' + v) || has('RAMP_TOK_VOL_' + v))) return setEmpty(c, 'Ramp token data arrives with the next data refresh.');
+  if (state.tmView === 'trend') {
+    const L = [];
+    for (const [n, v] of TM_MAKERS) for (const [k, lab, dash] of [['SPEND', 'spend', false], ['VOL', 'volume', true]]) {
+      const id = `RAMP_TOK_${k}_${v}`; if (has(id)) L.push({ name: `${n}: share of token ${lab}`, data: pts(S[id], 0, state.latest), extra: { showSymbol: true, ...(dash ? { lineStyle: { type: 'dashed', width: 2 } } : {}) } });
+    }
+    drawLines(c, L, { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false });
+    const n = has('RAMP_TOK_SPEND_ANTHROPIC') ? S.RAMP_TOK_SPEND_ANTHROPIC.t.length : 0;
+    setNote(c, `Weekly shares since the dashboard started storing them (${n} reading${n === 1 ? '' : 's'} so far: Ramp shows only the latest week and the same week a month earlier). Solid = share of spend, dashed = share of volume. The trend fills in each week. ${lastRead(RAMP_META)}`);
+  } else {
+    const rows = TM_MAKERS.map(([n, v]) => ({ n, sp: rampPair('SPEND', v), vo: rampPair('VOL', v) })).filter(r => r.sp || r.vo);
+    const val = (x, w) => x && x[w] ? +x[w].v.toFixed(1) : null;
+    const o = baseOpt(); o.legend.show = true; o.grid.top = 34; o.grid.left = 8;
+    o.yAxis = { type: 'category', data: rows.map(r => r.n).reverse(), axisLabel: { color: tok('--ink-2') }, axisTick: { show: false }, axisLine: { show: false } };
+    o.xAxis = valAxis(v => fmtNum(v, 0) + '%'); o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => v == null ? '–' : fmtNum(v, 1) + '%' };
+    const wk = rows.find(r => r.sp && r.sp.a), prev = rows.find(r => r.sp && r.sp.b);
+    o.series = [
+      { name: `Share of token spend, week to ${wk ? dShort(wk.sp.a.t) : ''}`, type: 'bar', data: rows.map(r => val(r.sp, 'a')).reverse(), itemStyle: { color: col(0) }, barGap: '10%',
+        label: { show: true, position: 'right', fontSize: 11, color: tok('--ink-2'), formatter: p => p.value == null ? '' : fmtNum(p.value, 1) + '%' } },
+      { name: 'Share of token volume', type: 'bar', data: rows.map(r => val(r.vo, 'a')).reverse(), itemStyle: { color: col(1) },
+        label: { show: true, position: 'right', fontSize: 11, color: tok('--muted'), formatter: p => p.value == null ? '' : fmtNum(p.value, 1) + '%' } },
+      { name: `Spend share a month earlier${prev ? ` (week to ${dShort(prev.sp.b.t)})` : ''}`, type: 'bar', data: rows.map(r => val(r.sp, 'b')).reverse(), itemStyle: { color: hexA(col(0), 0.35) } }];
+    inst(c).setOption(o, true);
+    const an = rows.find(r => r.n === 'Anthropic'), oa = rows.find(r => r.n === 'OpenAI');
+    setNote(c, `${an && an.sp && an.sp.b ? `Anthropic took ${fmtNum(an.sp.a.v, 1)}% of business token spend on Ramp, up from ${fmtNum(an.sp.b.v, 1)}% a month earlier${oa && oa.sp ? `; OpenAI ${fmtNum(oa.sp.a.v, 1)}%` : ''}. ` : ''}Spend share above volume share = that maker charges more per token than the average. Sample: businesses using Ramp’s Token Spend Management, which imports usage and billing data from connected AI providers. ${lastRead(RAMP_META)}`);
+    c.csv = [['Maker', 'Spend share %', 'Volume share %', 'Spend share a month earlier %'], ...rows.map(r => [r.n, val(r.sp, 'a') ?? '', val(r.vo, 'a') ?? '', val(r.sp, 'b') ?? ''])];
+  }
+  setSource(c, RAMP_SRC);
+}
+function renderTmPremium(c) {
+  const rows = TM_MAKERS.map(([n, v]) => { const sp = rampPair('SPEND', v), vo = rampPair('VOL', v); return sp && vo && vo.a.v > 0.5 ? { n, x: sp.a.v / vo.a.v, p: sp.b && vo.b && vo.b.v > 0.5 ? sp.b.v / vo.b.v : null } : null; }).filter(Boolean);
+  if (!rows.length) return setEmpty(c, 'Waiting for data.');
+  const o = baseOpt(); o.legend.show = true; o.grid.top = 34; o.grid.left = 8;
+  o.yAxis = { type: 'category', data: rows.map(r => r.n).reverse(), axisLabel: { color: tok('--ink-2') }, axisTick: { show: false }, axisLine: { show: false } };
+  o.xAxis = valAxis(v => fmtNum(v, 1) + '×', { min: 0 }); o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => v == null ? '–' : fmtNum(v, 2) + '×' };
+  o.series = [{ name: 'Latest week', type: 'bar', data: rows.map(r => +r.x.toFixed(2)).reverse(), itemStyle: { color: col(0) }, markLine: { silent: true, symbol: 'none', data: [{ xAxis: 1 }], lineStyle: { color: tok('--muted'), type: 'dashed' }, label: { formatter: 'average', color: tok('--muted') } },
+    label: { show: true, position: 'right', fontSize: 11, color: tok('--ink-2'), formatter: p => fmtNum(p.value, 2) + '×' } },
+    { name: 'A month earlier', type: 'bar', data: rows.map(r => r.p == null ? null : +r.p.toFixed(2)).reverse(), itemStyle: { color: hexA(col(0), 0.35) } }];
+  inst(c).setOption(o, true);
+  setNote(c, 'Share of token spend ÷ share of token volume on Ramp: 1.0× = the average price per token across makers; above 1 = dearer tokens (or a richer mix of large models). Ramp does not publish prices by model or split input from output, so this ratio is the closest public read on relative pricing. Makers under 0.5% of volume are left out.');
+  setSource(c, RAMP_SRC + '; calculated');
+  c.csv = [['Maker', 'Spend ÷ volume, latest', 'A month earlier'], ...rows.map(r => [r.n, r.x, r.p ?? ''])];
+}
+function renderTmModels(c) {
+  const b = htmlBody(c), w = AI && AI.openrouter && AI.openrouter.week;
+  if (!w || !w.length) { b.append(el('div', { class: 'empty', text: 'Waiting for OpenRouter data.' })); return; }
+  const tot = w.reduce((a, r) => a + r.tokens, 0), heads = ['Model (OpenRouter)', 'Share', 'Out ÷ in', 'Input $/M', 'Output $/M'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  for (const r of w.slice(0, 12)) {
+    const nm = r.name.replace(/^[^:]+:\s*/, ''), mk = ORG_NAME[r.org] || r.org, ratio = r.prompt ? r.completion / r.prompt : null;
+    tb.append(el('tr', { class: 'row', title: `${mk} · ${fmtNum(r.tokens / 1e12, 2)}T tokens this week` }, el('td', { text: `${nm}` }), el('td', { class: 'num', text: fmtNum(r.tokens / tot * 100, 1) + '%' }),
+      el('td', { class: 'num muted', text: ratio == null ? '–' : fmtNum(ratio * 100, 1) + '%' }), el('td', { class: 'num', text: r.price_in == null ? '–' : '$' + fmtNum(r.price_in, 2) }),
+      el('td', { class: 'num', text: r.price_out == null ? '–' : '$' + fmtNum(r.price_out, 2) })));
+    csv.push([nm, mk, r.tokens / tot * 100, ratio, r.price_in, r.price_out]);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `Ramp does not publish token data by model, so this view uses OpenRouter: the 12 most-used models in the week to ${AI.openrouter.week_date || '–'}, share of the top 20 models’ tokens, output tokens as a share of input tokens, and list prices per million tokens. OpenRouter traffic leans to cheap open models used by apps and developers; hover a row for the maker.`);
+  setSource(c, 'OpenRouter rankings and models API');
+}
+const ORG_NAME = { anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google', 'x-ai': 'xAI', deepseek: 'DeepSeek', 'z-ai': 'Z.ai', tencent: 'Tencent', stepfun: 'StepFun', minimax: 'MiniMax', moonshotai: 'Moonshot AI', nvidia: 'NVIDIA', meta: 'Meta', stealth: 'Stealth model', 'meta-llama': 'Meta', qwen: 'Qwen' };
+function tokenTiles(tile) {
+  const v = rampPair('VOL', 'ANTHROPIC'); if (v) tile('Anthropic share of token volume', fmtNum(v.a.v, 1) + '%', v.b ? `${sign(v.a.v - v.b.v)}${fmtNum(Math.abs(v.a.v - v.b.v), 1)}pts on a month` : '', 'Ramp · week to ' + dShort(v.a.t));
+  const p = has('RAMP_TOK_PRICE_OPENAI_ANTHROPIC') ? rampPair('PRICE', 'OPENAI_ANTHROPIC') : null;
+  if (p) tile('Ramp blended price', '$' + fmtNum(p.a.v, 2) + '/M', p.b ? `${p.a.v < p.b.v ? '−' : '+'}$${fmtNum(Math.abs(p.a.v - p.b.v), 2)} on a month · OpenAI & Anthropic` : 'OpenAI & Anthropic', 'Ramp · week to ' + dShort(p.a.t));
+  const pn = AI && AI.openrouter && AI.openrouter.prices_now;
+  if (pn && pn.blended_list_price != null) tile('OpenRouter blended price', '$' + fmtNum(pn.blended_list_price, 2) + '/M', pn.usage_weighted_output_price != null ? `output tokens $${fmtNum(pn.usage_weighted_output_price, 2)}/M` : 'input + output, list prices', 'OpenRouter · week to ' + (AI.openrouter.week_date || '–'));
+}
+
 function aiExtraTiles() {
   const box = $('#aiKpis'), tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
   if (has('RAMP_ADOPT')) { const a = asOf(S.RAMP_ADOPT, state.latest), b = asOf(S.RAMP_ADOPT, addMonths(a.t, -12)); tile('Businesses paying for AI', fmtNum(a.v, 1) + '%', b ? `${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 1)}pp on a year` : '', 'Ramp · ' + monthLab(a.t)); }
+  tokenTiles(tile);
   if (has('RAMP_TOK_SPEND_ANTHROPIC')) { const a = asOf(S.RAMP_TOK_SPEND_ANTHROPIC, state.latest); tile('Anthropic share of token spend', fmtNum(a.v, 1) + '%', has('RAMP_TOK_SPEND_OPENAI') ? `OpenAI ${fmtNum(asOf(S.RAMP_TOK_SPEND_OPENAI, state.latest).v, 1)}%` : '', 'Ramp · week to ' + dShort(a.t)); }
   for (const g of ['H100', 'H200', 'B200']) if (has(`GPU_${g}_OD`)) { const s = S[`GPU_${g}_OD`], a = asOf(s, state.latest), y = asOf(s, addMonths(a.t, -12)) || { t: s.t[0], v: s.v[0] };
     tile(`${g} rent`, '$' + fmtNum(a.v, 2) + '/hr', y && a.t - y.t > 300 * DAY ? `${pctF1((a.v / y.v - 1) * 100)} since ${monthLab(y.t)}` : 'on-demand median', 'GetDeploying · ' + nice(a.t)); }
@@ -1598,8 +1681,11 @@ function buildChip() {
   makeCard(g, { key: 'chip_korea', title: 'Korea chip exports vs KOSPI', defaultRange: '5Y', seg: { key: 'krLead', options: [['0', 'As measured'], ['2', 'Lead +2m']] }, render: renderChipKorea });
   makeCard(g, { key: 'chip_mem', title: 'Memory makers vs KOSPI and SOX', defaultRange: '1Y', render: renderChipMem });
   makeCard(g, { key: 'ai_ramp', title: 'Business AI adoption (Ramp)', wide: true, defaultRange: '3Y', render: renderAiRamp });
+  makeCard(g, { key: 'tm_share', title: 'Token spend and volume by maker', wide: true, range: false, seg: { key: 'tmView', options: [['now', 'Latest week'], ['trend', 'Weekly trend']] }, render: renderTmShare });
   makeCard(g, { key: 'ai_vendor', title: 'Who is winning, two ways', range: false, render: renderAiVendor });
-  makeCard(g, { key: 'ai_tokprice', title: 'Token prices, two ways', defaultRange: '1Y', render: renderAiTokPrice });
+  makeCard(g, { key: 'tm_premium', title: 'Price per token by maker', range: false, render: renderTmPremium });
+  makeCard(g, { key: 'tm_models', title: 'Most-used models', range: false, render: renderTmModels });
+  makeCard(g, { key: 'ai_tokprice', title: 'Token prices, two ways', defaultRange: '3M', render: renderAiTokPrice });
   makeCard(g, { key: 'ai_rampspend', title: 'How much companies spend on AI', defaultRange: '3Y', render: renderAiRampSpend });
   makeCard(g, { key: 'ai_rampsize', title: 'Adoption by company size', defaultRange: '3Y', render: renderAiRampSize });
   makeCard(g, { key: 'gpu_rent', title: 'GPU rent per hour', wide: true, defaultRange: '1Y', seg: { key: 'gpuBill', options: [['OD', 'On-demand'], ['R12', '12-month reserved'], ['SPOT', 'Spot']] }, render: renderGpuRent });
@@ -1615,6 +1701,7 @@ function buildChip() {
     drawPair(c, L[0], { ...B, extra: { showSymbol: true } }, { fmtA: v => '$' + fmtNum(v, 2), fmtB: v => '$' + fmtNum(v, 3), axisA: v => '$' + fmtNum(v, 1), axisB: v => '$' + fmtNum(v, 2) });
     setNote(c, 'What it costs to rent the chips against what customers pay per token: rents up while token prices fall means model makers’ margins are being squeezed. The token history is young and builds weekly.');
     setSource(c, GPU_SRC + '; ' + RAMP_SRC); } });
+  for (const k of ['tm_models']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   { const r = cards.gpu_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 state.chipLead = '0';
@@ -3070,7 +3157,7 @@ function buildAI() {
 }
 function renderAI() {
   aiKpis(); aiExtraTiles();
-  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq', 'chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem', 'ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize', 'gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok'].forEach(k => cards[k].render());
+  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq', 'chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem', 'ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize', 'tm_share', 'tm_premium', 'tm_models', 'gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ VALUATION
@@ -5597,7 +5684,7 @@ const SUBTABS = {
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['Taiwan', ['tw_mkt', 'tw_lead', 'tw_trade', 'tw_ip', 'tw_growth', 'tw_infl'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
-  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business vs developers', ['ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
+  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
@@ -5921,7 +6008,8 @@ const TILE_SETS = {
     'Prices & cost': ['Avg price paid', 'Avg cost per request', 'Cheapest near-frontier', 'Frontier model'],
     'Build-out': ['Frontier model', 'OpenRouter weekly tokens', 'AI equity basket'],
     'AI stocks': ['AI equity basket'],
-    'Business vs developers': ['Businesses paying for AI', 'Anthropic share of token spend', 'OpenRouter weekly tokens', 'Avg price paid'],
+    'Business adoption': ['Businesses paying for AI', 'Anthropic share of token spend', 'OpenRouter weekly tokens'],
+    'Token market': ['Anthropic share of token spend', 'Anthropic share of token volume', 'Ramp blended price', 'OpenRouter blended price', 'OpenRouter weekly tokens'],
     'Compute prices': ['H100 rent', 'H200 rent', 'B200 rent', 'Vast H100 marketplace'],
     'Chip cycle': ['Korea chip exports', 'SK hynix', 'AI equity basket'],
   },
