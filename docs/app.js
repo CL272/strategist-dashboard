@@ -3873,6 +3873,18 @@ function renderLLBars(c) {
   setSource(c, 'Calculated from the two series (monthly)');
 }
 function syncLLSeg() { const c = cards.ll_chart; c.root.querySelectorAll('.card-tools .seg button').forEach(b => b.classList.toggle('on', (b.textContent === 'As measured' && state.ll.lag === '0') || (b.textContent === 'Best lead' && state.ll.lag === 'best'))); }
+// show the first n rows of a long, ranked table; the rest behind "Show all" (remembered for this visit)
+const capOpen = new Set();
+function capRows(tb, key, n = 12) {
+  const rows = [...tb.querySelectorAll(':scope > tr.row')];
+  if (rows.length <= n + 2 || capOpen.has(key)) return;
+  const sel = rows.findIndex(r => r.classList.contains('sel'));
+  rows.forEach((r, i) => { if (i >= n && i !== sel) r.hidden = true; });
+  const cols = (tb.closest('table').querySelector('thead tr') || { children: [1] }).children.length;
+  const more = el('tr', { class: 'grp cap-row' }, el('td', { colspan: cols }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length}`,
+    onclick: () => { capOpen.add(key); rows.forEach(r => { r.hidden = false; }); more.remove(); } })));
+  tb.append(more);
+}
 function renderLLTable(c) {
   const b = htmlBody(c), rows = LL_PAIRS.filter(p => has(p[0], p[2])).map(p => ({ p, sc: llScan(p[0], p[1], p[2], p[3]) })).filter(r => r.sc)
     .sort((x, y) => Math.abs(y.sc.best.r) - Math.abs(x.sc.best.r));
@@ -3886,6 +3898,7 @@ function renderLLTable(c) {
       el('td', { text: k === 0 ? 'none' : k > 0 ? `first leads ${k}m` : `second leads ${-k}m` }),
       el('td', { class: 'heat', style: `background:${hexA(tok(sc.best.r >= 0 ? '--pos' : '--neg'), Math.min(1, Math.abs(sc.best.r)) * 0.42)}`, text: fmtCorr(sc.best.r) }), el('td', { text: String(sc.best.n) }))); }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  capRows(tb, 'll_table');
   c.csv = [heads, ...rows.map(({ p, sc }) => [p[4], llLabel(p[0], p[1]), llLabel(p[2], p[3]), sc.zero.r == null ? '' : sc.zero.r.toFixed(2), sc.best.k, sc.best.r.toFixed(2), sc.best.n])];
   setNote(c, 'Well-known lead-lag relationships, tested on this dashboard’s own monthly data over each pair’s full shared history, strongest first. Click a row to chart it at its best shift. Caution: searching 49 shifts always finds a “best” one, short histories overstate links, and a past lead is a tendency, not a forecast.');
 }
@@ -4012,39 +4025,46 @@ function renderWatch(c) {
   b.append(el('div', { class: 'perf-bar' }, add, el('span', { class: 'muted small' }, 'Not listed? Add it to ', el('a', { href: edit, target: '_blank', rel: 'noopener', text: 'watchlist.txt on GitHub' }), ' (one ticker per line; it appears after the next daily refresh).')));
   const all = Object.values(TICK_SYM);
   const match = id => !q || S[id].sym.toUpperCase().includes(q) || S[id].short.toUpperCase().includes(q);
-  const tbl = el('table', { class: 'perf watch' });
+  const tbl = el('table', { class: 'perf watch asset-table' });
   const heads = ['', 'Ticker', 'Name', 'Last', '1D', '1W', '1M', 'YTD', '1Y', '3M', ''];
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 1 || i === 2 ? 'l' : '' })))));
   const tb = el('tbody'), pos = tok('--pos'), neg = tok('--neg'), csv = [['Ticker', 'Name', 'Currency', 'Last', '1D %', '1W %', '1M %', 'YTD %', '1Y %']];
   const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
   const pc = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
-  const group = (name, ids, open) => {
-    const rows = ids.map(id => tickRow(id)).filter(Boolean); if (!rows.length) return;
-    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: name })));
-    for (const r of rows) {
-      const on = mine.includes(r.id);
-      const starB = el('button', { type: 'button', class: 'star-b' + (on ? ' on' : ''), text: on ? '★' : '☆', title: on ? 'Remove from my watchlist' : 'Add to my watchlist',
-        onclick: ev => { ev.stopPropagation(); const l = getWatch(); setWatch(on ? l.filter(x => x !== r.id) : [...l, r.id]); renderWatch(c); } });
-      const ideaB = el('button', { type: 'button', class: 'ghost', text: '＋ Idea', title: 'Log an idea on this ticker', onclick: ev => { ev.stopPropagation(); openIdeaForm(null, r.id); } });
-      tb.append(el('tr', { class: 'row' + (state.watchSel === r.id ? ' sel' : ''), onclick: () => { state.watchSel = r.id; cards.idea_chart.render(); renderWatch(c); } },
-        el('td', {}, starB), el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short + (r.s.stale ? ' (stale)' : '') }),
-        el('td', { text: fmtNum(r.last, autoDec(r.last)) + ' ' + (r.s.ccy || '') }),
-        ...[[r.d1, 3], [r.w1, 6], [r.m1, 10], [r.ytd, 25], [r.y1, 30]].map(([v, sc]) => el('td', { class: 'heat', style: heat(v, sc), text: pc(v) })),
-        el('td', {}, sparkSVG(r.s, addMonths(r.t, -3), r.t) || ''), el('td', {}, ideaB)));
-      csv.push([r.s.sym, r.s.short, r.s.ccy, r.last, ...[r.d1, r.w1, r.m1, r.ytd, r.y1].map(v => v == null ? '' : v.toFixed(2))]);
-    }
-    if (!open) { /* folded groups are handled by foldableGroups */ }
-  };
-  if (!q) group(`★ My watchlist (${mine.length})`, mine, true);
-  const pool = all.filter(match);
-  for (const m of TICK_ORDER) group(m + (q ? '' : ''), pool.filter(id => tickMarket(id) === m).sort((x, y) => S[x].short.localeCompare(S[y].short)), !!q);
+  // views instead of 200 rows of folded groups: my stars, this week's movers, one market, or all; 25 rows at a time
+  const views = [...(mine.length ? ['★ Mine'] : []), 'Movers', ...TICK_ORDER.filter(m => all.some(id => tickMarket(id) === m)), 'All'];
+  if (!views.includes(state.watchView)) state.watchView = mine.length ? '★ Mine' : 'Movers';
+  const chips = el('div', { class: 'seg-chips sub-chips' }, ...views.map(v => el('button', { type: 'button', text: v.replace(' (Bursa)', '').replace('Added in watchlist.txt', 'From watchlist.txt'),
+    'aria-selected': String(!q && v === state.watchView), onclick: () => { state.watchView = v; state.watchShow = 25; state.watchQ = ''; renderWatch(c); } })));
+  if (!q) b.append(chips);
+  let ids;
+  if (q) ids = all.filter(match);
+  else if (state.watchView === '★ Mine') ids = mine;
+  else if (state.watchView === 'Movers') {
+    const rs = all.map(id => tickRow(id)).filter(r => r && r.w1 != null).sort((x, y) => y.w1 - x.w1);
+    ids = [...rs.slice(0, 10), ...rs.slice(-10).reverse()].map(r => r.id);
+  } else if (state.watchView === 'All') ids = all.slice().sort((x, y) => S[x].short.localeCompare(S[y].short));
+  else ids = all.filter(id => tickMarket(id) === state.watchView).sort((x, y) => S[x].short.localeCompare(S[y].short));
+  const rowsAll = ids.map(id => tickRow(id)).filter(Boolean), cap = state.watchShow || 25, rows = rowsAll.slice(0, cap);
+  const sizes = [[3], [6], [10], [25], [30]];
+  rows.forEach((r, k) => {
+    if (!q && state.watchView === 'Movers' && (k === 0 || k === 10)) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: k === 0 ? 'Biggest risers this week' : 'Biggest fallers this week' })));
+    const on = mine.includes(r.id);
+    const starB = el('button', { type: 'button', class: 'star-b' + (on ? ' on' : ''), text: on ? '★' : '☆', title: on ? 'Remove from my watchlist' : 'Add to my watchlist',
+      onclick: ev => { ev.stopPropagation(); const l = getWatch(); setWatch(on ? l.filter(x => x !== r.id) : [...l, r.id]); renderWatch(c); } });
+    const ideaB = el('button', { type: 'button', class: 'ghost', text: '＋ Idea', title: 'Log an idea on this ticker', onclick: ev => { ev.stopPropagation(); openIdeaForm(null, r.id); } });
+    tb.append(el('tr', { class: 'row' + (state.watchSel === r.id ? ' sel' : ''), onclick: () => { state.watchSel = r.id; cards.idea_chart.render(); renderWatch(c); } },
+      el('td', {}, starB), el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short + (r.s.stale ? ' (stale)' : '') }),
+      el('td', { class: 'num', text: fmtNum(r.last, autoDec(r.last)) + ' ' + (r.s.ccy || '') }),
+      ...[r.d1, r.w1, r.m1, r.ytd, r.y1].map((v, j) => moveCell({ kind: 'price' }, v, sizes[j][0], r.last)),
+      el('td', { class: 'trend' }, sparkSVG(r.s, addMonths(r.t, -3), r.t) || ''), el('td', {}, ideaB)));
+  });
+  for (const r of rowsAll) csv.push([r.s.sym, r.s.short, r.s.ccy, r.last, ...[r.d1, r.w1, r.m1, r.ytd, r.y1].map(v => v == null ? '' : v.toFixed(2))]);
+  if (rowsAll.length > rows.length) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length },
+    el('button', { type: 'button', class: 'ghost more-btn', text: `Show ${Math.min(25, rowsAll.length - rows.length)} more (${rowsAll.length - rows.length} left)`, onclick: () => { state.watchShow = cap + 25; renderWatch(c); } }))));
+  if (!rowsAll.length) tb.append(el('tr', {}, el('td', { colspan: heads.length, class: 'muted', text: q ? 'No ticker matches.' : 'Nothing here yet.' })));
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
-  if (!q) {   // first visit: fold the big market groups, keep "My watchlist" and Malaysia open
-    let first = false; try { first = !localStorage.getItem('sd-watch-folds'); localStorage.setItem('sd-watch-folds', '1'); } catch (e) { first = !state.watchFoldsDone; }
-    if (first) { state.watchFoldsDone = true; TICK_ORDER.filter(m => m !== 'Malaysia (Bursa)' && m !== 'Added in watchlist.txt').forEach(m => folded.add('watch|' + m)); saveFolded(); }
-  }
-  foldableGroups(tb, q ? 'watchq' : 'watch');
-  if (!mine.length && !q) b.prepend(el('p', { class: 'muted small', text: 'Tip: tap ☆ to add a ticker to your watchlist (kept only in this browser). Groups below fold and unfold; tap a row to chart it.' }));
+  if (!mine.length && !q) b.prepend(el('p', { class: 'muted small', text: 'Tip: tap ☆ to add a ticker to your watchlist (kept only in this browser); tap a row to chart it.' }));
   c.csv = csv;
   setNote(c, `${all.length} tickers with daily closes from Yahoo Finance (built-in list: KLCI and STI constituents, US large caps, popular ETFs, key Hong Kong, Japan, Korea, Taiwan and Australia names, major crypto${(TICK.watchlist || []).length ? `; plus ${TICK.watchlist.length} from watchlist.txt` : ''}). Prices are last daily closes in each ticker's own currency, refreshed twice a day; not live quotes.` + ((TICK.failed || []).length ? ` Not found on Yahoo: ${TICK.failed.join(', ')}.` : ''));
 }
