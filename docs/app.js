@@ -3925,6 +3925,111 @@ function renderMktCharts() {
       { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%' });
   }
 }
+// ------------------------------------------------------------------ MARKETS → Trend (WP23)
+// Trend state of the main assets and of the relative-strength ratios strategists watch. Prices only (FX as quoted).
+const TREND_SETS = {
+  Equities: ['SPX', 'NDX', 'RTY', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'NIFTY', 'STI', 'KLCI', 'JCI', 'AS51', 'EEM', 'AAXJ'],
+  'Bonds & credit': ['TLT', 'IEF', 'LQD', 'HYG', 'EMB'],
+  FX: ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'USDKRW', 'USDINR', 'USDTWD', 'AUDUSD'],
+  'Commodities & crypto': ['GOLD', 'SILVER', 'BRENT', 'COPPER', 'NATGAS', 'IRONORE', 'BTC'],
+};
+state.trSet = 'Equities';
+const trCache = new Map();
+function trendStats(id) {   // as of the latest close
+  if (trCache.has(id)) return trCache.get(id);
+  const s = S[id]; if (!s || s.t.length < 260) { trCache.set(id, null); return null; }
+  const n = s.t.length, v = s.v, cs = [0]; for (let i = 0; i < n; i++) cs.push(cs[i] + v[i]);
+  const ma = (i, w) => i + 1 >= w ? (cs[i + 1] - cs[i + 1 - w]) / w : null;
+  const i = idxLE(s, state.latest); if (i < 200) { trCache.set(id, null); return null; }
+  const last = v[i], m200 = ma(i, 200), m50 = ma(i, 50), up = m50 > m200;
+  let cross = null; for (let j = i - 1; j >= 200; j--) { if ((ma(j, 50) > ma(j, 200)) !== up) { cross = s.t[j + 1]; break; } }
+  const at = t => { const a = asOf(s, t); return a ? a.v : null; };
+  const p12 = at(addMonths(s.t[i], -12)), p1 = at(addMonths(s.t[i], -1)), p3 = at(addMonths(s.t[i], -3));
+  let hi = -Infinity, peak = -Infinity; const from = s.t[i] - 365 * DAY;
+  for (let j = 0; j <= i; j++) { peak = Math.max(peak, v[j]); if (s.t[j] >= from) hi = Math.max(hi, v[j]); }
+  const out = { last, t: s.t[i], vs200: (last / m200 - 1) * 100, up, cross, mom: p12 && p1 ? (p1 / p12 - 1) * 100 : null, m3: p3 ? (last / p3 - 1) * 100 : null,
+    fromHi: (last / hi - 1) * 100, dd: (last / peak - 1) * 100, newHi: last >= hi * 0.999, newLo: (() => { let lo = Infinity; for (let j = 0; j <= i; j++) if (s.t[j] >= from) lo = Math.min(lo, v[j]); return last <= lo * 1.001; })() };
+  trCache.set(id, out); return out;
+}
+const sinceF = t => t ? `${MONTHS[new Date(t).getUTCMonth()]} ${String(new Date(t).getUTCFullYear()).slice(2)}` : 'long ago';
+function renderTrendTable(c) {
+  const b = htmlBody(c), ids = (TREND_SETS[state.trSet] || []).filter(id => has(id)), heads = ['Asset', 'Last', '12-1M', '3M', 'vs 200d', '50/200d trend', 'From 52w high'];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  const cell = (v, big) => el('td', { class: 'num ' + (v == null ? '' : v > 0 ? 'up' : v < 0 ? 'dn' : ''), text: v == null ? '–' : pctF1(v), style: v != null && Math.abs(v) >= big ? `background:${hexA(v > 0 ? tok('--pos') : tok('--neg'), 0.14)}` : '' });
+  for (const id of ids) { const x = trendStats(id); if (!x) continue;
+    const tr = el('tr', { class: 'row', title: `${S[id].label} · ${x.newHi ? 'at a 52-week high' : x.newLo ? 'at a 52-week low' : ''} drawdown from all-time high ${pctF1(x.dd)}` },
+      el('td', {}, el('span', { class: 'name-in', text: S[id].short || S[id].label })), el('td', { class: 'num', text: fmtNum(x.last, x.last >= 1000 ? 0 : x.last >= 10 ? 2 : 4) }),
+      cell(x.mom, 20), cell(x.m3, 10), cell(x.vs200, 10),
+      el('td', { class: 'num ' + (x.up ? 'up' : 'dn'), text: `${x.up ? '▲ up' : '▼ down'} since ${sinceF(x.cross)}` }), cell(x.fromHi, 15));
+    tb.append(tr); csv.push([S[id].label, x.last, x.mom, x.m3, x.vs200, x.up ? 'up' : 'down', x.cross ? new Date(x.cross).toISOString().slice(0, 10) : '', x.fromHi]); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `12-1M = return over the past year excluding the last month (the standard momentum measure). 50/200d trend = whether the 50-day average is above the 200-day, and since when. Shaded = large move. Hover a row for 52-week highs or lows and the drawdown from the all-time high. Data to ${nice(state.latest)}.`);
+  setSource(c, 'Yahoo Finance; calculated');
+}
+const RS_PAIRS = [   // [name, numerator, denominator, what a rising line means]
+  ['Asia ex-Japan ÷ world', 'AAXJ', 'ACWI', 'Asia outperforming'], ['Emerging ÷ S&P 500', 'EEM', 'SPX', 'EM outperforming the US'],
+  ['KLCI (USD) ÷ Asia ex-Japan', 'KLCI@USD', 'AAXJ', 'Malaysia outperforming Asia'], ['SOX ÷ S&P 500', 'SOX', 'SPX', 'chips leading'],
+  ['Growth ÷ value', 'IWF', 'IWD', 'growth leading'], ['Small ÷ large', 'RTY', 'SPX', 'small caps leading'], ['Equal ÷ cap weight', 'SPXEW', 'SPX', 'broad participation'],
+  ['Discretionary ÷ staples', 'XLY', 'XLP', 'risk appetite'], ['Copper ÷ gold', 'COPPER', 'GOLD', 'growth optimism (and higher yields)'], ['High yield ÷ Treasuries', 'HYG', 'IEF', 'credit risk appetite'],
+];
+const rsSer = id => id.endsWith('@USD') ? (has(id.split('@')[0]) ? inCcy(id.split('@')[0], 'USD') : null) : S[id];
+const rsCache = new Map();
+function rsSeries(p) {
+  if (rsCache.has(p[0])) return rsCache.get(p[0]);
+  const a = rsSer(p[1]), b = rsSer(p[2]); if (!a || !b || !a.t.length || !b.t.length) return null;
+  const t = [], v = []; for (let i = 0; i < a.t.length; i++) { const x = asOf(b, a.t[i]); if (x && a.t[i] - x.t < 5 * DAY && x.v) { t.push(a.t[i]); v.push(a.v[i] / x.v); } }
+  const out = { id: 'RS_' + p[0], label: p[0], kind: 'price', t, v }; rsCache.set(p[0], out); return out;
+}
+state.rsSel = 0;
+function renderRsTable(c) {
+  const b = htmlBody(c), heads = ['Ratio', 'vs 200d', 'Trend since', '3M'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  RS_PAIRS.forEach((p, k) => { const r = rsSeries(p); if (!r || r.t.length < 260) return; S[r.id] = r; trCache.delete(r.id); const x = trendStats(r.id); if (!x) return;
+    const above = x.vs200 > 0; let since = null; const n = r.t.length, cs = [0]; for (let i = 0; i < n; i++) cs.push(cs[i] + r.v[i]);
+    for (let j = n - 2; j >= 200; j--) { const m = (cs[j + 1] - cs[j - 199]) / 200; if ((r.v[j] > m) !== above) { since = r.t[j + 1]; break; } }
+    tb.append(el('tr', { class: 'row' + (k === state.rsSel ? ' sel' : ''), style: 'cursor:pointer', title: `Rising = ${p[3]}. Click to chart.`, onclick: () => { state.rsSel = k; cards.rs_table.render(); cards.rs_chart.render(); } },
+      el('td', { text: p[0] }), el('td', { class: 'num ' + (above ? 'up' : 'dn'), text: pctF1(x.vs200) }), el('td', { class: 'num', text: `${above ? '▲ above' : '▼ below'} ${sinceF(since)}` }),
+      el('td', { class: 'num ' + (x.m3 > 0 ? 'up' : 'dn'), text: pctF1(x.m3) })));
+    csv.push([p[0], x.vs200, above ? 'above' : 'below', since ? new Date(since).toISOString().slice(0, 10) : '', x.m3]); });
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, 'Each line divides one market by another: above its 200-day average = the first has been winning. A ratio crossing its 200-day average is a leadership change worth checking. Click a row to chart it.');
+  setSource(c, 'Yahoo Finance; KLCI converted to USD; calculated');
+}
+function renderRsChart(c) {
+  const p = RS_PAIRS[state.rsSel] || RS_PAIRS[0], r = rsSeries(p); if (!r) return setEmpty(c, 'Waiting for data.');
+  c.root.querySelector('.card-head h2').textContent = p[0];
+  const cs = [0]; r.v.forEach((x, i) => cs.push(cs[i] + x));
+  const ma = r.t.map((t, i) => [t, i >= 199 ? (cs[i + 1] - cs[i - 199]) / 200 : null]).filter(x => x[1] != null && x[0] >= state.from && x[0] <= state.to);
+  const p0 = pts(r, state.from, state.to), b0 = p0.length ? p0[0][1] : 1;
+  drawLines(c, [{ name: p[0] + ' (=100)', data: p0.map(([t, v]) => [t, v / b0 * 100]) }, { name: '200-day average', data: ma.map(([t, v]) => [t, v / b0 * 100]), extra: { lineStyle: { type: 'dashed', width: 1.5 } } }],
+    { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), endLabels: false });
+  setNote(c, `Rising = ${p[3]}. Rebased to 100 at the start of the range.`);
+  setSource(c, 'Yahoo Finance; calculated');
+}
+function trendTiles() {
+  const box = $('#trKpis'); if (!box) return; box.replaceChildren();
+  const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  const all = Object.values(TREND_SETS).flat().filter(id => has(id)).map(id => [id, trendStats(id)]).filter(x => x[1]);
+  const up = all.filter(([, x]) => x.up).length; tile('Assets in an uptrend', `${up} of ${all.length}`, '50-day above 200-day average', 'as of ' + nice(state.latest));
+  const eq = TREND_SETS.Equities.map(id => trendStats(id)).filter(Boolean), eu = eq.filter(x => x.vs200 > 0).length;
+  tile('Equity indices above 200d', `${eu} of ${eq.length}`, 'major markets', 'as of ' + nice(state.latest));
+  const hi = all.filter(([, x]) => x.newHi).map(([id]) => S[id].short || S[id].label), lo = all.filter(([, x]) => x.newLo).map(([id]) => S[id].short || S[id].label);
+  tile('At 52-week highs', String(hi.length), hi.slice(0, 3).join(', ') || 'none', 'of the assets above');
+  tile('At 52-week lows', String(lo.length), lo.slice(0, 3).join(', ') || 'none', 'of the assets above');
+  const rs = RS_PAIRS.map(p => { const r = rsSeries(p); if (!r) return null; S[r.id] = r; return trendStats(r.id); }).filter(Boolean);
+  tile('Leadership ratios rising', `${rs.filter(x => x.vs200 > 0).length} of ${rs.length}`, 'above their 200-day average', 'relative strength');
+}
+function buildTrend() {
+  const g = el('div', { class: 'grid', id: 'trGrid' });
+  $('#tab-markets').append(el('div', { class: 'kpis', id: 'trKpis' }), g);
+  makeCard(g, { key: 'tr_table', title: 'Trend and momentum', wide: true, range: false, seg: { key: 'trSet', options: Object.keys(TREND_SETS).map(k => [k, k]) }, render: renderTrendTable });
+  makeCard(g, { key: 'rs_table', title: 'Leadership ratios', range: false, render: renderRsTable });
+  makeCard(g, { key: 'rs_chart', title: 'Ratio chart', defaultRange: '3Y', render: renderRsChart });
+  for (const k of ['tr_table', 'rs_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+
 function buildMarkets() {
   const g = $('#mktCharts');
   makeCard(g, { key: 'rebased', title: 'Relative performance', wide: true, range: false, source: 'Yahoo Finance, FRED', render: renderMktCharts,
@@ -3955,7 +4060,7 @@ function buildMarkets() {
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); trendTiles(); ['tr_table', 'rs_table', 'rs_chart'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ BREADTH (from the ticker universe)
 // Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
@@ -5687,7 +5792,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
@@ -6156,7 +6261,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
