@@ -5,8 +5,10 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2025-08-31,cli_chn_dn_copper,COPPER,-1,ret,Context only,12,4.5185,2026-11-11
 2025-10-31,us_lei_pos,LH_SPX,1,ret,Context only,6,6840.2,2026-11-11
 2026-04-30,cu_au_up,UST10Y,1,chg,Context only,6,4.4,2026-11-11
+2026-04-30,r_klci_aaxj_dn,R_KLCI_AAXJ,-1,ret,Context only,6,3.981853014160123,2026-11-11
 2026-05-31,cli_idn_dn_jci,JCI,-1,ret,Context only,12,6127.38,2026-11-11
 2026-05-31,gpu_rent_up,NVDA,1,ret,Not enough history,3,210.658,2026-11-11
+2026-09-30,baa_tight,LH_SPX,-1,ret,Context only,12,7651.54,2026-11-11
 2026-09-30,oil_hot_in10y,IN_10Y,1,chg,Not enough history,6,7.06,2026-11-11
 2026-10-31,liq_up,SPX,1,ret,Context only,12,7580.07,2026-11-11
 2026-10-31,r_aaxj_acwi_dn,R_AAXJ_ACWI,-1,ret,Tested edge,3,0.5188135261923378,2026-11-11
