@@ -495,9 +495,32 @@ function endsTooClose(list) {   // end labels collide when the last values sit c
   last.sort((a, b) => a - b);
   return last.some((v, i) => i > 0 && (v - last[i - 1]) / span < 0.07);
 }
+// ---- busy charts: short legend names, and at most five lines in colour
+const MAX_COLOUR = 5;
+const HOME_RE = /^(Malaysia|Malaysian|MY |KLCI|FBM KLCI|BNM|OPR|Singapore|SG |SGS|STI|Straits|S\$|MAS|US |US$|UST|United States|S&P|Fed|EFFR|Effective fed)/i;
+function shortNames(names) {   // drop words every legend entry repeats ("… CPI YoY", "… 10Y yield")
+  if (names.length < 3) return names;
+  let n = names.map(x => x.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\b(headline|government bond)\b/gi, '').replace(/[, ]+$/g, '').replace(/\s{2,}/g, ' ').trim());
+  for (let k = 0; k < 4; k++) {   // strip the longest shared trailing words
+    const w = n.map(x => x.split(' ')), last = w[0][w[0].length - 1];
+    if (!last || w.some(a => a.length < 2 || a[a.length - 1].toLowerCase() !== last.toLowerCase())) break;
+    n = w.map(a => a.slice(0, -1).join(' ').replace(/[, ]+$/, ''));
+  }
+  return new Set(n).size === n.length && n.every(x => x) ? n : names;
+}
+function focusSeries(list) {   // indexes drawn in colour: home markets first, then list order
+  if (list.length <= MAX_COLOUR) return new Set(list.map((_, i) => i));
+  const home = list.map((s, i) => HOME_RE.test(s.name) ? i : -1).filter(i => i >= 0).slice(0, MAX_COLOUR - 1);
+  const rest = list.map((_, i) => i).filter(i => !home.includes(i));
+  return new Set([...home, ...rest].slice(0, home.length ? Math.max(home.length, 3) : 4));
+}
 function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null, noLegend = false } = {}) {
   if (endLabels && endsTooClose(list)) endLabels = false;
-  const series = list.map((s, i) => line(s.name, s.data, s.color || col(i), s.extra || {}));
+  const focus = focusSeries(list), muted = tok('--muted');
+  const series = list.map((s, i) => focus.has(i) ? line(s.name, s.data, s.color || col(i), s.extra || {})
+    : line(s.name, s.data, muted, { ...(s.extra || {}), lineStyle: { width: 1.1, color: muted, opacity: 0.55 }, itemStyle: { color: muted }, z: 1 }));
+  if (focus.size < list.length) { endLabels = false; series.forEach(x => { x.emphasis = { focus: 'series', lineStyle: { width: 2.6, opacity: 1 } }; x.blur = { lineStyle: { opacity: 0.25 } }; }); }
+  const legendNames = shortNames(list.map(s => s.name)), legendMap = new Map(list.map((s, i) => [s.name, legendNames[i]]));
   if ((zero || hlines.length) && series.length) {
     const ml = zeroLine();
     if (!zero) ml.data = [];
@@ -513,7 +536,8 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   const pad = endLabels ? withEndLabels(series) : 0;
   o.grid.right = 16 + pad;
   o.legend.show = series.length > 1 && !noLegend;
-  o.grid.top = o.legend.show ? 12 + 22 * legendRows(c, list.map(s => s.name)) : 14;
+  o.grid.top = o.legend.show ? 12 + 22 * legendRows(c, legendNames) : 14;
+  o.legend.formatter = name => legendMap.get(name) || name;
   o.tooltip.formatter = tipFormatter(fmt);
   o.xAxis = timeAxis();
   o.yAxis = valAxis(axisFmt || (v => fmtNum(v, autoDec(v))), yExtra);
