@@ -758,3 +758,10 @@ ul.changes.sig-list { grid-template-columns: 1fr; columns: auto; }
 ul.changes.sig-list li { display: block; }
 table.sc-table td.sc-read { white-space: normal; text-align: left; min-width: 14em; }
 table.sc-table td { padding-top: 7px; padding-bottom: 7px; }
+
+/* Idea log → house views and model portfolio */
+table.hv-table td.hv-why { white-space: normal; text-align: left; min-width: 10em; color: var(--ink-2); }
+.mp-top { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+input.mp-w { width: 64px; text-align: right; }
+.mp-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
+.mp-stat { display: flex; flex-direction: column; gap: 2px; }

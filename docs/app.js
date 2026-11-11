@@ -5048,7 +5048,7 @@ function renderSignals() { sigTiles(); renderPanel('signals'); }
 // Ideas are kept only in this browser (localStorage); Export/Import moves them between laptops.
 // Nothing is sent anywhere: the dashboard site is public, so ideas are never published with it.
 const IDEA_KEY = 'sd-ideas-v1';
-const IDEA_VIEWS = [['Open ideas', 'open'], ['Watchlist', 'watch'], ['Closed', 'closed'], ['Scorecard', 'score']];
+const IDEA_VIEWS = [['Open ideas', 'open'], ['Watchlist', 'watch'], ['Closed', 'closed'], ['Scorecard', 'score'], ['House views', 'views'], ['Model portfolio', 'model']];
 let IDEAS = [], ideaStoreOk = true;
 function loadIdeas() {
   try { const raw = localStorage.getItem(IDEA_KEY); IDEAS = raw ? JSON.parse(raw) : []; ideaStoreOk = true; }
@@ -5185,13 +5185,15 @@ function buildIdeas() {
   const panel = $('#tab-ideas');
   const newBtn = el('button', { type: 'button', class: 'primary', text: '＋ New idea', onclick: () => openIdeaForm() });
   const exp = el('button', { type: 'button', class: 'ghost', text: 'Export', title: 'Download all ideas as a file (back-up, or to move to another laptop)', onclick: () => {
-    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 1, exported: new Date().toISOString(), ideas: IDEAS }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 2, exported: new Date().toISOString(), ideas: IDEAS, views: hvLoad(), model: mpLoad() }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); download(url, `idea-log_${iso(Date.now())}.json`); setTimeout(() => URL.revokeObjectURL(url), 2000); } });
   const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
   file.addEventListener('change', async () => {
     const f = file.files[0]; if (!f) return;
     try {
       const j = JSON.parse(await f.text()), list = Array.isArray(j) ? j : j.ideas;
+      if (!Array.isArray(j) && j.views && Array.isArray(j.views.hist) && (!hvLoad().hist.length || window.confirm('Replace your house views with the ones in this file?'))) hvSave(j.views);
+      if (!Array.isArray(j) && j.model && Array.isArray(j.model.rows) && window.confirm('Replace your model portfolio with the one in this file?')) mpSave(j.model);
       if (!Array.isArray(list)) throw new Error('no ideas in file');
       const have = new Set(IDEAS.map(x => x.id)); let n = 0;
       for (const x of list) if (x && x.id && x.title && !have.has(x.id)) { IDEAS.push(x); n++; }
@@ -5211,19 +5213,154 @@ function buildIdeas() {
   makeCard(g, { key: 'idea_chart', title: 'Idea chart', wide: true, render: renderIdeaChart });
   makeCard(g, { key: 'idea_score', range: false, title: 'Scorecard', wide: true, render: renderIdeaScore });
   makeCard(g, { key: 'idea_watch', range: false, title: 'Watchlist and ticker prices', wide: true, render: renderWatch });
+  makeCard(g, { key: 'idea_views', range: false, wide: true, title: 'House views', render: renderHouseViews });
+  makeCard(g, { key: 'idea_viewlog', range: false, wide: true, title: 'Changes of view', render: renderViewLog });
+  makeCard(g, { key: 'idea_model', range: false, title: 'Model portfolio', render: renderModel });
+  makeCard(g, { key: 'idea_modelchart', range: false, title: 'Model portfolio vs world equities', render: renderModelChart });
   g.prepend(cards.idea_watch.root);
-  for (const k of ['idea_table', 'idea_score', 'idea_watch']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  for (const k of ['idea_table', 'idea_score', 'idea_watch', 'idea_views', 'idea_viewlog', 'idea_model']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
+// ------------------------------------------------------------------ HOUSE VIEWS and MODEL PORTFOLIO (WP26)
+// Stored only in this browser (localStorage); included in the idea log's Export / Import file. Never published.
+const VIEWS_KEY = 'sd-views-v1', MODEL_KEY = 'sd-model-v1';
+// [key, group, area, series, benchmark (null = absolute move), what "overweight" means]
+const HV_ROWS = [
+  ['eq_us', 'Equities', 'US', 'SPX', 'ACWI'], ['eq_eu', 'Equities', 'Europe', 'SX5E', 'ACWI'], ['eq_jp', 'Equities', 'Japan', 'NKY', 'ACWI'],
+  ['eq_cn', 'Equities', 'China', 'MCHI', 'ACWI'], ['eq_axj', 'Equities', 'Asia ex-Japan', 'AAXJ', 'ACWI'], ['eq_my', 'Equities', 'Malaysia', 'KLCI', 'ACWI'],
+  ['eq_sg', 'Equities', 'Singapore', 'STI', 'ACWI'], ['eq_em', 'Equities', 'Emerging markets', 'EEM', 'ACWI'],
+  ['fi_ust', 'Bonds', 'US Treasuries (7-10Y)', 'IEF', null], ['fi_ig', 'Bonds', 'US investment grade', 'LQD', 'IEF'], ['fi_hy', 'Bonds', 'US high yield', 'HYG', 'IEF'], ['fi_em', 'Bonds', 'EM USD bonds', 'EMB', 'IEF'],
+  ['fx_usd', 'FX', 'US dollar (DXY)', 'DXY', null], ['fx_myr', 'FX', 'Ringgit vs USD', 'USDMYR', null],
+  ['cm_gold', 'Commodities', 'Gold', 'GOLD', null], ['cm_oil', 'Commodities', 'Oil (Brent)', 'BRENT', null],
+];
+const HV_STANCES = [['OW', 'Overweight'], ['N', 'Neutral'], ['UW', 'Underweight']];
+function hvLoad() { try { return JSON.parse(localStorage.getItem(VIEWS_KEY) || '{"hist":[]}'); } catch (e) { return state.hvMem || { hist: [] }; } }
+function hvSave(o) { state.hvMem = o; try { localStorage.setItem(VIEWS_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+function hvCurrent() { const cur = {}; for (const h of hvLoad().hist) cur[h.key] = h; return cur; }
+function hvSign(key, st) { const inv = key === 'fx_myr'; const v = st === 'OW' ? 1 : st === 'UW' ? -1 : 0; return inv ? -v : v; }   // ringgit OW = USD/MYR falls
+function hvPerf(row, since) {   // series (in USD for equities) vs benchmark since the date, %
+  const [, , , id, bench] = row; if (!has(id)) return null;
+  const ser = row[1] === 'Equities' ? inCcy(id, 'USD') : S[id], a = asOf(ser, state.latest), b = asOf(ser, since); if (!a || !b) return null;
+  let r = (a.v / b.v - 1) * 100;
+  if (bench && has(bench)) { const A = asOf(S[bench], state.latest), B = asOf(S[bench], since); if (A && B) r -= (A.v / B.v - 1) * 100; }
+  return r;
+}
+function renderHouseViews(c) {
+  const b = htmlBody(c), cur = hvCurrent(), heads = ['Area', 'View', 'Since', 'Reason', 'Since then'];
+  const tbl = el('table', { class: 'perf asset-table hv-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [['Group', 'Area', 'View', 'Since', 'Reason', 'Relative move since %']];
+  let grp = null;
+  for (const row of HV_ROWS) {
+    const [key, g, area, id, bench] = row, h = cur[key] || { stance: 'N' };
+    if (g !== grp) { grp = g; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: g }))); }
+    const sel = el('select', { class: 'mini-select', 'aria-label': `View on ${area}` }, ...HV_STANCES.map(([v, l]) => el('option', { value: v, text: l })));
+    sel.value = h.stance || 'N';
+    sel.addEventListener('change', () => {
+      const why = window.prompt(`Reason for ${HV_STANCES.find(x => x[0] === sel.value)[1].toLowerCase()} ${area} (one line):`, '');
+      if (why === null) { sel.value = h.stance || 'N'; return; }
+      const o = hvLoad(); o.hist.push({ key, stance: sel.value, date: iso(sgToday()), why: why.trim(), level: has(id) ? asOf(S[id], state.latest).v : null }); hvSave(o); c.render(); cards.idea_viewlog.render(); });
+    const since = h.date ? dayMs(h.date) : null, perf = since && h.stance !== 'N' ? hvPerf(row, since) : null, adj = perf == null ? null : perf * (hvSign(key, h.stance) || 1);
+    tb.append(el('tr', { class: 'row', title: `${S[id] ? S[id].label : id}${bench ? ` vs ${S[bench] ? S[bench].label : bench}` : ' (absolute move)'}` },
+      el('td', { text: area }), el('td', {}, sel), el('td', { class: 'num muted', text: h.date ? dShort(dayMs(h.date)) + ' ' + h.date.slice(2, 4) : '–' }),
+      el('td', { class: 'hv-why', text: h.why || '' }), el('td', { class: 'num ' + (adj == null ? '' : adj > 0 ? 'up' : 'dn'), text: adj == null ? '–' : pctF1(adj) })));
+    csv.push([g, area, h.stance || 'N', h.date || '', h.why || '', perf ?? '']);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, 'Set a view with the drop-down; you are asked for a one-line reason and the date is recorded. "Since then" = how the call has done since it was made: equities against world equities (ACWI) in US dollars, credit against Treasuries, the rest as an absolute move; green = the call is working. Stored only in this browser; Export includes it.');
+  setSource(c, 'Your entries; prices from Yahoo Finance');
+}
+function renderViewLog(c) {
+  const b = htmlBody(c), L = hvLoad().hist.slice().reverse();
+  if (!L.length) { b.append(el('div', { class: 'muted', text: 'No changes yet. Set a view in the table.' })); return; }
+  const area = k => (HV_ROWS.find(r => r[0] === k) || [, , k])[2];
+  const ul = el('ul', { class: 'changes sig-list' });
+  for (const h of L.slice(0, 14)) ul.append(el('li', {}, el('b', { text: `${h.date} · ${area(h.key)} → ${(HV_STANCES.find(x => x[0] === h.stance) || ['', h.stance])[1]}` }), el('span', { class: 'muted small', text: h.why ? ' · ' + h.why : '' })));
+  b.append(ul);
+  const clear = el('button', { type: 'button', class: 'ghost more-btn', text: 'Undo last change', onclick: () => { const o = hvLoad(); o.hist.pop(); hvSave(o); cards.idea_views.render(); c.render(); } });
+  b.append(clear);
+  setNote(c, 'Every change of view, newest first.');
+}
+// model portfolio
+const MP_ASSETS = [['ACWI', 'World equities (ACWI)'], ['SPX', 'S&P 500'], ['AAXJ', 'Asia ex-Japan (AAXJ)'], ['EEM', 'Emerging markets (EEM)'], ['KLCI', 'FBM KLCI'], ['STI', 'Straits Times'],
+  ['IEF', 'US Treasuries 7-10Y (IEF)'], ['TLT', 'US Treasuries 20Y+ (TLT)'], ['LQD', 'US investment grade (LQD)'], ['HYG', 'US high yield (HYG)'], ['EMB', 'EM USD bonds (EMB)'], ['GOLD', 'Gold'], ['BTC', 'Bitcoin'], ['CASH', 'Cash (local short rate)']];
+const MP_PRESETS = { '60/40 global': [['ACWI', 60], ['IEF', 40]], 'Malaysian balanced': [['KLCI', 35], ['AAXJ', 15], ['ACWI', 15], ['IEF', 20], ['GOLD', 5], ['CASH', 10]] };
+const CASH_RATE = { MYR: 'MY_OPR', SGD: 'SORA3M', USD: 'UST3M' };
+function mpLoad() { try { return JSON.parse(localStorage.getItem(MODEL_KEY) || 'null') || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } catch (e) { return state.mpMem || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } }
+function mpSave(o) { state.mpMem = o; try { localStorage.setItem(MODEL_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+function mpSeries(o, from, to) {   // weekly, rebalanced weekly; returns [[t, value]] and the per-asset weekly returns used
+  const ccy = o.ccy, rows = o.rows.filter(([id, w]) => w > 0 && (id === 'CASH' || has(id))); const tot = rows.reduce((a, [, w]) => a + w, 0); if (!tot) return null;
+  const fr = []; for (let t = lastFriday(from); t <= to; t += 7 * DAY) fr.push(t);
+  const ser = Object.fromEntries(rows.filter(([id]) => id !== 'CASH').map(([id]) => [id, inCcy(id, ccy)]));
+  let v = 100; const out = [[fr[0], v]];
+  for (let k = 1; k < fr.length; k++) { let r = 0;
+    for (const [id, w] of rows) { let x = 0;
+      if (id === 'CASH') { const cr = CASH_RATE[ccy]; const a = has(cr) ? asOf(S[cr], fr[k]) : null; x = a ? a.v / 100 / 52 : 0; }
+      else { const a = asOf(ser[id], fr[k]), b0 = asOf(ser[id], fr[k - 1]); x = a && b0 && b0.v ? a.v / b0.v - 1 : 0; }
+      r += w / tot * x; }
+    v *= 1 + r; out.push([fr[k], v]); }
+  return out;
+}
+function mpStats(p) {
+  if (!p || p.length < 10) return null;
+  const r = []; for (let i = 1; i < p.length; i++) r.push(p[i][1] / p[i - 1][1] - 1);
+  const yrs = (p[p.length - 1][0] - p[0][0]) / (365.25 * DAY), tot = p[p.length - 1][1] / p[0][1] - 1;
+  const m = r.reduce((a, x) => a + x, 0) / r.length, sd = Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(52);
+  let peak = -Infinity, dd = 0; for (const [, v] of p) { peak = Math.max(peak, v); dd = Math.min(dd, v / peak - 1); }
+  const ann = yrs > 0.9 ? Math.pow(1 + tot, 1 / yrs) - 1 : null;
+  return { tot: tot * 100, ann: ann == null ? null : ann * 100, vol: sd * 100, dd: dd * 100, ratio: ann != null && sd ? ann / sd : null };
+}
+function renderModel(c) {
+  const o = mpLoad(), b = htmlBody(c);
+  const top = el('div', { class: 'mp-top' });
+  const ccy = el('select', { class: 'mini-select', 'aria-label': 'Currency' }, ...['MYR', 'SGD', 'USD'].map(x => el('option', { value: x, text: 'In ' + x }))); ccy.value = o.ccy;
+  ccy.addEventListener('change', () => { o.ccy = ccy.value; mpSave(o); c.render(); });
+  top.append(ccy, ...Object.keys(MP_PRESETS).map(k => el('button', { type: 'button', class: 'ghost', text: 'Preset: ' + k, onclick: () => { o.rows = MP_PRESETS[k].map(x => x.slice()); mpSave(o); c.render(); } })));
+  b.append(top);
+  const tbl = el('table', { class: 'perf asset-table mp-table' }), tb = el('tbody');
+  tbl.append(el('thead', {}, el('tr', {}, ...['Asset', 'Weight %', 'Return over range', ''].map(h => el('th', { text: h })))));
+  const used = new Set(o.rows.map(r => r[0]));
+  o.rows.forEach((r, i) => {
+    const w = el('input', { type: 'number', min: 0, max: 100, step: 1, value: r[1], class: 'mp-w' });
+    w.addEventListener('change', () => { o.rows[i][1] = Math.max(0, +w.value || 0); mpSave(o); c.render(); });
+    const ser = r[0] === 'CASH' ? null : has(r[0]) ? inCcy(r[0], o.ccy) : null, a = ser && asOf(ser, state.to), b0 = ser && asOf(ser, state.from);
+    tb.append(el('tr', { class: 'row' }, el('td', { text: (MP_ASSETS.find(x => x[0] === r[0]) || [, r[0]])[1] }), el('td', { class: 'num' }, w),
+      el('td', { class: 'num', text: a && b0 ? pctF1((a.v / b0.v - 1) * 100) : r[0] === 'CASH' ? 'short rate' : '–' }),
+      el('td', {}, el('button', { type: 'button', class: 'ghost', text: '✕', title: 'Remove', onclick: () => { o.rows.splice(i, 1); mpSave(o); c.render(); } }))));
+  });
+  const add = el('select', { class: 'mini-select' }, el('option', { value: '', text: '＋ Add asset…' }), ...MP_ASSETS.filter(([id]) => !used.has(id)).map(([id, l]) => el('option', { value: id, text: l })));
+  add.addEventListener('change', () => { if (add.value) { o.rows.push([add.value, 0]); mpSave(o); c.render(); } });
+  const tot = o.rows.reduce((a, r) => a + r[1], 0);
+  tb.append(el('tr', { class: 'row' }, el('td', {}, add), el('td', { class: 'num ' + (Math.abs(tot - 100) > 0.5 ? 'dn' : ''), text: `${fmtNum(tot, 0)}%` }), el('td', { class: 'muted small', text: Math.abs(tot - 100) > 0.5 ? 'weights are scaled to 100%' : '' }), el('td', {})));
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  const p = mpSeries(o, state.from, state.to), st = mpStats(p);
+  if (st) b.append(el('div', { class: 'mp-stats' }, ...[['Return', pctF1(st.tot)], ['A year', st.ann == null ? '–' : pctF1(st.ann)], ['Volatility', fmtNum(st.vol, 1) + '%'], ['Worst fall', pctF1(st.dd)], ['Return ÷ vol', st.ratio == null ? '–' : fmtNum(st.ratio, 2)]]
+    .map(([k, v]) => el('div', { class: 'mp-stat' }, el('span', { class: 'muted small', text: k }), el('b', { text: v })))));
+  c.csv = [['Asset', 'Weight %'], ...o.rows];
+  setNote(c, `Weights rebalanced weekly, everything converted to ${o.ccy} at daily FX; cash earns the ${o.ccy} short rate (${CASH_RATE[o.ccy]}). Over the page’s date range, set at the top of the page (${nice(state.from)} to ${nice(state.to)}). Prices only for equity indices (no dividends); ETFs include their payouts only through price. Stored only in this browser.`);
+  setSource(c, 'Your weights; Yahoo Finance, FRED, Bank Negara, MAS; calculated');
+}
+function renderModelChart(c) {
+  const o = mpLoad(), p = mpSeries(o, state.from, state.to); if (!p) return setEmpty(c, 'Add weights to see the portfolio.');
+  const L = [{ name: `Model portfolio (${o.ccy})`, data: p }];
+  if (has('ACWI')) { const w = rebase(inCcy('ACWI', o.ccy), state.from, state.to); if (w.length) L.push({ name: `World equities (ACWI, ${o.ccy})`, data: w, extra: { lineStyle: { type: 'dashed', width: 1.5 } } }); }
+  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
+  setNote(c, '= 100 at the start of the range; weekly.');
+}
+
 function renderIdeas() {
   const panel = $('#tab-ideas'), cur = state.sub.ideas || 0, view = IDEA_VIEWS[cur][1];
   panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
   $('#ideaStoreNote').textContent = ideaStoreOk
     ? `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, stored only in this browser on this computer. Nothing is uploaded. Use Export to back up or move them to another laptop.`
     : '⚠ This browser is blocking storage (private window or a work policy?), so ideas will be lost when you close the page. Use Export before leaving.';
-  cards.idea_table.root.hidden = view === 'score' || view === 'watch';
+  const own = view === 'views' || view === 'model';
+  cards.idea_table.root.hidden = view === 'score' || view === 'watch' || own;
   cards.idea_watch.root.hidden = view !== 'watch';
-  cards.idea_chart.root.hidden = view === 'score' || (view === 'watch' ? !state.watchSel : !IDEAS.some(x => x.sid));
+  cards.idea_chart.root.hidden = own || view === 'score' || (view === 'watch' ? !state.watchSel : !IDEAS.some(x => x.sid));
   cards.idea_score.root.hidden = view !== 'score';
+  for (const k of ['idea_views', 'idea_viewlog']) cards[k].root.hidden = view !== 'views';
+  for (const k of ['idea_model', 'idea_modelchart']) cards[k].root.hidden = view !== 'model';
+  if (view === 'views') { cards.idea_views.render(); cards.idea_viewlog.render(); return; }
+  if (view === 'model') { cards.idea_model.render(); cards.idea_modelchart.render(); return; }
   if (view === 'watch') cards.idea_watch.render();
   else if (view !== 'score') cards.idea_table.render();
   else cards.idea_score.render();
@@ -5562,11 +5699,14 @@ function renderWeekly() {
   if (mv.length) right.append(el('section', {}, el('h3', { text: 'Most unusual moves this week' }),
     el('ul', { class: 'op-list' }, ...mv.map(r => el('li', {}, el('span', { text: S[r.id].label }), el('b', { text: `${fmtMove(S[r.id], r.chg)} · ${zf(r.z)}σ`, style: `color:${tok(r.z >= 0 ? '--pos' : '--neg')}` })))),
     el('p', { class: 'muted small', text: 'σ = size of the weekly move against that asset’s own last 5 years of weekly moves.' })));
+  // house views (this browser only): overweights and underweights in one line
+  { const cur = hvCurrent(), ow = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'OW').map(r => r[2]), uw = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'UW').map(r => r[2]);
+    if (ow.length || uw.length) right.append(el('p', { class: 'small op-views' }, el('b', { text: 'House views · ' }), `Overweight: ${ow.join(', ') || 'none'}. Underweight: ${uw.join(', ') || 'none'}.`)); }
   // signals to watch (current engine run; only on the latest week)
   const sw = SIG && end >= latest ? SIG.ideas.filter(g => g.net > 0).slice(0, 3) : [];
   if (sw.length) right.append(el('section', {}, el('h3', { text: 'Signals to watch' }),
     el('ul', { class: 'op-list' }, ...sw.map(g => { const x = sigById(g.signals[0]); return el('li', {}, el('span', { text: sigHeadline(g, x.best_h) }), el('b', { text: x.tier })); })),
-    el('p', { class: 'muted small', text: 'Ideas to investigate from the Signals page: rules with a tested record, not recommendations.' })));
+    el('p', { class: 'muted small no-print', text: 'Ideas to investigate from the Signals page: rules with a tested record, not recommendations.' })));
   // week ahead
   const ah = wkAhead(end);
   const ul = el('ul', { class: 'op-list op-cal' });

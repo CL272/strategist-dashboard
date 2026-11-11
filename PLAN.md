@@ -522,6 +522,8 @@ gas and Brent, banks and the OPR / 3M interbank gap). Ticker history is about 3 
 
 ### WP26. House views and model portfolios (private, browser only)
 
+*Built 12 Nov 2026 as two new Idea log views. Export now writes version 2 (ideas, views, model); Import still reads old files. The Weekly brief shows the views as one line; its signals explanation is screen-only so the brief still prints on one page.*
+
 Idea log → new views **House views** and **Model portfolio**. House views: a grid of asset classes and regions with
 a stance (overweight, neutral, underweight), date and one-line reason; relative performance since each change against
 a benchmark; a log of changes; shown in the Weekly brief. Model portfolio: weights the owner sets (presets: 60/40
