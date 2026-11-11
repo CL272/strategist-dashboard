@@ -3864,6 +3864,48 @@ function renderSignRules(c) {
   nd.append(nb); b.append(nd);
   c.csv = [['Group', 'Signpost', 'Rule', 'Source', 'Latest reading', 'First evaluable'], ...SIGN.rows.map(r => [r.group, r.label, r.rule, r.source, r.level || '', r.first || ''])];
 }
+// ------------------------------------------------------------------ UNCERTAINTY and OIL CURVE (WP29)
+let OILC_META = null;
+function renderOilCurve(c) {
+  const ids = [['OIL_BRENT_SPREAD', 'Brent: front month − 12 months later'], ['OIL_WTI_SPREAD', 'WTI: front month − 12 months later']].filter(([id]) => has(id));
+  if (!ids.length) return setEmpty(c, 'The oil curve arrives with the next data refresh.');
+  drawLines(c, ids.map(([id, n]) => ({ name: n, data: pts(S[id], state.from, state.to) })), { fmt: v => '$' + fmtNum(v, 2), axisFmt: v => '$' + fmtNum(v, 0), zero: true, endLabels: false });
+  const m = OILC_META && OILC_META.contracts || {}, b = has('OIL_BRENT_SPREAD') ? asOf(S.OIL_BRENT_SPREAD, state.latest) : null, bp = has('OIL_BRENT_SPREAD_PCT') ? asOf(S.OIL_BRENT_SPREAD_PCT, state.latest) : null;
+  setNote(c, `${b ? `Brent’s front contract is $${fmtNum(Math.abs(b.v), 2)} a barrel ${b.v >= 0 ? 'above' : 'below'} the contract 12 months later${bp ? ` (${pctF1(bp.v)})` : ''}: ${b.v > 0 ? 'backwardation, a tight market where barrels are wanted now' : 'contango, ample supply'}. ` : ''}Above zero = backwardation (tight), below = contango (oversupplied). History is the current contract pair (${m.BRENT ? m.BRENT.front + ' vs ' + m.BRENT.far : '–'}); from now on the archive keeps a rolling front-vs-12-month record.`);
+  setSource(c, 'Yahoo Finance (NYMEX contracts); calculated');
+}
+function renderUncUs(c) {
+  if (!has('EPU_US')) return setEmpty(c, 'The uncertainty index arrives with the next data refresh.');
+  const s = S.EPU_US, t = [], v = []; let sum = 0; const q = [];
+  for (let i = 0; i < s.t.length; i++) { q.push(s.v[i]); sum += s.v[i]; if (q.length > 30) sum -= q.shift(); if (q.length === 30) { t.push(s.t[i]); v.push(sum / 30); } }
+  const ma = { t, v };
+  drawPair(c, { name: 'US policy uncertainty, 30-day average', data: pts(ma, state.from, state.to) }, { name: 'VIX', data: has('VIX') ? pts(S.VIX, state.from, state.to) : [] },
+    { fmtA: v => fmtNum(v, 0), fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  const a = asOf(ma, state.latest), p = pctRank(ma, state.latest, 10);
+  setNote(c, `${a ? `The 30-day average is ${fmtNum(a.v, 0)}${p ? `, the ${ordinal(Math.max(1, p.p))} percentile of the last 10 years` : ''}. ` : ''}A count of newspaper articles about economic policy uncertainty (100 = the 1985–2009 average). Spikes in policy uncertainty that the VIX does not share have tended to fade; when both rise together, markets are pricing it.`);
+  setSource(c, 'Baker, Bloom & Davis via FRED (USEPUINDXD); Yahoo Finance (^VIX)');
+}
+function renderUncGlobal(c) {
+  if (!has('EPU_GLOBAL') && !has('EPU_TRADE')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Global economic policy uncertainty', data: has('EPU_GLOBAL') ? pts(S.EPU_GLOBAL, state.from, state.to) : [] }, { name: 'US trade policy uncertainty', data: has('EPU_TRADE') ? pts(S.EPU_TRADE, state.from, state.to) : [] },
+    { fmtA: v => fmtNum(v, 0), fmtB: v => fmtNum(v, 0), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  setNote(c, 'Monthly. Global index = GDP-weighted average of 21 countries’ newspaper-based indices; trade policy = the US trade-policy category, the one that matters most for Asian exporters. Both are published with a lag of one to four months.');
+  setSource(c, 'Baker, Bloom & Davis via FRED (GEPUCURRENT, EPUTRADE)');
+}
+function renderGpr(c) {
+  const id = has('GPR_MA30') ? 'GPR_MA30' : has('GPR_DAILY') ? 'GPR_DAILY' : null; if (!id) return setEmpty(c, 'The geopolitical risk index arrives with the next data refresh.');
+  lines(c, [id, 'GPR_THREATS', 'GPR_ACTS'].filter(x => has(x)), v => fmtNum(v, 0), v => fmtNum(v, 0), { hlines: [{ y: 100, label: 'average' }] });
+  const a = asOf(S[id], state.latest);
+  setNote(c, `${a ? `Latest ${fmtNum(a.v, 0)} (${monthLab(a.t)}). ` : ''}Share of newspaper articles about geopolitical tensions (wars, terrorism, military build-ups); 100 = the 1985–2019 average. Threats tend to lead acts.`);
+  setSource(c, 'Caldara & Iacoviello, Geopolitical Risk index');
+}
+function buildUncertainty() {
+  const g = $('#stGrid');
+  makeCard(g, { key: 'unc_us', title: 'US policy uncertainty vs the VIX', wide: true, defaultRange: '5Y', render: renderUncUs });
+  makeCard(g, { key: 'unc_global', title: 'Global and trade policy uncertainty', defaultRange: '10Y', render: renderUncGlobal });
+  makeCard(g, { key: 'unc_gpr', title: 'Geopolitical risk', defaultRange: '3Y', render: renderGpr });
+}
+
 function buildStress() {
   const g = $('#stGrid');
   g.append(el('h3', { class: 'section', text: 'Composite stress panel' }));
@@ -3880,7 +3922,7 @@ function buildStress() {
   makeCard(g, { key: 'sg_rules', title: 'What each row actually tests', wide: true, range: false, source: 'Rules from the earlier Streamlit version (legacy/data/signposts.py)', render: renderSignRules });
   for (const k of ['st_table', 'sg_grid', 'sg_rules']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-function renderStress() { stressKpis(); ['st_hist', 'st_heat', 'st_ofr', 'st_table', 'sg_grid', 'sg_share', 'sg_rules'].forEach(k => cards[k].render()); }
+function renderStress() { stressKpis(); ['st_hist', 'st_heat', 'st_ofr', 'st_table', 'sg_grid', 'sg_share', 'sg_rules', 'unc_us', 'unc_global', 'unc_gpr'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ MARKETS
 const GROUP_ORDER = ['Equities · US', 'Equities · Europe', 'Equities · Japan', 'Equities · China/HK', 'Equities · N. Asia',
@@ -4403,10 +4445,11 @@ function buildCommod() {
   makeCard(g, { key: 'cm_rebased', title: 'Energy, metals and shipping, rebased', wide: true, defaultRange: '1Y', seg, render: renderCmRebased });
   makeCard(g, { key: 'cm_palm', title: 'Palm oil vs Malaysian planters', defaultRange: '3Y', render: renderCmPalm });
   makeCard(g, { key: 'cm_iron', title: 'Iron ore vs the Australian dollar', defaultRange: '3Y', render: renderCmIron });
+  makeCard(g, { key: 'cm_curve', title: 'Oil futures curve', defaultRange: '1Y', render: renderOilCurve });
   makeCard(g, { key: 'cm_table', title: 'Commodity scorecard', wide: true, range: false, render: renderCmTable });
   const r = cards.cm_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
-function renderCommod() { ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table'].forEach(k => cards[k].render()); }
+function renderCommod() { ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_curve', 'cm_table'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ STYLES & SECTORS (Markets → Styles & sectors)
 const STY_PAIRS = [   // [numerator, denominator, label, short]
@@ -6434,7 +6477,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
@@ -6452,7 +6495,7 @@ const SUBTABS = {
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
-  stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
+  stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']], ['Uncertainty', ['unc_us', 'unc_global', 'unc_gpr']]],
   signals: [['Ideas to investigate', ['sig_ideas', 'sig_context', 'sig_divtop']], ['All signals', ['sig_table', 'sig_detail']], ['Divergences', ['sig_div', 'sig_divchart']], ['Track record', ['sig_log']], ['How it works', ['sig_how']]],
   correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']], ['Sensitivities', ['sens_table']]],
 };
@@ -6861,7 +6904,7 @@ function wire() {
 }
 async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 async function init() {
-  const [meta, y, f, d, cv, as, cb, kr, rp, gp, tw, sg] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json', 'data/korea.json', 'data/ramp.json', 'data/gpu.json', 'data/taiwan.json', 'data/signals.json'].map(loadJSON));
+  const [meta, y, f, d, cv, as, cb, kr, rp, gp, tw, sg, oc, gr] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json', 'data/korea.json', 'data/ramp.json', 'data/gpu.json', 'data/taiwan.json', 'data/signals.json', 'data/oilcurve.json', 'data/gpr.json'].map(loadJSON));
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
@@ -6877,7 +6920,8 @@ async function init() {
   if (rp.status === 'fulfilled') RAMP_META = rp.value._meta || null;
   if (sg.status === 'fulfilled') { SIG = sg.value; for (const [id, x] of Object.entries(SIG.extra || {})) { S[id] = { id, ...x, group: 'Signals · ratios', source: 'Yahoo Finance; calculated', t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; } }
   if (gp.status === 'fulfilled') GPU_META = gp.value._meta || null;
-  for (const res of [y, f, d, as, cb, kr, rp, gp, tw]) if (res.status === 'fulfilled') {
+  if (oc.status === 'fulfilled') OILC_META = oc.value._meta || null;
+  for (const res of [y, f, d, as, cb, kr, rp, gp, tw, oc, gr]) if (res.status === 'fulfilled') {
     for (const [id, s] of Object.entries(res.value)) { if (id[0] === '_' || !s || !s.d) continue; S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
   }
   if (cv.status === 'fulfilled') {
@@ -6908,7 +6952,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildUncertainty(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;

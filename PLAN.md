@@ -549,6 +549,8 @@ the US (carry), 3-month realised volatility, carry ÷ volatility, REER percentil
 
 ### WP29. Uncertainty, oil curve and flows (probe first; build what loads)
 
+*Built 12 Nov 2026: US daily, global and US trade policy uncertainty from FRED (USEPUINDXD, GEPUCURRENT, EPUTRADE); geopolitical risk index from matteoiacoviello.com (reachable from GitHub's runner only; its column names are read at run time); Brent and WTI front vs 12-month contracts from Yahoo contract symbols (pipeline/oilcurve.py, archived so a rolling record builds). Skipped: ICI fund flows (ici.org returns Access Denied to GitHub's runner too).*
+
 - Stress → new sub-tab **Uncertainty**: FRED economic policy uncertainty (US daily `USEPUINDXD`, global
   `GEPUCURRENT`), trade policy uncertainty and the geopolitical risk index if their sources are reachable.
 - Markets → Commodities: Brent and WTI front month against the 12-month contract (backwardation = tight market), from

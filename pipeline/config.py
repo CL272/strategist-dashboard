@@ -237,6 +237,10 @@ FRED = [
     # Recession watch
     ("SAHM",        "SAHMREALTIME","Sahm rule (real-time)",       "Macro · Recession", "level", "pp", MACRO_START),
     ("REC_PROB_CP", "RECPROUSM156N","Recession probability (Chauvet-Piger)", "Macro · Recession", "level", "%", MACRO_START),
+    # Uncertainty (Baker, Bloom & Davis, via FRED)
+    ("EPU_US",      "USEPUINDXD",  "US economic policy uncertainty (daily)", "Uncertainty", "level", "idx", "2005-01-01"),
+    ("EPU_GLOBAL",  "GEPUCURRENT", "Global economic policy uncertainty", "Uncertainty", "level", "idx", MACRO_START),
+    ("EPU_TRADE",   "EPUTRADE",    "US trade policy uncertainty", "Uncertainty", "level", "idx", MACRO_START),
     ("ISM_BAL",     "BSCICP02USM460S", "ISM manufacturing (OECD balance form; PMI = 50 + value / 2)", "Macro · Business cycle", "level", "balance", "1985-01-01"),
     ("IPMAN",       "IPMAN",       "US manufacturing output (industrial production)", "Macro · Business cycle", "level", "idx", "1985-01-01"),
     ("SRVPRD",      "SRVPRD",      "US services payrolls",       "Macro · Business cycle", "level", "thous", "1985-01-01"),
