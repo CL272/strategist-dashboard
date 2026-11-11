@@ -13,6 +13,75 @@ Status of each data source is marked **[verified]** (fetched from the sandbox on
 
 ---
 
+## To do next (owner's request, 11 Nov 2026): WP8 then WP9
+
+Both are scheduled to be built after the usage limit resets. Follow `CLAUDE.md` (sub-tabs, ≤ 2,300 px, ≤ 5 tiles,
+≤ 16 rows at rest, quiet card headers) and run `node tools/design-check.js` before each push. One commit per package.
+
+### WP8. Spreads in Fixed Income
+
+**Why:** Fixed Income has curves, yields and FX hedging but no spreads; today the credit charts sit on Liquidity
+and Stress. All the data is on FRED (checked 11 Nov 2026).
+
+**New data** (`pipeline/config.py`, FRED; add the ICE BofA ones to `ARCHIVE`, because FRED keeps only 3 years of them):
+
+| id | FRED | what | status |
+|---|---|---|---|
+| `AAA_OAS`, `AA_OAS`, `A_OAS`, `BBB_OAS` | BAMLC0A1CAAA, BAMLC0A2CAA, BAMLC0A3CA, BAMLC0A4CBBB | US IG by rating | new |
+| `B_OAS` | BAMLH0A2HYB | US single-B | new (BB, CCC already loaded) |
+| `EM_CORP_OAS`, `EM_HY_OAS` | BAMLEMCBPIOAS, BAMLEMHBHYCRPIOAS | EM corporates, EM high yield | new |
+| `AAA_10Y` | AAA10Y | Moody's Aaa − 10Y (since 1983) | new |
+| `MORT_10Y` | MORTGAGE30US minus DGS10 (derived) | US mortgage spread | new |
+| `IT_10Y`, `ES_10Y`, `FR_10Y`, `DE_10Y` | IRLTLT01ITM156N, …ES…, …FR…, …DE… | euro sovereign 10Y, monthly | new |
+| already loaded | HY_OAS, IG_OAS, BB_OAS, CCC_OAS, EUR_HY_OAS, ASIA_CORP_OAS, BAA_10Y, 2s10s, 3m10y | | reuse |
+
+**New sub-tab** Fixed Income → **Spreads** (after Yields), about 1,800 px:
+1. Wide: **Credit spreads** with a segmented toggle US IG · US HY · Europe & EM · Asia. Default US IG vs HY. Each line
+   gets a dashed 10-year median (archive + Baa−10Y for the long view; note where history is only 3 years).
+2. Half: **Rating ladder** table: AAA, AA, A, BBB, BB, B, CCC: level, 1M change, 1Y range bar, percentile vs history
+   available. 7 rows.
+3. Half: **Where spreads stand** table: every spread above, level, 1M change, percentile, one-word read
+   (Tight / Normal / Wide at the 20th and 80th percentiles). Capped at 12 with Show all.
+4. Half: **Euro periphery**: Italy − Germany and Spain − Germany 10Y, France − Germany (monthly), bp.
+5. Half: **Spreads vs equities**: US HY OAS vs S&P 500 drawdown from its high, dual axis (drawPair).
+- Tiles (≤ 5): US IG OAS, US HY OAS, BBB OAS, Italy − Germany, mortgage spread.
+- Liquidity → Credit card stays as a summary but gains a "More in Fixed Income → Spreads" link; Stress unchanged.
+- Add LL_PAIRS: HY OAS → S&P 500 YoY (inverse), HY OAS → unemployment change.
+- health.py: the new FRED series are daily (OAS, AAA10Y), weekly (mortgage) or monthly (euro 10Y, ~2-month lag:
+  allow 100 days).
+
+### WP9. Regions: US · Europe · Asia ex-Japan · Japan · Australia
+
+**Why:** the sidebar's Regions group holds only "Asia", and US and euro-area data are spread across the Macro pages.
+Each region gets one page with the same shape, so a client question ("what about Europe?") has one place to go.
+
+**Sidebar after this:** Overview (5) · Macro: Regime & Leading, Stress & Signposts, Liquidity, Central banks ·
+**Regions: US · Europe · Asia ex-Japan · Japan · Australia** · Markets (5) · Themes (1) · System (1).
+
+**Page shape (every region):** tiles (≤ 5) · sub-tabs `Economy` · `Rates & markets` · `Policy` (a short summary that
+links to Central banks for the detail; no duplicate cards). Cards that already exist are moved, not copied; where a
+chart is needed on two pages, build a second card from the same render function with its own key.
+
+| Page | Sub-tabs and contents | New data |
+|---|---|---|
+| **US** | Growth & jobs (payrolls, unemployment, claims, retail sales, GDP/GDPNow) · Inflation (CPI/PCE, expectations) · **US ISM** and **Recession watch** move here from Regime · Housing & consumer (housing starts, Case-Shiller YoY, mortgage rate, UMich sentiment) · Rates & markets (UST curve, real yields, S&P/Nasdaq/Russell, DXY) | HOUST, CSUSHPINSA, MORTGAGE30US, RSAFS (retail sales nominal) |
+| **Europe** | Economy (HICP headline/core, unemployment, GDP growth, euro and German business confidence) · Rates & spreads (Bund curve from `curves.json` EA, EA 2/10/30Y, Italy − Bund from WP8, euro HY OAS) · Markets (Euro Stoxx 50, DAX, CAC, FTSE, EUR/USD, GBP/USD) · Policy (ECB summary + link) | euro unemployment and M3 from the ECB Data Portal (FRED's copies stopped in 2023): find the LFSI and BSI keys on build; GDP CLVMNACSCAB1GQEA19 (FRED, quarterly) |
+| **Asia ex-Japan** | today's Asia page minus Japan and Australia: `Malaysia` Markets & rates · Economy │ `Region` Singapore · China │ `Compare` Across Asia · Asian FX | none |
+| **Japan** | Economy (the current Japan cards: CPI, Tankan, activity) · Rates & markets (JGB curve from `curves.json`, JGB 2/10/30Y, USD/JPY, Nikkei/TOPIX) · Policy (BoJ summary + link) | none |
+| **Australia** | the current Australia cards (cash rate, inflation, rate differential, growth, terms of trade) split into Economy · Rates & markets (ASX 200, AUD/USD, iron ore vs AUD from Commodities as a second card) · Policy (RBA summary + link) | none |
+
+- **Regime** keeps the model: Regime now, What's driving it, Indicators, Global business cycle, Market signals. Its
+  US ISM and Recession watch sub-tabs move to the US page; old links (`#tab=regime&sub=…`) are redirected.
+- **Across Asia** keeps Japan and Australia lines in its comparison charts (it is a comparison view).
+- Search, `TILE_SETS`, `What changed` links (`goSub`), the weekly brief and README follow the moves. Redirect old
+  links for `asia` sub-tabs that moved to Japan or Australia.
+- Each new page ≤ 2,300 px per sub-tab; `tools/design-check.js` must pass.
+
+**Acceptance:** five region pages in the sidebar; no card appears twice by accident; every old bookmark lands on a
+page; design check passes; no script errors.
+
+---
+
 ## WP1. Central bank watch (highest priority)
 
 **Why:** the Fed page shows market pricing against the Fed. Clients in Malaysia, Singapore and Australia
