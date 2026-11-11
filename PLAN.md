@@ -364,7 +364,7 @@ indicators can go live first; Taiwan follows once its sources are proven.
 
 ## Planned, not built (owner's request, 11 Nov 2026): WP22 to WP29, signals and strategist tools
 
-**Status: WP23 and WP22 built on 11 Nov 2026** (owner chose the engine first and the wording "ideas to investigate";
+**Status: WP23, WP22 and WP24 built on 11 Nov 2026; engine extended the same day** (central bank pricing, stress and Malaysia rules: 63 rules in all; most new ones grade "context only" or "thin evidence"; the stress composite and Malaysian interbank rates have too little history to test; a "Signals to watch" block in the Weekly brief, whose Headlines section is now screen-only so the brief prints on one page). Earlier: **WP23 and WP22 built on 11 Nov 2026** (owner chose the engine first and the wording "ideas to investigate";
 WP24 to WP29 wait for a later "Go").
 
 **Correction to the prototype table below:** the planning prototype counted events wrongly (a pandas type slip made it

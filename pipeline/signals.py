@@ -32,10 +32,12 @@ TIER_W = {"Tested edge": 3, "Thin evidence": 1, "Context only": 0, "Not enough h
 NAMES = {"TWSE": "Taiwan Weighted", "KOSPI": "KOSPI", "JCI": "Jakarta Composite", "NIFTY": "Nifty 50", "COPPER": "Copper", "IN_10Y": "India 10Y yield",
          "AAXJ": "Asia ex-Japan (AAXJ)", "LH_SPX": "S&P 500", "SPX": "S&P 500", "UST10Y": "US 10Y yield", "GOLD": "Gold", "KLCI": "FBM KLCI",
          "R_AAXJ_ACWI": "Asia ex-Japan vs world", "R_EEM_SPX": "Emerging markets vs S&P 500", "R_SOX_SPX": "Chip stocks vs S&P 500",
-         "R_KLCI_AAXJ": "KLCI (USD) vs Asia ex-Japan", "NVDA": "Nvidia", "KR_CPI_YOY": "Korea CPI", "TLT": "Long Treasuries (TLT)"}
+         "R_KLCI_AAXJ": "KLCI (USD) vs Asia ex-Japan", "NVDA": "Nvidia", "KR_CPI_YOY": "Korea CPI", "TLT": "Long Treasuries (TLT)",
+         "USDMYR": "USD/MYR", "AUDUSD": "Australian dollar (AUD/USD)", "EURUSD": "Euro (EUR/USD)"}
 REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY": ["India"], "IN_10Y": ["India"], "COPPER": ["China"], "AAXJ": ["China", "US"],
           "LH_SPX": ["US"], "SPX": ["US"], "UST10Y": ["US"], "GOLD": ["US"], "KLCI": ["Malaysia"], "R_KLCI_AAXJ": ["Malaysia"], "R_AAXJ_ACWI": ["China", "US"],
-          "R_EEM_SPX": ["US", "China"], "R_SOX_SPX": ["Korea", "Taiwan", "US"], "NVDA": ["US"], "TLT": ["US"]}
+          "R_EEM_SPX": ["US", "China"], "R_SOX_SPX": ["Korea", "Taiwan", "US"], "NVDA": ["US"], "TLT": ["US"],
+          "USDMYR": ["Malaysia", "US"], "AUDUSD": ["Australia"], "EURUSD": ["Euro area"]}
 
 
 def lag_of(sid: str) -> int:
@@ -43,6 +45,8 @@ def lag_of(sid: str) -> int:
         return 2
     if sid.startswith("MY_LEAD"):
         return 3
+    if sid in ("PALM", "STLFSI", "NFCI"):
+        return 1 if sid == "PALM" else 0
     if sid.startswith(("KR_", "TW_", "IN_", "ID_", "CN_", "LEI_", "REG_")) and not sid.endswith(("_10Y", "_3M")):
         return 1
     return 0
@@ -150,6 +154,49 @@ def rules():
         ["SPX"], lambda M: M["SPX"] < M["SPX"].rolling(10).mean(), "SPX", -1)
     add("klci_above_10m", "Trend", "KLCI above its 10-month average", "KLCI closes a month above its 10-month average",
         ["KLCI"], lambda M: M["KLCI"] > M["KLCI"].rolling(10).mean(), "KLCI", 1)
+    # central bank pricing: the market's 2-year or forward rate against the policy rate
+    add("fed_cuts_priced", "Policy", "Market prices Fed cuts → S&P 500", "US 2Y yield more than 0.5pt below the effective Fed funds rate",
+        ["UST2Y", "EFFR"], lambda M: (M["UST2Y"] - M["EFFR"]) < -0.5, "SPX", -1)
+    add("fed_cuts_gold", "Policy", "Market prices Fed cuts → gold", "US 2Y yield more than 0.5pt below the effective Fed funds rate",
+        ["UST2Y", "EFFR"], lambda M: (M["UST2Y"] - M["EFFR"]) < -0.5, "GOLD", 1)
+    add("fed_hikes_priced", "Policy", "Market prices Fed hikes → S&P 500", "US 2Y yield more than 0.5pt above the effective Fed funds rate",
+        ["UST2Y", "EFFR"], lambda M: (M["UST2Y"] - M["EFFR"]) > 0.5, "SPX", -1)
+    add("rba_hikes_priced", "Policy", "Bank bills price RBA hikes → Australian dollar", "3M bank bill more than 0.25pt above the RBA cash rate",
+        ["AU_BB_3M", "AU_CASH"], lambda M: (M["AU_BB_3M"] - M["AU_CASH"]) > 0.25, "AUDUSD", 1)
+    add("rba_cuts_priced", "Policy", "Bank bills price RBA cuts → Australian dollar", "3M bank bill more than 0.10pt below the RBA cash rate",
+        ["AU_BB_3M", "AU_CASH"], lambda M: (M["AU_BB_3M"] - M["AU_CASH"]) < -0.10, "AUDUSD", -1)
+    add("ecb_hikes_priced", "Policy", "Forwards price ECB hikes → euro", "1-year-ahead euro short rate more than 0.25pt above the ECB deposit rate",
+        ["EA_FWD_1Y", "EA_DFR"], lambda M: (M["EA_FWD_1Y"] - M["EA_DFR"]) > 0.25, "EURUSD", 1)
+    add("ecb_cuts_priced", "Policy", "Forwards price ECB cuts → euro", "1-year-ahead euro short rate more than 0.25pt below the ECB deposit rate",
+        ["EA_FWD_1Y", "EA_DFR"], lambda M: (M["EA_FWD_1Y"] - M["EA_DFR"]) < -0.25, "EURUSD", -1)
+    # stress
+    add("stress_high", "Stress", "Stress composite above 80th percentile → S&P 500", "Dashboard stress composite above 80 (elevated or acute)",
+        ["STRESS_COMPOSITE"], lambda M: M["STRESS_COMPOSITE"] > 80, "SPX", -1)
+    add("stress_easing", "Stress", "Stress composite falls 20 points in 3 months → S&P 500", "Dashboard stress composite at least 20 points lower than 3 months earlier",
+        ["STRESS_COMPOSITE"], lambda M: chg(M["STRESS_COMPOSITE"], 3) <= -20, "SPX", 1)
+    add("nfci_tight", "Stress", "Financial conditions tighter than average → S&P 500", "Chicago Fed NFCI above zero",
+        ["NFCI"], lambda M: M["NFCI"] > 0, "LH_SPX", -1, gap=12)
+    add("stlfsi_high", "Stress", "St. Louis Fed stress index above 1 → S&P 500", "St. Louis Fed financial stress index above 1",
+        ["STLFSI"], lambda M: M["STLFSI"] > 1, "LH_SPX", 1)
+    # Malaysia
+    add("myr_uptrend_klci", "Malaysia", "Ringgit in an uptrend → KLCI", "USD/MYR closes a month below its 10-month average (ringgit strengthening)",
+        ["USDMYR"], lambda M: M["USDMYR"] < M["USDMYR"].rolling(10).mean(), "KLCI", 1)
+    add("usd_weak_myr", "Malaysia", "Weak dollar → ringgit", "US dollar index more than 5% lower than a year earlier",
+        ["DXY"], lambda M: yoy(M["DXY"]) < -5, "USDMYR", -1)
+    add("oil_up_myr", "Malaysia", "Oil up sharply → ringgit", "Brent more than 30% higher than a year earlier",
+        ["BRENT"], lambda M: yoy(M["BRENT"]) > 30, "USDMYR", -1)
+    add("opr_cut_klci", "Malaysia", "BNM cuts the OPR → KLCI", "OPR lower than 3 months earlier",
+        ["MY_OPR"], lambda M: chg(M["MY_OPR"], 3) < 0, "KLCI", 1, gap=12)
+    add("opr_hike_klci", "Malaysia", "BNM raises the OPR → KLCI", "OPR higher than 3 months earlier",
+        ["MY_OPR"], lambda M: chg(M["MY_OPR"], 3) > 0, "KLCI", -1, gap=12)
+    add("us_my_gap_narrow", "Malaysia", "US−Malaysia rate gap narrowing → ringgit", "US 2Y yield minus the OPR at least 0.5pt lower than 6 months earlier",
+        ["UST2Y", "MY_OPR"], lambda M: chg(M["UST2Y"] - M["MY_OPR"], 6) <= -0.5, "USDMYR", -1)
+    add("cn_cli_up_klci", "Malaysia", "China leading index turns up → KLCI", "OECD China leading index higher than 6 months earlier",
+        ["CLI_CHN"], lambda M: chg(M["CLI_CHN"], 6) > 0, "KLCI", 1)
+    add("my_lead_klci", "Malaysia", "Malaysia leading diffusion above 50 → KLCI", "DOSM leading index diffusion above 50%",
+        ["MY_LEAD_DIFF"], lambda M: M["MY_LEAD_DIFF"] > 50, "KLCI", 1)
+    add("palm_up_klci", "Malaysia", "Palm oil up sharply → KLCI", "Palm oil (IMF) more than 20% higher than a year earlier",
+        ["PALM"], lambda M: yoy(M["PALM"]) > 20, "KLCI", 1)
     # AI theme (short histories: shown, graded honestly)
     add("gpu_rent_up", "AI theme", "GPU rents rising → Nvidia", "H100 on-demand rent more than 5% higher than 3 months earlier",
         ["GPU_H100_OD"], lambda M: (M["GPU_H100_OD"] / M["GPU_H100_OD"].shift(3) - 1) * 100 > 5, "NVDA", 1, gap=3)
