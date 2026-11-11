@@ -495,7 +495,7 @@ function endsTooClose(list) {   // end labels collide when the last values sit c
   last.sort((a, b) => a - b);
   return last.some((v, i) => i > 0 && (v - last[i - 1]) / span < 0.07);
 }
-function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null } = {}) {
+function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = false, yExtra = {}, endLabels = true, hlines = [], areas = null, noLegend = false } = {}) {
   if (endLabels && endsTooClose(list)) endLabels = false;
   const series = list.map((s, i) => line(s.name, s.data, s.color || col(i), s.extra || {}));
   if ((zero || hlines.length) && series.length) {
@@ -512,8 +512,8 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   const o = baseOpt();
   const pad = endLabels ? withEndLabels(series) : 0;
   o.grid.right = 16 + pad;
-  o.legend.show = series.length > 1;
-  o.grid.top = series.length > 1 ? 12 + 22 * legendRows(c, list.map(s => s.name)) : 14;
+  o.legend.show = series.length > 1 && !noLegend;
+  o.grid.top = o.legend.show ? 12 + 22 * legendRows(c, list.map(s => s.name)) : 14;
   o.tooltip.formatter = tipFormatter(fmt);
   o.xAxis = timeAxis();
   o.yAxis = valAxis(axisFmt || (v => fmtNum(v, autoDec(v))), yExtra);
@@ -940,7 +940,7 @@ function renderWhere(c) {
   const tgt = state.ovCcy;
   const cols = [['1W', t => t - 7 * DAY], ['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)],
     ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['12M', t => addMonths(t, -12)]];
-  const tbl = el('table', { class: 'perf' });
+  const tbl = el('table', { class: 'perf asset-table' });
   const hr = el('tr', {}, el('th', { text: 'Asset' }), el('th', { text: 'Last' }));
   cols.forEach(([k]) => hr.append(el('th', { text: k })));
   hr.append(el('th', { text: 'vs 200d', title: 'Distance from the 200-day moving average (prices only)' }), el('th', { text: '1W σ', title: 'This week’s move in standard deviations of its 5-year weekly moves' }), el('th', { text: '3M' }));
@@ -961,13 +961,12 @@ function renderWhere(c) {
       const row = [g, s0.label, a.v];
       cols.forEach(([k, fn], j) => {
         const bb = asOf(s, fn(a.t)), v = bb ? chg(s, bb.v, a.v) : null;
-        const sc = scale[s.kind][j] * (s.kind === 'level' ? Math.abs(a.v) / 100 : 1);
-        tr.append(el('td', { class: 'heat', text: fmtChg(s, v), style: v ? `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}` : '' }));
+        tr.append(moveCell(s, v, scale[s.kind][j], a.v));
         row.push(v == null ? '' : v.toFixed(2));
       });
       let d200 = null;
       if (s.kind === 'price') { const m = ma(s, a.i, 200); if (m) d200 = (a.v / m - 1) * 100; }
-      tr.append(el('td', { text: d200 == null ? '–' : (d200 >= 0 ? '▲ ' : '▼ ') + sign(d200) + fmtNum(Math.abs(d200), 1) + '%' }));
+      tr.append(el('td', { class: 'num ' + (d200 == null ? '' : d200 >= 0 ? 'up' : 'dn'), text: d200 == null ? '–' : (d200 >= 0 ? '▲ ' : '▼ ') + sign(d200) + fmtNum(Math.abs(d200), 1) + '%' }));
       const mz = moveZ(id, 1);
       tr.append(el('td', { text: mz ? zf(mz.z) : '–', style: mz && Math.abs(mz.z) >= 2 ? 'font-weight:650' : '' }));
       const sp = sparkSVG(s, addMonths(a.t, -3), a.t);
@@ -977,7 +976,6 @@ function renderWhere(c) {
     }
   }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
-  foldableGroups(tb, 'where');
   c.csv = csv;
   setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency, commodities and crypto in USD.' : `Equities, commodities and crypto converted to ${tgt} at daily FX (markets already priced in ${tgt} are unchanged).`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
 }
@@ -3132,55 +3130,80 @@ function toggleSel(id, on) {
 const PERF_CLASSES = ['Equities', 'Rates & credit', 'FX', 'Commodities & crypto', 'Volatility', 'All'];
 const perfClass = g => /^Equities/.test(g) ? 'Equities' : /^(Rates|Credit|Bonds)/.test(g) ? 'Rates & credit' : /^FX/.test(g) ? 'FX'
   : /^(Commodities|Crypto)/.test(g) ? 'Commodities & crypto' : /^Volatility/.test(g) ? 'Volatility' : 'All';
-state.perfClass = 'Equities';
-function renderPerfTable() {
-  const q = (state.perfQuery || '').trim().toLowerCase();
-  const rows = perfRows().filter(r => (state.perfClass === 'All' || perfClass(r.s.group) === state.perfClass)
-    && (!q || (r.s.label + ' ' + r.id + ' ' + r.s.group).toLowerCase().includes(q)));
-  const nav = $('#perfNav');
-  if (nav) nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.textContent === state.perfClass));
-  const tbl = $('#perfTable'); tbl.replaceChildren();
-  const cols = PERIODS.map(p => p[0]);
-  const hdr = el('tr', {}, el('th', { text: 'Asset' }), el('th', { text: 'Last' }));
-  cols.forEach(k => hdr.append(el('th', { text: (k === 'Range' ? 'Range' : k) + (state.perfSort && state.perfSort.k === k ? (state.perfSort.dir > 0 ? ' ▲' : ' ▼') : ''),
-    title: 'Sort within each group', onclick: () => { state.perfSort = state.perfSort && state.perfSort.k === k ? { k, dir: -state.perfSort.dir } : { k, dir: -1 }; renderPerfTable(); } })));
-  tbl.append(el('thead', {}, hdr));
-  // colour scale per column & kind = 90th percentile of |change|
-  const scale = {};
+state.perfClass = 'Equities'; state.perfSub = 'Key';
+// Markets → Performance: one flat list at a time. Asset-class chips, then a second row of region/sub-group chips
+// that opens on a short "Key" list. At most PERF_CAP rows show until "Show all".
+const PERF_CAP = 16;
+const PERF_KEY = {
+  'Equities': ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'JCI', 'NIFTY', 'AS51', 'IBOV', 'EEM'],
+  'Rates & credit': ['UST2Y', 'UST10Y', 'REAL10Y', 'CURVE_2s10s', 'JGB10Y', 'EA10Y', 'CN_10Y', 'SGS10Y', 'SORA3M', 'MY_OPR', 'HY_OAS', 'IG_OAS'],
+  'FX': ['DXY', 'EURUSD', 'USDJPY', 'GBPUSD', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD', 'USDKRW', 'USDINR', 'USDIDR', 'USDTHB'],
+  'Commodities & crypto': ['GOLD', 'SILVER', 'BRENT', 'WTI', 'NATGAS', 'COPPER', 'IRONORE', 'BDRY', 'BTC', 'ETH'],
+};
+const EQ_SUB = { 'US': 'US', 'Europe': 'Europe', 'Japan': 'Japan', 'China/HK': 'China/HK', 'N. Asia': 'Asia', 'ASEAN': 'Asia', 'India': 'Asia', 'Australia': 'Asia',
+  'LatAm': 'Global & EM', 'Global': 'Global & EM', 'AI': 'AI', 'US sectors': 'Sectors & styles', 'US styles': 'Sectors & styles' };
+const perfSub = (g, cls) => cls === 'Equities' ? (EQ_SUB[(g.split(' · ')[1] || '')] || 'Other') : cls === 'Rates & credit' ? (/^Rates · /.test(g) ? g.split(' · ')[1] : 'Credit') : g;
+const PERF_OPT_KEY = 'sd-perf-cols-v1';
+state.perfExtra = (() => { try { return new Set(JSON.parse(localStorage.getItem(PERF_OPT_KEY) || '[]')); } catch (e) { return new Set(); } })();
+function perfCols() { return ['1D', '1W', '1M', '3M', 'YTD', '1Y', 'Range'].filter(k => !['3M', 'Range'].includes(k) || state.perfExtra.has(k)); }
+// a cell that colours the number and fills the background only for a big move (beyond `big`)
+function moveCell(s, v, big, last) {
+  if (v == null) return el('td', { class: 'num', text: '–' });
+  const mag = Math.abs(s.kind === 'level' ? v / Math.max(1e-9, Math.abs(last)) * 100 : v);
+  const pos = tok('--pos'), neg = tok('--neg'), up = v > 0;
+  return el('td', { class: 'num ' + (v === 0 ? '' : up ? 'up' : 'dn'), text: fmtChg(s, v), style: big != null && mag >= big && v !== 0 ? `background:${hexA(up ? pos : neg, 0.14)}` : '' });
+}
+function bigThresholds(rows, cols) {   // per column and kind: the 80th percentile of the size of moves
+  const out = {};
   for (const k of cols) for (const kind of ['price', 'yield', 'level']) {
     const xs = rows.filter(r => r.s.kind === kind && r[k] != null).map(r => Math.abs(kind === 'level' ? r[k] / Math.max(1e-9, Math.abs(r.last)) * 100 : r[k])).sort((a, b) => a - b);
-    scale[k + kind] = xs.length ? xs[Math.floor(xs.length * 0.9)] || xs[xs.length - 1] : 1;
+    out[k + kind] = xs.length >= 5 ? xs[Math.floor(xs.length * 0.8)] : Infinity;
   }
-  const pos = tok('--pos'), neg = tok('--neg');
-  const tb = el('tbody');
-  const groups = [...new Set(rows.map(r => r.s.group))].sort((a, b) => (GROUP_ORDER.indexOf(a) + 1 || 99) - (GROUP_ORDER.indexOf(b) + 1 || 99));
-  for (const gname of groups) {
-    tb.append(el('tr', { class: 'grp' }, el('td', { colspan: cols.length + 2, text: gname })));
-    let gr = rows.filter(r => r.s.group === gname);
-    if (state.perfSort) gr = gr.sort((a, b) => ((a[state.perfSort.k] ?? -1e9) - (b[state.perfSort.k] ?? -1e9)) * -state.perfSort.dir);
-    for (const r of gr) {
-      const on = state.mktSel.includes(r.id);
-      const cb = el('input', { type: 'checkbox', 'aria-label': 'Chart ' + r.s.label });
-      cb.checked = on;
-      cb.addEventListener('change', () => { if (!toggleSel(r.id, cb.checked)) cb.checked = false; renderPerfTable(); });
-      const sw = el('span', { class: 'swatch', style: on ? `background:${col(state.selSlot[r.id])}` : 'background:transparent' });
-      const tr = el('tr', { class: 'row', title: `${r.s.source} · last ${nice(r.t)}` },
-        el('td', { class: 'name' }, cb, sw, el('span', { text: r.s.label })),
-        el('td', { text: r.s.kind === 'yield' ? fmtNum(r.last, 2) + '%' : fmtVal(r.s, r.last) }));
-      for (const k of cols) {
-        const v = r[k];
-        const mag = v == null ? 0 : Math.abs(r.s.kind === 'level' ? v / Math.max(1e-9, Math.abs(r.last)) * 100 : v);
-        const alpha = Math.min(1, mag / (scale[k + r.s.kind] || 1)) * 0.42;
-        const bg = v == null || v === 0 ? '' : `background:${hexA(v > 0 ? pos : neg, alpha)}`;
-        tr.append(el('td', { class: 'heat', style: bg, text: fmtChg(r.s, v) }));
-      }
-      tb.append(tr);
-    }
+  return out;
+}
+function renderPerfTable() {
+  const q = (state.perfQuery || '').trim().toLowerCase(), cls = state.perfClass, all = perfRows();
+  const inCls = all.filter(r => cls === 'All' || perfClass(r.s.group) === cls);
+  // second-row chips
+  const subs = cls === 'All' || cls === 'Volatility' ? [] : [...new Set(inCls.map(r => r.s.group).sort((a, b) => (GROUP_ORDER.indexOf(a) + 1 || 99) - (GROUP_ORDER.indexOf(b) + 1 || 99)).map(g => perfSub(g, cls)))];
+  const chips = PERF_KEY[cls] && subs.length ? ['Key', ...(subs.length > 1 ? subs : []), 'All'] : [];
+  if (!chips.includes(state.perfSub)) state.perfSub = chips.length ? 'Key' : 'All';
+  const sub = state.perfSub;
+  let rows;
+  if (q) rows = all.filter(r => (r.s.label + ' ' + r.id + ' ' + r.s.group).toLowerCase().includes(q));
+  else if (sub === 'Key') rows = PERF_KEY[cls].map(id => inCls.find(r => r.id === id)).filter(Boolean);
+  else if (sub === 'All') rows = inCls.slice().sort((a, b) => (GROUP_ORDER.indexOf(a.s.group) + 1 || 99) - (GROUP_ORDER.indexOf(b.s.group) + 1 || 99));
+  else rows = inCls.filter(r => perfSub(r.s.group, cls) === sub);
+  if (state.perfSort) rows = rows.slice().sort((a, b) => ((a[state.perfSort.k] ?? -1e9) - (b[state.perfSort.k] ?? -1e9)) * -state.perfSort.dir);
+  const nav = $('#perfNav'); if (nav) nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', b.textContent === cls));
+  const subNav = $('#perfSubNav');
+  subNav.replaceChildren(...chips.map(k => el('button', { type: 'button', text: k === 'Key' ? 'Key markets' : k, 'aria-selected': String(k === sub && !q),
+    onclick: () => { state.perfSub = k; state.perfAll = false; renderPerfTable(); } })));
+  subNav.hidden = !chips.length || !!q;
+  const cols = perfCols(), big = bigThresholds(inCls, cols);
+  const tbl = $('#perfTable'); tbl.replaceChildren();
+  const hdr = el('tr', {}, el('th', { text: 'Asset' }), el('th', { text: 'Last' }));
+  cols.forEach(k => hdr.append(el('th', { text: k + (state.perfSort && state.perfSort.k === k ? (state.perfSort.dir > 0 ? ' ▲' : ' ▼') : ''), title: 'Click to sort',
+    onclick: () => { state.perfSort = state.perfSort && state.perfSort.k === k ? { k, dir: -state.perfSort.dir } : { k, dir: -1 }; renderPerfTable(); } })));
+  hdr.append(el('th', { text: '3M trend', class: 'trend' }));
+  tbl.append(el('thead', {}, hdr));
+  const tb = el('tbody'), show = state.perfAll || rows.length <= PERF_CAP + 2 ? rows : rows.slice(0, PERF_CAP);
+  for (const r of show) {
+    const on = state.mktSel.includes(r.id);
+    const pin = el('button', { type: 'button', class: 'pin' + (on ? ' on' : ''), title: on ? 'Remove from the chart' : 'Add to the chart above', 'aria-pressed': String(on),
+      style: on ? `--pc:${col(state.selSlot[r.id])}` : '', onclick: () => { toggleSel(r.id, !on); renderPerfTable(); } }, on ? '●' : '+');
+    const tr = el('tr', { class: 'row' + (on ? ' pinned' : ''), title: `${r.s.source} · last ${nice(r.t)}` },
+      el('td', { class: 'name' }, el('span', { class: 'name-in' }, pin, el('span', { text: r.s.label }))),
+      el('td', { class: 'num', text: r.s.kind === 'yield' ? fmtNum(r.last, 2) + '%' : fmtVal(r.s, r.last) }));
+    for (const k of cols) tr.append(moveCell(r.s, r[k], big[k + r.s.kind], r.last));
+    tr.append(el('td', { class: 'trend' }, sparkSVG(r.s, addMonths(r.t, -3), r.t) || ''));
+    tb.append(tr);
   }
+  if (show.length < rows.length) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: cols.length + 3 },
+    el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length}`, onclick: () => { state.perfAll = true; renderPerfTable(); } }))));
+  if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: cols.length + 3, class: 'muted', text: 'No assets match.' })));
   tbl.append(tb);
-  foldableGroups(tb, 'perf', (name, i) => i >= 4);
-  if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: cols.length + 2, class: 'muted', text: 'No assets match this filter.' })));
-  $('#perfNote').textContent = `Changes to ${nice(state.to)}. “Range” runs from ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Prices in local currency' : `Equities, ETFs, commodities and crypto in ${state.mktCcy} (FX pairs unchanged)`}, % (ETFs include dividends); yields and spreads in bp; VIX/MOVE in points. Tick a row to chart it.`;
+  $('#perfNote').textContent = `Changes to ${nice(state.to)}${state.perfExtra.has('Range') ? `; “Range” from ${nice(state.from)}` : ''}. ${state.mktCcy === 'local' ? 'Local currency' : `Equities, ETFs, commodities and crypto in ${state.mktCcy}`}; yields and spreads in bp. Shaded cells = the biggest fifth of moves in that column. Press + to chart a row.`;
   $('#perfCsv').onclick = () => downloadCSV([['Asset', 'Group', 'Last', ...cols], ...rows.map(r => [r.s.label, r.s.group, r.last, ...cols.map(k => r[k] == null ? '' : r[k].toFixed(2))])], 'cross-asset-performance');
 }
 const FOLD_KEY = 'sd-folded-groups';
@@ -3220,13 +3243,15 @@ function renderMktCharts() {
   const pr = state.mktSel.filter(id => has(id) && S[id].kind !== 'yield');
   const yl = state.mktSel.filter(id => has(id) && S[id].kind === 'yield');
   const c1 = cards.rebased, c2 = cards.yields;
-  if (!pr.length) setEmpty(c1, 'Tick assets in the table below to compare them.');
+  c1.pinEl.replaceChildren(...state.mktSel.filter(id => has(id)).map(id => el('span', { class: 'pin-chip', style: `--pc:${col(state.selSlot[id])}` }, el('i'), S[id].label,
+    el('button', { type: 'button', title: 'Remove', 'aria-label': 'Remove ' + S[id].label, onclick: () => { toggleSel(id, false); if (subActive($('#perfCard'))) renderPerfTable(); } }, '×'))));
+  if (!pr.length) setEmpty(c1, 'Press + next to any asset in the table below to chart it here.');
   else {
     const list = pr.map(id => {
       const s = mktSeries(id), p = pts(s, state.from, state.to), b = asOf(s, state.from) || (p[0] && { v: p[0][1] });
       return { name: s.label, data: b ? p.map(([t, v]) => [t, v / b.v * 100]) : [], color: col(state.selSlot[id]) };
     });
-    drawLines(c1, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+    drawLines(c1, list, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), noLegend: true });
     c1.subEl.textContent = `Each series = 100 on ${nice(state.from)}. ${state.mktCcy === 'local' ? 'Local currency; ETFs in USD with dividends.' : `Converted to ${state.mktCcy} at daily FX; FX pairs unchanged.`}`;
     setSource(c1, srcOf(pr));
   }
@@ -3239,23 +3264,31 @@ function renderMktCharts() {
 }
 function buildMarkets() {
   const g = $('#mktCharts');
-  makeCard(g, { key: 'rebased', title: 'Relative performance', wide: true, source: 'Yahoo Finance, FRED', render: renderMktCharts,
+  makeCard(g, { key: 'rebased', title: 'Relative performance', wide: true, range: false, source: 'Yahoo Finance, FRED', render: renderMktCharts,
     seg: { key: 'mktCcy', select: true, label: 'Currency', options: CCY_CHOICES, onchange: () => { syncMktCcy(); renderMarkets(); } } });
   const sel = el('select', { class: 'mini-select', id: 'perfCcy', 'aria-label': 'Currency' });
   CCY_CHOICES.forEach(([v, l]) => sel.append(el('option', { value: v, text: l })));
   sel.addEventListener('change', () => { state.mktCcy = sel.value; syncMktCcy(); renderMarkets(); });
   $('#perfCsv').before(sel);
-  // the performance table is split by asset class, like the sub-tabs on other pages
+  // asset-class chips, a second row of region chips, a search box and a column picker
   const nav = el('div', { class: 'seg-chips', id: 'perfNav', role: 'tablist', 'aria-label': 'Asset class' });
-  PERF_CLASSES.forEach(k => nav.append(el('button', { type: 'button', role: 'tab', text: k, onclick: () => { state.perfClass = k; renderPerfTable(); } })));
-  const search = el('input', { type: 'search', placeholder: 'Find an asset…', 'aria-label': 'Find an asset', class: 'perf-search' });
+  PERF_CLASSES.forEach(k => nav.append(el('button', { type: 'button', role: 'tab', text: k, onclick: () => { state.perfClass = k; state.perfSub = 'Key'; state.perfAll = false; renderPerfTable(); } })));
+  const search = el('input', { type: 'search', placeholder: 'Find any asset…', 'aria-label': 'Find an asset', class: 'perf-search' });
   search.addEventListener('input', () => { state.perfQuery = search.value; renderPerfTable(); });
-  const tb = () => $('#perfTable tbody');
-  const bar = el('div', { class: 'perf-bar' }, nav, el('div', { class: 'perf-bar-r' }, search,
-    el('button', { type: 'button', class: 'ghost', text: 'Fold all', title: 'Fold every group to its heading', onclick: () => foldAll(tb(), false) }),
-    el('button', { type: 'button', class: 'ghost', text: 'Unfold all', onclick: () => foldAll(tb(), true) })));
-  $('#perfTable').closest('.card').querySelector('.table-wrap').before(bar);
-  makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
+  const colPop = el('div', { class: 'pop col-pop', hidden: true }, el('div', { class: 'pop-label', text: 'Extra columns' }),
+    ...[['3M', '3-month change'], ['Range', 'Change over the page’s date range']].map(([k, lab]) => { const cb = el('input', { type: 'checkbox' }); cb.checked = state.perfExtra.has(k);
+      cb.addEventListener('change', () => { if (cb.checked) state.perfExtra.add(k); else state.perfExtra.delete(k); try { localStorage.setItem(PERF_OPT_KEY, JSON.stringify([...state.perfExtra])); } catch (e) { /* session only */ } renderPerfTable(); });
+      return el('label', { class: 'pop-check' }, cb, ' ' + lab); }));
+  colPop.addEventListener('click', e => e.stopPropagation());
+  const colBtn = el('button', { type: 'button', class: 'ghost', text: 'Columns ▾', onclick: e => { e.stopPropagation(); togglePop(colPop); } });
+  const bar = el('div', { class: 'perf-bar' }, nav, el('div', { class: 'perf-bar-r' }, search, el('span', { class: 'pop-anchor' }, colBtn, colPop)));
+  const wrap = $('#perfTable').closest('.card').querySelector('.table-wrap');
+  wrap.before(bar, el('div', { class: 'seg-chips sub-chips', id: 'perfSubNav', role: 'tablist', 'aria-label': 'Region' }));
+  // pinned assets show as removable chips above the chart
+  $('.perf-src').addEventListener('click', e => e.currentTarget.classList.toggle('open'));
+  cards.rebased.pinEl = el('div', { class: 'pin-chips' });
+  cards.rebased.subEl.after(cards.rebased.pinEl);
+  makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, range: false, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }

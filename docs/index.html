@@ -148,16 +148,14 @@
     <div class="grid" id="mktCharts"></div>
     <div class="card wide" id="perfCard">
       <div class="card-head">
-        <div>
-          <h2>Cross-asset performance</h2>
-          <p class="muted small" id="perfNote"></p>
-          <p class="src">Source: Yahoo Finance (indices, ETFs, FX, commodities, crypto, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB, SingStat/MAS, Bank Negara (yields, spreads). Hover a row for its exact series.</p>
-        </div>
+        <div class="card-title"><h2>Cross-asset performance</h2></div>
         <div class="card-tools">
           <button class="ghost" id="perfCsv" type="button">CSV</button>
         </div>
       </div>
-      <div class="table-wrap"><table class="perf" id="perfTable"></table></div>
+      <p class="muted small card-sub" id="perfNote"></p>
+      <div class="table-wrap"><table class="perf asset-table" id="perfTable"></table></div>
+      <p class="src perf-src">Source: Yahoo Finance (indices, ETFs, FX, commodities, crypto, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB, SingStat/MAS, Bank Negara (yields, spreads). Hover a row for its exact series.</p>
     </div>
   </section>
 

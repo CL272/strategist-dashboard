@@ -656,3 +656,35 @@ ul.changes a:hover { color: var(--brand); text-decoration: underline; }
   .card .src, .card-sub { white-space: normal; display: block; -webkit-line-clamp: unset; }
   .note-more { display: inline !important; } .note-toggle { display: none; }
 }
+
+/* ===== D2: asset tables (Markets → Performance, Strategist View → Where we are) ===== */
+table.asset-table td, table.asset-table th { padding: 5px 10px; height: 30px; }
+table.asset-table td.num { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+table.asset-table td.num.up { color: var(--pos); }
+table.asset-table td.num.dn { color: var(--neg); }
+table.asset-table td.heat { background-clip: padding-box; }
+table.asset-table tr.grp td { background: transparent; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; padding-top: 14px; border-bottom: 1px solid var(--border); }
+table.asset-table tr.grp td .more-btn { text-transform: none; letter-spacing: 0; }
+table.asset-table th.trend, table.asset-table td.trend { text-align: right; width: 96px; }
+table.asset-table td.name .name-in { display: inline-flex; gap: 8px; align-items: center; }
+.pin { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1; padding: 0; cursor: pointer; opacity: 0; transition: opacity .12s; }
+tr.row:hover .pin, .pin:focus-visible, .pin.on { opacity: 1; }
+.pin:hover { color: var(--accent); border-color: var(--accent); }
+.pin.on { color: var(--pc, var(--accent)); border-color: var(--pc, var(--accent)); font-size: 11px; }
+@media (hover: none) { .pin { opacity: 1; } }
+.sub-chips { margin: -4px 0 8px; }
+.sub-chips button { font-size: 12px; padding: 3px 10px; }
+.sub-chips[hidden] { display: none; }
+.col-pop { min-width: 230px; display: flex; flex-direction: column; gap: 8px; }
+.pop-check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink); cursor: pointer; }
+.pin-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+.pin-chips:empty { display: none; }
+.pin-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); }
+.pin-chip i { width: 10px; height: 3px; border-radius: 2px; background: var(--pc); display: inline-block; }
+.pin-chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; border-radius: 50%; }
+.pin-chip button:hover { color: var(--neg); background: var(--wash); }
+
+#perfCard .card-sub { margin-top: 2px; }
+#perfCard .perf-src { margin-top: 8px; }
+table.asset-table td.name { display: table-cell; vertical-align: middle; }
+table.asset-table tr.grp td { padding-top: 10px; }
