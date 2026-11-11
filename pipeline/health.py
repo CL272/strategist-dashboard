@@ -23,6 +23,7 @@ SLOW = {"JP_RETAIL_YOY": 220, "CN_CCI": 160, "MY_GDP_YOY": 280, "SH_PE": 200, "S
 SLOW.update({k: 200 for k in ("MY_ALR", "MY_BR", "MY_FD12", "MY_M2", "MY_M3", "MY_M2_YOY", "MY_M3_YOY")})
 SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD", "MYR", "KRW", "INR", "AUD", "IDR")})
 SLOW["ID_IP_YOY"] = 200
+SLOW["EPU_GLOBAL"] = 200   # global policy uncertainty is published about four months late
 SLOW["MMF_RETAIL"] = 50
 # UN Comtrade publishes Korea's monthly trade about 10 months late; Ramp's token table is weekly but posted with a lag
 SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})   # weekly, but the Fed publishes it about a month late (H.6)
