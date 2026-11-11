@@ -45,7 +45,14 @@ KEI = [
     ("KR_BCI",      "KOR", "BCICP",  "PB", None,  None, "Korea business confidence",        "idx", "Macro · Korea"),
     ("KR_10Y",      "KOR", "IRLT",   "PA", None,  None, "Korea 10Y government bond yield",  "%",   "Rates · Korea"),
     ("KR_3M",       "KOR", "IR3TIB", "PA", None,  None, "Korea 3M interbank rate",          "%",   "Rates · Korea"),
+    ("KR_IMP_YOY",  "KOR", "IM",     "GR", "_T",  "GY", "Korea imports YoY (USD, SA)",      "%",   "Macro · Korea"),
+    ("KR_CCI",      "KOR", "CCICP",  "PB", None,  None, "Korea consumer confidence",        "idx", "Macro · Korea"),
+    ("KR_RETAIL_YOY","KOR","TOVM",   "GR", None,  "GY", "Korea retail sales volume YoY",    "%",   "Macro · Korea"),
+    ("KR_CALL",     "KOR", "IRSTCI", "PA", None,  None, "Korea overnight call rate",        "%",   "Rates · Korea"),
     ("IN_CPI_YOY",  "IND", "CP",     "GR", None,  "GY", "India CPI YoY",                    "%",   "Macro · India"),
+    ("IN_IMP_YOY",  "IND", "IM",     "GR", "_T",  "GY", "India imports YoY (USD, SA)",      "%",   "Macro · India"),
+    ("IN_MFG_YOY",  "IND", "PRVM",   "GR", "C",   "GY", "India manufacturing output YoY",   "%",   "Macro · India"),
+    ("IN_CALL",     "IND", "IRSTCI", "PA", None,  None, "India overnight call rate",        "%",   "Rates · India"),
     ("IN_EXP_YOY",  "IND", "EX",     "GR", "_T",  "GY", "India exports YoY (USD, SA)",      "%",   "Macro · India"),
     ("IN_IP_YOY",   "IND", "PRVM",   "GR", "BTE", "GY", "India industrial production YoY",  "%",   "Macro · India"),
     ("IN_10Y",      "IND", "IRLT",   "PA", None,  None, "India 10Y government bond yield",  "%",   "Rates · India"),
@@ -56,6 +63,11 @@ KEI = [
     ("ID_CCI",      "IDN", "CCICP",  "PB", None,  None, "Indonesia consumer confidence",    "idx", "Macro · Indonesia"),
     ("AU_EXP_YOY",  "AUS", "EX",     "GR", "_T",  "GY", "Australia exports YoY (USD, SA)",  "%",   "Macro · Australia"),
     ("AU_CCI",      "AUS", "CCICP",  "PB", None,  None, "Australia consumer confidence",    "idx", "Macro · Australia"),
+]
+# quarterly key indicators: real GDP growth
+KEI_Q = [
+    ("KR_GDP_YOY",  "KOR", "B1GQ_Q", "GR",      "_T", "GY", "Korea real GDP YoY",              "%", "Macro · Korea"),
+    ("IN_GDP_YOY",  "IND", "B1GQ_Q", "GR",      "_T", "GY", "India real GDP YoY",              "%", "Macro · India"),
 ]
 CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
              "AUS": "Australia", "IDN": "Indonesia"}
@@ -260,6 +272,11 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
         if s is not None and len(s) > 12:
             kind = "yield" if group.startswith("Rates") else "level"
             out[sid] = (s, dict(label=label, unit=uout, kind=kind, group=group, source=f"OECD Main Economic Indicators ({area} {meas})"))
+    keiq = oecd_frame("OECD.SDD.STES,DSD_KEI@DF_KEI,", f"{'+'.join(sorted({a for _, a, *_ in KEI_Q}))}.Q.{'+'.join(sorted({m for _, _, m, *_ in KEI_Q}))}....")
+    for sid, area, meas, unit, act, tr, label, uout, group in KEI_Q:
+        s = _pick(keiq, area, meas, unit, act, tr) if keiq is not None else None
+        if s is not None and len(s) > 8:
+            out[sid] = (s, dict(label=label, unit=uout, kind="level", group=group, freq="Q", source=f"OECD Main Economic Indicators ({area} {meas}, quarterly)"))
     cli = oecd_frame("OECD.SDD.STES,DSD_STES@DF_CLI,", f"{'+'.join(CLI_AREAS)}.M.LI...AA...H")
     if cli is not None:
         for area, name in CLI_AREAS.items():
@@ -299,6 +316,6 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
         print("      " + n)
         if cpi_missing and len(DIAG) < 12:   # only surface e-Stat notes when something failed
             DIAG.append(n)
-    for sid in [k[0] for k in KEI] + [f"CLI_{a}" for a in CLI_AREAS] + [f"BCI_{a}" for a in BCI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
+    for sid in [k[0] for k in KEI + KEI_Q] + [f"CLI_{a}" for a in CLI_AREAS] + [f"BCI_{a}" for a in BCI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
         status[sid] = "ok" if sid in out else "missing"
     return out
