@@ -5058,9 +5058,60 @@ function syncFilterUI() {
   const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab] } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
   history.replaceState(null, '', '#' + h.toString());
 }
+// ---- tiles: at most 5 per sub-tab, chosen for that sub-tab (label prefixes, in order); no set = the first 5
+const TILE_MAX = 5;
+const TILE_SETS = {
+  overview: { '*': ['Macro regime', 'Fed net liquidity', 'Stress composite', 'Equity breadth', 'US dollar'] },
+  regime: {
+    'Regime now': ['Confirmed regime', 'Growth momentum', 'Inflation momentum', 'Latest signal', 'Signal strength'],
+    'Leading indicators': ['Confirmed regime', 'Growth level', 'Growth momentum', 'Recession odds'],
+    'Market signals': ['Confirmed regime', 'Growth momentum', 'Inflation momentum'],
+    'What’s driving it': ['Confirmed regime', 'Growth momentum', 'Inflation momentum', 'Growth level', 'Core CPI'],
+    'Recession watch': ['GDPNow', 'Sahm rule', 'Recession odds', 'Core CPI', 'Growth level'],
+  },
+  stress: {
+    'Stress composite': ['Stress composite', 'Funding block', 'Credit block', 'Growth block', 'OFR FSI'],
+    'Where everything stands': ['Stress composite', 'Funding block', 'Credit block', 'Growth block'],
+    'Peak signposts': ['Signposts triggered', 'Average at prior peaks', 'Stress composite'],
+  },
+  liquidity: {
+    'Fed & reserves': ['Fed net liquidity', 'Bank reserves', 'Treasury cash', 'Reverse repo', 'SOFR − IORB'],
+    'Credit, money & rates': ['US HY spread', 'Financial conditions', 'Fed net liquidity'],
+  },
+  asia: {
+    'Singapore': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
+    'Asian FX': ['USD/MYR', 'USD/SGD', 'Malaysia OPR', '3M compounded SORA', 'RBA cash rate'],
+  },
+  ai: {
+    'Adoption': ['OpenRouter weekly tokens', 'Avg price paid', 'Avg cost per request', 'Frontier model'],
+    'Prices & cost': ['Avg price paid', 'Avg cost per request', 'Cheapest near-frontier', 'Frontier model'],
+    'Build-out': ['Frontier model', 'OpenRouter weekly tokens', 'AI equity basket'],
+    'AI stocks': ['AI equity basket'],
+    'Chip cycle': ['AI equity basket'],
+  },
+};
+function fitTiles(tab) {
+  const panel = $('#tab-' + tab); if (!panel) return;
+  const sub = ((SUBTABS[tab] || [])[state.sub[tab] || 0] || [])[0], sets = TILE_SETS[tab] || {}, want = sets[sub] || sets['*'];
+  for (const box of panel.querySelectorAll('.kpis')) {
+    // tiles hidden by a page's own filter stay hidden; tiles this function hid last time come back first
+    box.querySelectorAll('.kpi[data-fit]').forEach(k => { k.hidden = false; delete k.dataset.fit; });
+    const live = [...box.querySelectorAll('.kpi')].filter(k => !k.hidden);
+    const lab = k => (k.querySelector('.k-label') || {}).textContent || '';
+    let keep = live;
+    if (want) keep = want.map(w => live.find(k => lab(k).startsWith(w))).filter(Boolean);
+    if (!keep.length) keep = live;
+    keep = keep.slice(0, TILE_MAX);
+    for (const k of live) if (!keep.includes(k)) { k.hidden = true; k.dataset.fit = '1'; }
+    keep.forEach((k, i) => { k.style.order = i; });
+    // the date line is kept, but on one line; its full text shows on hover
+    for (const k of keep) { const a = k.querySelector('.k-asof'); if (a && a.textContent) a.title = a.textContent; }
+  }
+}
 function renderTab() {
   syncFilterUI();
   ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  fitTiles(state.tab);
 }
 const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
   cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
