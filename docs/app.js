@@ -5170,6 +5170,8 @@ function applyPreset(p) {
 function syncFilterUI() {
   document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('on', b.dataset.p === state.preset));
   $('#fromDate').value = iso(state.from); $('#toDate').value = iso(state.to);
+  { const cb = $('#customBtn'), on = state.preset === 'custom', sh = t0 => { const d = new Date(t0); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`; };
+    cb.textContent = on ? `${sh(state.from)} – ${sh(state.to)} ▾` : 'Custom ▾'; cb.classList.toggle('on', on); }
   $('#fromDate').max = $('#toDate').max = iso(state.latest);
   $('#fromDate').min = $('#toDate').min = iso(state.earliest);
   const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab] } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
@@ -5270,6 +5272,8 @@ function wire() {
     state.preset = 'custom'; state.from = f; state.to = Math.min(t, state.latest); renderTab();
   };
   $('#fromDate').addEventListener('change', onDate); $('#toDate').addEventListener('change', onDate);
+  $('#customBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('#customPop')); });
+  $('#customPop').addEventListener('click', e => e.stopPropagation());
   document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { setTab(b.dataset.tab); scrollTo({ top: 0 }); }));
   $('#menuBtn').addEventListener('click', () => { const o = $('#side').classList.toggle('open'); $('#menuBtn').setAttribute('aria-expanded', String(o)); });
   $('#themeBtn').addEventListener('click', () => {

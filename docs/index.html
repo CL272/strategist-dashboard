@@ -65,10 +65,14 @@
     <button data-p="YTD">YTD</button><button data-p="1Y">1Y</button><button data-p="3Y">3Y</button>
     <button data-p="5Y">5Y</button><button data-p="10Y">10Y</button><button data-p="MAX">Max</button>
   </div>
-  <div class="custom">
-    <label>From <input type="date" id="fromDate"></label>
-    <label>To <input type="date" id="toDate"></label>
-  </div>
+  <span class="pop-anchor">
+    <button class="ghost custom-chip" id="customBtn" type="button" title="Pick exact dates">Custom ▾</button>
+    <div class="custom pop" id="customPop" hidden>
+      <div class="pop-label">Exact dates for all charts</div>
+      <label>From <input type="date" id="fromDate"></label>
+      <label>To <input type="date" id="toDate"></label>
+    </div>
+  </span>
 </section>
 
 <main>
