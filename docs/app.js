@@ -2252,9 +2252,11 @@ const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia l
 const ASIA_KPI_MIX = ['Malaysia OPR', 'USD/MYR', '3M compounded SORA', 'USD/SGD', 'RBA cash rate', 'Australia 10Y yield'];
 function renderAsia() {
   regionKpis();
-  const sub = SUBTABS.asia[state.sub.asia || 0][0].split(':')[0];
+  const [lab, , grp] = SUBTABS.asia[state.sub.asia || 0], sub = grp === 'Malaysia' ? 'Malaysia' : lab, cj = lab === 'China' || lab === 'Japan';
   filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? '*' : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
+  $('#asiaKpis').hidden = cj; $('#cnjpKpis').hidden = !cj;
   ASIA_CARDS.forEach(k => cards[k].render());
+  if (cj) renderCnJp();
 }
 let NEWS = null;
 state.newsCat = 'All'; state.newsQ = '';
@@ -2348,7 +2350,7 @@ function renderCnSpread(c) {
   setNote(c, 'China 10Y is a monthly average (OECD); UST 10Y daily, matched to the month. A US yield advantage over China puts weakening pressure on the yuan.');
 }
 function buildCnJp() {
-  const g = $('#cnjpGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
+  const g = $('#asiaGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
   g.append(el('h3', { class: 'section', text: 'China' }));
   makeCard(g, { key: 'cn_infl', title: 'China: inflation and rates', sub: 'CPI year-on-year, 10Y government bond yield and 3M interbank rate, %. Monthly.',
     render: idsCard(['CN_CPI_YOY', 'CN_10Y', 'CN_3M'], p2, p1, { zero: true }) });
@@ -2384,7 +2386,8 @@ function buildCnJp() {
 function renderCnJp() {
   cnjpKpis();
   ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread', 'jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'].forEach(k => cards[k].render());
-  filterKpis('#cnjpKpis', l => l.startsWith('China') ? 'China' : 'Japan');
+  const lab = SUBTABS.asia[state.sub.asia || 0][0];
+  $('#cnjpKpis').querySelectorAll('.kpi').forEach(k => { k.hidden = (lab === 'China') !== k.querySelector('.k-label').textContent.startsWith('China'); });
 }
 function renderCLI(c) {
   const ids = ['CLI_USA', 'CLI_CHN', 'CLI_JPN', 'CLI_DEU', 'CLI_KOR', 'CLI_IND', 'CLI_AUS', 'CLI_IDN'].filter(id => has(id));
@@ -4698,9 +4701,9 @@ function buildCbWatch() {
   makeCard(g, { key: 'cb_rates', title: 'Policy rates', defaultRange: '5Y', render: renderCbRates });
   makeCard(g, { key: 'cb_real', title: 'Real policy rates', defaultRange: '5Y', render: renderCbReal });
   for (const k of Object.keys(CBS)) {
-    makeCard(g, { key: `cb_path_${k}`, range: false, title: k, wide: true, render: c => renderCbPath(c, k) });
-    makeCard(g, { key: `cb_spread_${k}`, title: k, defaultRange: '3Y', render: c => renderCbSpread(c, k) });
-    makeCard(g, { key: `cb_info_${k}`, range: false, title: k, render: c => renderCbInfo(c, k) });
+    makeCard(g, { key: `cb_path_${k}`, range: false, title: `${CBS[k].name}: policy rate and what markets imply`, wide: true, render: c => renderCbPath(c, k) });
+    makeCard(g, { key: `cb_spread_${k}`, title: CBS[k].gaugeLab, defaultRange: '3Y', render: c => renderCbSpread(c, k) });
+    makeCard(g, { key: `cb_info_${k}`, range: false, title: `${k}: decisions`, render: c => renderCbInfo(c, k) });
   }
   for (const k of ['cb_table', ...Object.keys(CBS).map(x => `cb_info_${x}`)]) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
@@ -5013,13 +5016,15 @@ const SUBTABS = {
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
-  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable']], ['Leading indicators', ['lei', 'leidrv', 'leadlag', 'cli']], ['US ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule']], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea']],
-    ['Market signals', ['cugold', 'cycdef']], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin']], ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims']]],
+  regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
+    ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['US ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Leading'],
+    ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading'],
+    ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims'], 'Risk']],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
-  asia: [['Malaysia: markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend']], ['Malaysia: economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']],
-    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth']], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot']],
-    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['asiafx', 'asiaidx']]],
-  cnjp: [['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread']], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj']]],
+  asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
+    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot'], 'Region'],
+    ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'], 'Region'],
+    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare']],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
@@ -5066,6 +5071,74 @@ function filterKpis(boxSel, groupOf) {   // show only the KPI tiles that belong 
   $(boxSel).querySelectorAll('.kpi').forEach(k => { const g = groupOf(k.querySelector('.k-label').textContent); k.hidden = !(g === sub || g === '*'); });
 }
 
+// ------------------------------------------------------------------ SEARCH (Ctrl+K, "/", or the sidebar button)
+// Finds pages, sections, charts (by title, description and data source) and markets; Enter opens it.
+function searchIndex() {
+  const out = [], seen = new Set();
+  for (const [t, title] of Object.entries(TAB_TITLES)) if ($('#tab-' + t)) out.push({ kind: 'Page', label: title, where: '', tab: t, hay: title });
+  for (const [t, groups] of Object.entries(SUBTABS)) groups.forEach(([lab, , grp], i) => out.push({ kind: 'Section', label: lab, where: TAB_TITLES[t] + (grp ? ' · ' + grp : ''), tab: t, sub: i, hay: [lab, grp, TAB_TITLES[t]].join(' ') }));
+  for (const c of Object.values(cards)) {
+    const panel = c.root.closest('.tab-panel'); if (!panel) continue;
+    const t = panel.id.slice(4), sub = c.root.dataset.sub != null ? +c.root.dataset.sub : null, label = c.titleEl.textContent || c.title;
+    out.push({ kind: 'Chart', label, where: (TAB_TITLES[t] || t) + (sub != null && SUBTABS[t] ? ' → ' + SUBTABS[t][sub][0] : ''), tab: t, sub, card: c,
+      hay: [label, c.title, c.subEl.textContent, c.source].join(' ') });
+  }
+  for (const r of perfRows()) if (!seen.has(r.id)) { seen.add(r.id); out.push({ kind: 'Market', label: r.s.label, where: 'Markets → Performance', tab: 'markets', sub: 0, asset: r, hay: [r.s.label, r.id, r.s.group, r.s.source].join(' ') }); }
+  return out;
+}
+function searchFind(q, idx) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
+  const rank = { Market: 0, Chart: 1, Section: 2, Page: 3 };
+  return idx.map(x => { const h = x.hay.toLowerCase(), l = x.label.toLowerCase();
+      if (!words.every(w => h.includes(w))) return null;
+      const score = (l.startsWith(words[0]) ? 0 : l.includes(words[0]) ? 1 : 2) * 10 + rank[x.kind];
+      return { ...x, score }; }).filter(Boolean).sort((a, b) => a.score - b.score).slice(0, 14);
+}
+function searchGo(x) {
+  closeSearch();
+  setTab(x.tab);
+  if (x.sub != null && SUBTABS[x.tab]) setSub(x.tab, x.sub);
+  if (x.asset) { state.perfClass = 'All'; state.perfQuery = x.asset.s.label; const box = $('#perfCard .perf-search'); if (box) box.value = x.asset.s.label; renderPerfTable(); }
+  const target = x.card ? x.card.root : x.asset ? $('#perfCard') : null;
+  if (target) setTimeout(() => { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); }, 120);
+}
+let searchIdx = null;
+function openSearch() {
+  const dlg = $('#searchDlg'), input = $('#searchInput');
+  searchIdx = searchIndex(); dlg.hidden = false; input.value = ''; renderSearch(''); input.focus();
+}
+function closeSearch() { $('#searchDlg').hidden = true; }
+function renderSearch(q) {
+  const list = $('#searchList'), res = searchFind(q, searchIdx || []);
+  list.replaceChildren(...res.map((x, i) => el('li', { class: i === 0 ? 'on' : '', role: 'option', onclick: () => searchGo(x) },
+    el('span', { class: 'sr-kind', text: x.kind }), el('span', { class: 'sr-label', text: x.label }), el('span', { class: 'sr-where', text: x.where }))));
+  list.results = res;
+  $('#searchEmpty').hidden = !q || res.length > 0;
+}
+function buildSearch() {
+  const input = el('input', { id: 'searchInput', type: 'search', placeholder: 'Search charts, markets, pages…  e.g. palm, KLCI, BNM, ISM', 'aria-label': 'Search the dashboard', autocomplete: 'off' });
+  const list = el('ul', { id: 'searchList', role: 'listbox' });
+  const dlg = el('div', { id: 'searchDlg', class: 'search-dlg', hidden: true, role: 'dialog', 'aria-label': 'Search' },
+    el('div', { class: 'search-box' }, input, list, el('div', { id: 'searchEmpty', class: 'muted small search-empty', text: 'Nothing found. Try a market, a country, a data source or a chart name.', hidden: true }),
+      el('div', { class: 'search-foot' }, '↑↓ to move · Enter to open · Esc to close')));
+  dlg.addEventListener('click', e => { if (e.target === dlg) closeSearch(); });
+  input.addEventListener('input', () => renderSearch(input.value));
+  input.addEventListener('keydown', e => {
+    const items = [...list.children], i = items.findIndex(li => li.classList.contains('on'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!items.length) return; const j = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      items.forEach((li, k) => li.classList.toggle('on', k === j)); items[j].scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'Enter') { const r = list.results || []; if (r[Math.max(0, i)]) searchGo(r[Math.max(0, i)]); }
+    else if (e.key === 'Escape') closeSearch();
+  });
+  document.body.append(dlg);
+  const btn = el('button', { type: 'button', class: 'side-search', onclick: openSearch }, el('span', { text: '⌕  Search' }), el('kbd', { text: 'Ctrl K' }));
+  $('#side .side-head').after(btn);
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable);
+    if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openSearch(); }
+    else if (e.key === '/' && !typing) { e.preventDefault(); openSearch(); }
+  });
+}
 // ------------------------------------------------------------------ range, tabs, theme
 function applyPreset(p) {
   state.preset = p;
@@ -5088,7 +5161,7 @@ const TILE_SETS = {
   overview: { '*': ['Macro regime', 'Fed net liquidity', 'Stress composite', 'Equity breadth', 'US dollar'] },
   regime: {
     'Regime now': ['Confirmed regime', 'Growth momentum', 'Inflation momentum', 'Latest signal', 'Signal strength'],
-    'Leading indicators': ['Confirmed regime', 'Growth level', 'Growth momentum', 'Recession odds'],
+    'Indicators': ['Confirmed regime', 'Growth level', 'Growth momentum', 'Recession odds'],
     'Market signals': ['Confirmed regime', 'Growth momentum', 'Inflation momentum'],
     'What’s driving it': ['Confirmed regime', 'Growth momentum', 'Inflation momentum', 'Growth level', 'Core CPI'],
     'Recession watch': ['GDPNow', 'Sahm rule', 'Recession odds', 'Core CPI', 'Growth level'],
@@ -5134,11 +5207,11 @@ function fitTiles(tab) {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, cnjp: renderCnJp, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
   fitTiles(state.tab);
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia Pacific: Malaysia, Singapore, Australia & region',
-  cnjp: 'China & Japan', markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
+const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia',
+  markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
@@ -5235,12 +5308,14 @@ async function init() {
   }
   ismPrep();
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  if (h.get('tab') === 'cnjp') { h.set('tab', 'asia'); h.set('sub', String(4 + (+h.get('sub') || 0))); }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
   buildSubtabs();
+  buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);   // ~2 MB of ticker history: loaded after the first page is drawn
-  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'cnjp', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

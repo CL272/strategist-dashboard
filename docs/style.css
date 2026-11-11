@@ -695,3 +695,25 @@ table.asset-table tr.grp td { padding-top: 10px; }
 .kpi .k-asof { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ===== D5: finding things ===== */
+.subtabs > .subtab-group:first-child { border-left: 0; padding-left: 0; margin-left: 2px; }
+.side-search { display: flex; justify-content: space-between; align-items: center; width: calc(100% - 24px); margin: 4px 12px 10px; padding: 7px 10px;
+  border-radius: 9px; border: 1px solid rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .78); font-size: 13px; cursor: pointer; }
+.side-search:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.side-search kbd { font: 600 10.5px/1 inherit; padding: 3px 5px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, .25); color: rgba(255, 255, 255, .7); }
+.search-dlg { position: fixed; inset: 0; z-index: 100; background: rgba(15, 27, 51, .35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.search-dlg[hidden] { display: none; }
+.search-box { width: min(640px, 92vw); background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
+#searchInput { width: 100%; border: 0; border-bottom: 1px solid var(--border); padding: 16px 18px; font-size: 16px; background: transparent; color: var(--ink); outline: none; }
+#searchList { list-style: none; margin: 0; padding: 6px; max-height: 52vh; overflow: auto; }
+#searchList:empty { display: none; }
+#searchList li { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+#searchList li.on, #searchList li:hover { background: var(--wash); }
+.sr-kind { font-size: 10.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.sr-label { color: var(--ink); font-size: 14px; }
+.sr-where { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.search-empty { padding: 14px 18px; }
+.search-foot { padding: 8px 18px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
+@keyframes flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: var(--shadow); } }
+.card.flash { animation: flash 1.6s ease-out; }
