@@ -1430,7 +1430,8 @@ function renderChipKorea(c) {
   const r = leadPair(c, [id, 'yoy', 'Korea chip exports, % YoY'], ['KOSPI', 'yoy', 'KOSPI, % YoY'], k,
     { fmtA: pctF1, fmtB: pctF1, axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true, zeroB: true });
   const a = asOf(S[id], state.latest), y = asOf(yoyOf(id), state.latest);
-  setNote(c, `Latest: ${a ? '$' + fmtNum(a.v, 1) + 'bn in ' + monthLab(a.t) : '–'}${y ? ` (${pctF1(y.v)} YoY)` : ''}. ⚠ UN Comtrade runs several months behind Korea’s own release; the timely Bank of Korea feed needs a Korean-resident key. Correlation: ${r.c0 == null ? '–' : corrF(r.c0)} same month; best ${corrF(r.best[1])} with chip exports leading ${r.best[0]} month${r.best[0] === 1 ? '' : 's'}.`);
+  const mm = has('KR_MEM_EXP') && a ? asOf(S.KR_MEM_EXP, a.t) : null;
+  setNote(c, `Latest: ${a ? '$' + fmtNum(a.v, 1) + 'bn in ' + monthLab(a.t) : '–'}${y ? ` (${pctF1(y.v)} YoY)` : ''}${mm ? `, of which memory chips (DRAM, HBM, NAND) $${fmtNum(mm.v, 1)}bn` : ''}. ⚠ UN Comtrade runs several months behind Korea’s own release; the timely Bank of Korea feed needs a Korean-resident key. Correlation: ${r.c0 == null ? '–' : corrF(r.c0)} same month; best ${corrF(r.best[1])} with chip exports leading ${r.best[0]} month${r.best[0] === 1 ? '' : 's'}.`);
   setSource(c, 'UN Comtrade (Korea exports, HS 8542 integrated circuits); Yahoo Finance (^KS11)');
 }
 function renderChipMem(c) {
