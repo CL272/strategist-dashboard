@@ -724,3 +724,12 @@ table.asset-table tr.grp td { padding-top: 10px; }
 .filters .custom-chip.on { color: #fff; background: var(--sel); border-color: var(--sel); }
 .filters .custom.pop { left: 0; right: auto; display: flex; flex-direction: column; gap: 8px; width: max-content; }
 .filters .custom.pop label { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 13px; }
+
+/* ===== D8: weekly brief fits one A4 page again (two takeaway lines were added) ===== */
+@media print {
+  .onepage { line-height: 1.3; }
+  table.perf.op-table th, table.perf.op-table td { padding: 0.2px 4px; line-height: 1.18; }
+  .op-take li { margin: 0; }
+  .onepage h3 { margin: 6px 0 3px; }
+  .op-tiles { margin-top: 6px; }
+}
