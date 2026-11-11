@@ -532,6 +532,8 @@ global, Malaysian balanced); return, drawdown and volatility in MYR, SGD or USD.
 
 ### WP27. FX carry and value
 
+*Built 12 Nov 2026: Indonesia's overnight call rate (OECD IRSTCI) added as ID_CALL; MYR uses the OPR (the 3-month interbank rate has only three years of history), EUR the ECB deposit rate; Taiwan blank.*
+
 Asia ex-Japan → Asian FX gains a table for MYR, SGD, KRW, INR, IDR, CNY, JPY, AUD, EUR, TWD: 3-month rate gap against
 the US (carry), 3-month realised volatility, carry ÷ volatility, REER percentile (value), 3- and 12-month spot move,
 200-day trend. Add Indonesia's short rate from the OECD feed. Taiwan has no short rate on file: leave the cell blank.

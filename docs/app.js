@@ -2596,6 +2596,7 @@ function buildAsia() {
   // ---------------- FX
   g.append(el('h3', { class: 'section', text: 'Asian currencies' }));
   makeCard(g, { key: 'asiafx', title: 'Asian FX vs USD', render: renderAsiaFx });
+  makeCard(g, { key: 'fx_carry', title: 'Asian FX: carry and value', wide: true, range: false, render: renderFxCarry });
   makeCard(g, { key: 'asiaidx', title: 'Asia FX index vs USD', sub: 'Broad Asian currency strength against the dollar.', render: renderAsiaIdx });
 }
 const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
@@ -2849,6 +2850,43 @@ function buildMySectors() {
   makeCard(g, { key: 'my_sec_rs', title: 'Sector strength vs the KLCI', defaultRange: '1Y', render: renderMySecRs });
   makeCard(g, { key: 'my_sec_drv', title: 'Sectors and their drivers', defaultRange: '3Y', seg: { key: 'mySecDrv', select: true, label: 'Sector', options: [['plant', 'Plantations vs palm oil'], ['tech', 'Technology vs SOX'], ['og', 'Oil & gas vs Brent'], ['banks', 'Banks vs rates']] }, render: renderMySecDriver });
   const r = cards.my_sec_table.root; r.querySelector('[title^="Focus"]').hidden = true; const d = r.querySelector('[title^="Download chart as"]'); if (d) d.hidden = true;
+}
+
+// ------------------------------------------------------------------ FX CARRY AND VALUE (WP27)
+// [currency, USD pair, +1 if quoted as USD per unit (EURUSD, AUDUSD), short rate, REER]
+const FXC = [['MYR', 'USDMYR', -1, 'MY_OPR', 'REER_MYR'], ['SGD', 'USDSGD', -1, 'SORA3M', 'REER_SGD'], ['KRW', 'USDKRW', -1, 'KR_3M', 'REER_KRW'], ['INR', 'USDINR', -1, 'IN_3M', 'REER_INR'],
+  ['IDR', 'USDIDR', -1, 'ID_CALL', 'REER_IDR'], ['CNY', 'USDCNY', -1, 'CN_3M', 'REER_CNY'], ['JPY', 'USDJPY', -1, 'JP_CALL', 'REER_JPY'], ['AUD', 'AUDUSD', 1, 'AU_3M', 'REER_AUD'],
+  ['EUR', 'EURUSD', 1, 'EA_DFR', 'REER_EUR'], ['TWD', 'USDTWD', -1, null, null]];
+function fxVol(id, months = 3) {   // annualised volatility of daily log changes over the last n months, %
+  const s = S[id], i = idxLE(s, state.latest), from = addMonths(s.t[i], -months), r = [];
+  for (let j = i; j > 0 && s.t[j] >= from; j--) r.push(Math.log(s.v[j] / s.v[j - 1]));
+  if (r.length < 20) return null; const m = r.reduce((a, x) => a + x, 0) / r.length;
+  return Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(252) * 100;
+}
+function fxMove(id, inv, m) { const a = asOf(S[id], state.latest), b = a && asOf(S[id], addMonths(a.t, -m)); return a && b ? (Math.pow(a.v / b.v, inv) - 1) * 100 : null; }
+function renderFxCarry(c) {
+  const b = htmlBody(c), us = has('UST3M') ? asOf(S.UST3M, state.latest) : null;
+  const heads = ['Currency', 'Short rate', 'Carry vs USD', '3M vol', 'Carry ÷ vol', 'REER pct', '3M vs USD', '12M vs USD', 'Trend'];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const rows = FXC.filter(([, pair]) => has(pair)).map(([ccy, pair, dir, rate, reer]) => {
+    const r = rate && has(rate) ? asOf(S[rate], state.latest) : null, carry = r && us ? r.v - us.v : null, vol = fxVol(pair), ratio = carry != null && vol ? carry / vol : null;
+    const q = reer && has(reer) ? pctRank(S[reer], state.latest, 20) : null, t = trendStats(pair);
+    return { ccy, pair, rate, r, carry, vol, ratio, reer: q ? q.p : null, m3: fxMove(pair, dir, 3), m12: fxMove(pair, dir, 12), up: t ? (dir > 0 ? t.up : !t.up) : null };
+  }).sort((p, q) => (q.ratio ?? -9) - (p.ratio ?? -9));
+  const tb = el('tbody'), csv = [heads];
+  const cell = (v, f, cls) => el('td', { class: 'num ' + (cls || ''), text: v == null ? '–' : f(v) });
+  for (const x of rows) {
+    tb.append(el('tr', { class: 'row', title: `${S[x.pair].label}${x.rate ? ` · short rate: ${S[x.rate].label}${x.r ? ' (' + monthLab(x.r.t) + ')' : ''}` : ' · no short rate on file'}` },
+      el('td', { text: x.ccy }), cell(x.r && x.r.v, v => fmtNum(v, 2) + '%'), cell(x.carry, v => sign(v) + fmtNum(Math.abs(v), 2) + '%', x.carry == null ? '' : x.carry > 0 ? 'up' : 'dn'),
+      cell(x.vol, v => fmtNum(v, 1) + '%', 'muted'), cell(x.ratio, v => sign(v) + fmtNum(Math.abs(v), 2), x.ratio == null ? '' : x.ratio > 0 ? 'up' : 'dn'),
+      cell(x.reer, v => ordinal(Math.max(1, v)), x.reer == null ? '' : x.reer < 30 ? 'up' : x.reer > 70 ? 'dn' : ''),
+      cell(x.m3, pctF1, x.m3 == null ? '' : x.m3 > 0 ? 'up' : 'dn'), cell(x.m12, pctF1, x.m12 == null ? '' : x.m12 > 0 ? 'up' : 'dn'),
+      el('td', { class: 'num ' + (x.up == null ? '' : x.up ? 'up' : 'dn'), text: x.up == null ? '–' : x.up ? '▲ firming' : '▼ weakening' })));
+    csv.push([x.ccy, x.r && x.r.v, x.carry, x.vol, x.ratio, x.reer, x.m3, x.m12, x.up]);
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `Sorted by carry per unit of risk. Carry = the currency’s short rate minus the US 3-month bill (${us ? fmtNum(us.v, 2) + '%' : '–'}): what holding it instead of dollars earns a year, before currency moves. 3M vol = annualised volatility of daily moves. REER pct = real effective exchange rate against its last 20 years (low = cheap, green; high = dear, red). Moves and trend: + / ▲ = the currency stronger against USD (50-day vs 200-day average). Short rates: policy or 3-month rates (MYR: OPR; IDR: overnight call rate; EUR: ECB deposit rate); Taiwan has none on file.`);
+  setSource(c, 'Yahoo Finance (FX); OECD, Bank Negara, MAS, RBA, ECB, BoJ (rates); BIS via FRED (REER); calculated');
 }
 
 function buildAsiaMore() {
@@ -6308,7 +6346,7 @@ const SUBTABS = {
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'], ['Sectors', ['my_sec_table', 'my_sec_rs', 'my_sec_drv'], 'Malaysia'],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['Taiwan', ['tw_mkt', 'tw_lead', 'tw_trade', 'tw_money', 'tw_growth', 'tw_infl'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
-    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
+    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['fx_carry', 'asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],

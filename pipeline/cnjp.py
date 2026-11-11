@@ -61,6 +61,7 @@ KEI = [
     ("ID_EXP_YOY",  "IDN", "EX",     "GR", "_T",  "GY", "Indonesia exports YoY (USD, SA)",  "%",   "Macro · Indonesia"),
     ("ID_IP_YOY",   "IDN", "PRVM",   "GR", "C",   "GY", "Indonesia manufacturing output YoY", "%", "Macro · Indonesia"),
     ("ID_CCI",      "IDN", "CCICP",  "PB", None,  None, "Indonesia consumer confidence",    "idx", "Macro · Indonesia"),
+    ("ID_CALL",     "IDN", "IRSTCI", "PA", None,  None, "Indonesia overnight call rate",    "%",   "Rates · Indonesia"),
     ("AU_EXP_YOY",  "AUS", "EX",     "GR", "_T",  "GY", "Australia exports YoY (USD, SA)",  "%",   "Macro · Australia"),
     ("AU_CCI",      "AUS", "CCICP",  "PB", None,  None, "Australia consumer confidence",    "idx", "Macro · Australia"),
 ]
