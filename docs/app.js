@@ -110,6 +110,7 @@ function pearson(a, b) {
 // ------------------------------------------------------------------ cards & charts
 function makeCard(parent, o) {
   const c = { ...o, inst: null, csv: null };
+  c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = follow the top date bar
   const tools = el('div', { class: 'card-tools' });
   if (o.seg && o.seg.select) {   // compact drop-down (e.g. currency choice)
     const sel = el('select', { class: 'mini-select', 'aria-label': o.seg.label || 'Option', title: o.seg.label || '' });
@@ -131,23 +132,29 @@ function makeCard(parent, o) {
     }
     tools.append(seg);
   }
-  c.yBtn = el('button', { class: 'ghost', type: 'button', text: '↕ Y', title: 'Y-axis: drag the axis numbers up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => toggleYPanel(c) });
-  tools.append(c.yBtn,
-    el('button', { class: 'ghost', type: 'button', text: '⤢', title: 'Focus (enlarge for screenshots)', onclick: () => { c.root.classList.toggle('focus'); setTimeout(() => c.inst && c.inst.resize(), 0); } }),
-    el('button', { class: 'ghost', type: 'button', text: 'PNG', title: 'Download chart as image', onclick: () => exportPNG(c) }),
-    el('button', { class: 'ghost', type: 'button', text: 'CSV', title: 'Download chart data', onclick: () => c.csv && downloadCSV(c.csv, c.title) }),
-  );
+  // rarely used tools live in one "⋯" menu; toggles stay visible in .card-tools
+  c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
+  c.menuEl = el('div', { class: 'card-menu pop', hidden: true, role: 'menu' }, c.yBtn,
+    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download PNG', title: 'Download chart as image', onclick: () => { closePops(); exportPNG(c); } }),
+    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.csv, c.title); } }));
+  const kebab = el('button', { class: 'ghost kebab', type: 'button', text: '⋯', title: 'More: y-axis range, downloads', 'aria-haspopup': 'menu', onclick: e => { e.stopPropagation(); togglePop(c.menuEl); } });
+  const actions = el('div', { class: 'card-actions' });
+  c.rangeEl = o.range === false ? null : buildCardRange(c);
+  if (c.rangeEl) actions.append(c.rangePill);
+  actions.append(el('button', { class: 'ghost', type: 'button', text: '⤢', title: 'Focus (enlarge for screenshots)', onclick: () => { c.root.classList.toggle('focus'); setTimeout(() => c.inst && c.inst.resize(), 0); } }),
+    el('span', { class: 'pop-anchor' }, kebab, c.menuEl));
   c.titleEl = el('h2', { text: o.title });
-  c.subEl = el('p', { class: 'muted small', text: o.sub || '' });
+  c.subEl = el('p', { class: 'muted small card-sub', text: o.sub || '' });
+  c.subEl.addEventListener('click', () => c.subEl.classList.toggle('open'));
+  c.subEl.addEventListener('mouseenter', () => { c.subEl.title = c.subEl.scrollHeight > c.subEl.clientHeight + 2 ? c.subEl.textContent + ' (click to expand)' : ''; });
   c.chartEl = el('div', { class: 'chart' });
   c.emptyEl = el('div', { class: 'empty', hidden: true });
   c.noteEl = el('p', { class: 'note', hidden: true });
   c.srcEl = el('p', { class: 'src' });
-  c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = follow the top date bar
-  c.rangeEl = o.range === false ? null : buildCardRange(c);
   c.root = el('div', { class: 'card' + (o.wide ? ' wide' : '') + (o.tall ? ' tall' : '') },
-    el('div', { class: 'card-head' }, el('div', {}, c.titleEl), tools), c.subEl,
-    c.chartEl, c.emptyEl, c.yPanel = el('div', { class: 'y-panel', hidden: true }), c.rangeEl, c.noteEl, c.srcEl);
+    el('div', { class: 'card-head' }, el('div', { class: 'card-title' }, c.titleEl), tools, actions), c.subEl,
+    c.chartEl, c.emptyEl, c.yPanel = el('div', { class: 'y-panel', hidden: true }), c.noteEl, c.srcEl);
+  c.srcEl.addEventListener('click', () => c.srcEl.classList.toggle('open'));
   parent.append(c.root);
   setSource(c, o.source || '');
   c.render = () => {
@@ -276,7 +283,7 @@ function toggleYPanel(c) {
     el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range. Tip: you can also drag the axis numbers on the chart (double-click the axis to reset).' }));
   c.yPanel.hidden = false;
 }
-function setSource(c, txt) { c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; }
+function setSource(c, txt) { c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; c.srcEl.title = txt ? 'Source: ' + txt + ' (click to show in full)' : ''; }
 function srcOf(ids) {   // merge "Provider (detail)" sources: Yahoo Finance (A), Yahoo Finance (B) -> Yahoo Finance (A, B)
   const by = new Map();
   for (const id of ids) {
@@ -298,27 +305,34 @@ function resolveRange(r) {
   return [r.from, Math.min(r.to, state.latest)];
 }
 function buildCardRange(c) {
-  const row = el('div', { class: 'card-range', role: 'group', 'aria-label': 'Date range for this chart' });
+  const row = el('div', { class: 'card-range pop', role: 'group', 'aria-label': 'Date range for this chart', hidden: true });
+  row.addEventListener('click', e => e.stopPropagation());
   const seg = el('div', { class: 'presets mini' });
   for (const p of RANGE_PRESETS) seg.append(el('button', { type: 'button', text: p === 'MAX' ? 'Max' : p, 'data-p': p,
     onclick: () => { c.range = { preset: p }; c.render(); } }));
   const f = el('input', { type: 'date', 'aria-label': 'From' }), t = el('input', { type: 'date', 'aria-label': 'To' });
   const onDate = () => { const a = Date.parse(f.value), b = Date.parse(t.value); if (!isNaN(a) && !isNaN(b) && a < b) { c.range = { from: a, to: b }; c.render(); } };
   f.addEventListener('change', onDate); t.addEventListener('change', onDate);
-  const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Top bar', title: 'Follow the date bar at the top of the page',
-    onclick: () => { c.range = null; c.render(); } });
+  const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Follow page range', title: 'Use the date range at the top of the page again',
+    onclick: () => { c.range = null; c.render(); closePops(); } });
   seg.title = 'Date range for this chart. Tip: you can also drag across the chart to zoom';
-  row.append(seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset);
-  c.rangeParts = { seg, f, t, reset };
+  row.append(el('div', { class: 'pop-label', text: 'Date range for this chart' }), seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset,
+    el('div', { class: 'pop-hint', text: 'Tip: drag across the chart to zoom.' }));
+  c.rangePill = el('button', { type: 'button', class: 'ghost range-pill', onclick: e => { e.stopPropagation(); togglePop(row); } });
+  c.rangePill = el('span', { class: 'pop-anchor' }, c.rangePill, row);
+  c.rangeParts = { seg, f, t, reset, pill: c.rangePill.firstChild };
   return row;
 }
 function syncCardRange(c) {
-  const { seg, f, t, reset } = c.rangeParts, [a, b] = c.lastRange;
+  const { seg, f, t, reset, pill } = c.rangeParts, [a, b] = c.lastRange;
   const active = c.range ? (c.range.preset || 'custom') : (state.preset || 'custom');
   seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.p === active));
   f.value = iso(a); t.value = iso(b); f.max = t.max = iso(state.latest);
   reset.hidden = !c.range;
-  c.root.classList.toggle('own-range', !!c.range);
+  const short = t0 => { const d = new Date(t0); return `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`; };
+  pill.textContent = (active === 'custom' ? `${short(a)}–${short(b)}` : active === 'MAX' ? 'Max' : active) + ' ▾';
+  pill.classList.toggle('own', !!c.range);
+  pill.title = `Date range for this chart: ${nice(a)} – ${nice(b)}` + (c.range ? ' (set on this chart; the page range does not change it)' : ' (follows the page range)');
 }
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
@@ -330,7 +344,35 @@ function setEmpty(c, msg) {
   c.chartEl.hidden = true; c.emptyEl.hidden = false; c.emptyEl.textContent = msg; c.csv = null;
   setNote(c, '');
 }
-function setNote(c, txt) { c.noteEl.hidden = !txt; c.noteEl.textContent = txt || ''; }
+const NOTE_OPEN_KEY = 'sd-notes-open-v1';
+let noteOpen = (() => { try { return new Set(JSON.parse(localStorage.getItem(NOTE_OPEN_KEY) || '[]')); } catch (e) { return new Set(); } })();
+function splitNote(txt) {   // [lead, rest]: the first sentence (plus any ⚠ warnings) stays visible, the rest folds away
+  const parts = txt.split(/(?<=[.!?])\s+(?=[A-Z(“"⚠0-9+−-])/);
+  if (parts.length < 2 || txt.length < 170) return [txt, ''];
+  let lead = parts[0], i = 1;
+  while (lead.length < 40 && i < parts.length) lead += ' ' + parts[i++];   // a very short opener takes the next sentence too
+  const rest = parts.slice(i), warn = rest.filter(x => x.includes('⚠')), more = rest.filter(x => !x.includes('⚠'));
+  return [[lead, ...warn].join(' '), more.join(' ')];
+}
+function setNote(c, txt) {
+  c.noteEl.hidden = !txt; c.noteEl.replaceChildren(); if (!txt) return;
+  const [lead, more] = splitNote(txt);
+  c.noteEl.append(el('span', { class: 'note-lead', text: lead }));
+  if (!more) return;
+  const key = c.key || c.title, open = noteOpen.has(key), rest = el('span', { class: 'note-more', text: ' ' + more, hidden: !open });
+  const btn = el('button', { type: 'button', class: 'note-toggle', text: open ? 'Less ▴' : 'How to read ▸', 'aria-expanded': String(open) });
+  btn.addEventListener('click', () => {
+    const now = rest.hidden; rest.hidden = !now; btn.textContent = now ? 'Less ▴' : 'How to read ▸'; btn.setAttribute('aria-expanded', String(now));
+    if (now) noteOpen.add(key); else noteOpen.delete(key);
+    try { localStorage.setItem(NOTE_OPEN_KEY, JSON.stringify([...noteOpen])); } catch (e) { /* kept for this visit */ }
+  });
+  c.noteEl.append(rest, ' ', btn);
+}
+// ---- small popovers (card range, card menu): one open at a time; click outside or Esc closes
+function closePops(except) { document.querySelectorAll('.pop').forEach(p => { if (p !== except) p.hidden = true; }); }
+function togglePop(p) { const show = p.hidden; closePops(p); p.hidden = !show; }
+document.addEventListener('click', e => { if (!e.target.closest('.pop')) closePops(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
 const NO_FRED = 'Waiting for FRED data. It arrives with the first daily run on GitHub (see README).';
 
 function baseOpt() {
@@ -418,9 +460,9 @@ function drawPair(c, A, B, { fmtA, fmtB, axisA, axisB, zeroA = false, zeroB = fa
 }
 function pairToggle(c) {   // card tool: switch between one chart with two axes and stacked panels
   c.pairMode = 'overlay';
-  const b = el('button', { class: 'ghost', type: 'button', text: '⇅ Stack', title: 'Switch between one chart with two axes and two stacked panels' });
-  b.addEventListener('click', () => { c.pairMode = c.pairMode === 'stack' ? 'overlay' : 'stack'; b.textContent = c.pairMode === 'stack' ? '⇅ Overlay' : '⇅ Stack'; c.render(); });
-  c.root.querySelector('.card-tools').prepend(b);
+  const b = el('button', { class: 'menu-item', type: 'button', text: '⇅ Show as two panels', title: 'Switch between one chart with two axes and two stacked panels' });
+  b.addEventListener('click', () => { c.pairMode = c.pairMode === 'stack' ? 'overlay' : 'stack'; b.textContent = c.pairMode === 'stack' ? '⇅ Show on one chart' : '⇅ Show as two panels'; closePops(); c.render(); });
+  c.menuEl.prepend(b);
 }
 // drag a box across a time chart to zoom: sets this chart's own date range (↺ resets)
 function setZoomable(c, o) {
