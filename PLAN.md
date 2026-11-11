@@ -330,7 +330,7 @@ Layout: its own AI sub-tab ("Token market"), wide chart plus three half cards, â
 
 ### WP18 to WP21. Follow-ups (owner approved 11 Nov 2026; build after WP17, one commit each)
 
-**WP18. Data health for the new feeds.** Add `korea.json`, `ramp.json`, `gpu.json` and `taiwan.json` to `FILES` in
+**WP18. Data health for the new feeds.** *Built 11 Nov 2026: 54 series added; Comtrade allowed 420 days, Ramp token table 45 days, the rest by their detected frequency.* Add `korea.json`, `ramp.json`, `gpu.json` and `taiwan.json` to `FILES` in
 `pipeline/health.py`. Allowances: Korea chip exports (UN Comtrade, about 10 months late) about 400 days; Ramp monthly
 adoption and spend series about 75 days, weekly token series about 21 days; GPU weekly series about 21 days; Vast.ai
 daily about 7 days; Taiwan monthly series the usual monthly rule, GDP quarterly. Skip keys starting with "_".

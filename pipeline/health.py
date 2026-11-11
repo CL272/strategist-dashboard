@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
@@ -23,10 +23,18 @@ SLOW = {"JP_RETAIL_YOY": 220, "CN_CCI": 160, "MY_GDP_YOY": 280, "SH_PE": 200, "S
 SLOW.update({k: 200 for k in ("MY_ALR", "MY_BR", "MY_FD12", "MY_M2", "MY_M3", "MY_M2_YOY", "MY_M3_YOY")})
 SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD", "MYR", "KRW", "INR", "AUD", "IDR")})
 SLOW["ID_IP_YOY"] = 200
-SLOW["MMF_RETAIL"] = 50   # weekly, but the Fed publishes it about a month late (H.6)
+SLOW["MMF_RETAIL"] = 50
+# UN Comtrade publishes Korea's monthly trade about 10 months late; Ramp's token table is weekly but posted with a lag
+SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")
 IGNORE = {"USREC", "SH_FWD10"}     # recession flag only changes at NBER announcements; forward returns end 10 years back
+
+
+def allowed_for(sid: str, default: int) -> int:
+    if sid.startswith("RAMP_TOK_"):
+        return 45
+    return SLOW.get(sid, default)
 
 
 def classify(days: list[int]) -> tuple[str, int]:
@@ -50,7 +58,7 @@ def build_health(status: dict) -> dict:
                 continue
             last = (EPOCH + pd.Timedelta(days=s["d"][-1])).date()
             freq, allowed = classify(s["d"])
-            allowed = SLOW.get(sid, allowed)
+            allowed = allowed_for(sid, allowed)
             age = (today - last).days
             st = status.get(sid, "ok")
             state = "stale" if age > allowed else ("kept previous" if st.startswith("stale") else ("missing" if st == "missing" else "ok"))
