@@ -205,6 +205,20 @@ FRED = [
     ("ANFCI",       "ANFCI",       "Adjusted NFCI",               "Credit", "level", "idx", MACRO_START),
     ("CCC_OAS",     "BAMLH0A3HYC", "CCC & lower OAS",             "Credit", "yield", "%"),
     ("BB_OAS",      "BAMLH0A1HYBB", "BB OAS",                     "Credit", "yield", "%"),
+    # spreads for Fixed Income → Spreads (ICE BofA OAS: FRED keeps 3 years, so these are archived too)
+    ("AAA_OAS",     "BAMLC0A1CAAA", "AAA OAS",                    "Credit", "yield", "%"),
+    ("AA_OAS",      "BAMLC0A2CAA",  "AA OAS",                     "Credit", "yield", "%"),
+    ("A_OAS",       "BAMLC0A3CA",   "A OAS",                      "Credit", "yield", "%"),
+    ("BBB_OAS",     "BAMLC0A4CBBB", "BBB OAS",                    "Credit", "yield", "%"),
+    ("B_OAS",       "BAMLH0A2HYB",  "B OAS",                      "Credit", "yield", "%"),
+    ("EM_CORP_OAS", "BAMLEMCBPIOAS", "EM corporate spread (OAS)", "Credit", "yield", "%"),
+    ("EM_HY_OAS",   "BAMLEMHBHYCRPIOAS", "EM high-yield corporate spread (OAS)", "Credit", "yield", "%"),
+    ("AAA_10Y",     "AAA10Y",      "Moody's Aaa − 10Y Treasury",  "Credit", "yield", "%", MACRO_START),
+    ("MORTGAGE30",  "MORTGAGE30US", "US 30-year mortgage rate",   "Rates · US", "yield", "%", MACRO_START),
+    ("IT_10Y",      "IRLTLT01ITM156N", "Italy 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
+    ("ES_10Y",      "IRLTLT01ESM156N", "Spain 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
+    ("FR_10Y",      "IRLTLT01FRM156N", "France 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
+    ("DE_10Y",      "IRLTLT01DEM156N", "Germany 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
     ("VIXCLS",      "VIXCLS",      "VIX (FRED, from 1990)",       "Volatility", "level", "idx", MACRO_START),
     ("WEI",         "WEI",         "Weekly Economic Index",       "Macro · Growth", "level", "idx"),
     ("CCSA",        "CCSA",        "Continued claims",            "Macro · Growth", "level", "persons"),
@@ -235,7 +249,8 @@ FRED = [
 # FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.
 # These are archived in archive/<id>.csv (committed by the daily job) so history
 # is never lost again: each run merges what FRED returns into the archive.
-ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS", "CCC_OAS", "BB_OAS"}
+ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS", "CCC_OAS", "BB_OAS", "AAA_OAS", "AA_OAS", "A_OAS", "BBB_OAS", "B_OAS",
+           "EM_CORP_OAS", "EM_HY_OAS"}
 
 # Long daily histories from Yahoo (for regime statistics back to the 1970s), stored monthly
 LONG_YAHOO = [("LH_SPX", "^GSPC", "S&P 500 (price, since 1960)"), ("LH_USD", "DX-Y.NYB", "US Dollar Index (since 1971)"),

@@ -733,3 +733,7 @@ table.asset-table tr.grp td { padding-top: 10px; }
   .onepage h3 { margin: 6px 0 3px; }
   .op-tiles { margin-top: 6px; }
 }
+
+/* WP8: 1-year range bar in the rating ladder */
+.rbar { position: relative; display: inline-block; width: 110px; height: 6px; border-radius: 3px; background: var(--wash); vertical-align: middle; }
+.rbar i { position: absolute; top: -3px; width: 4px; height: 12px; margin-left: -2px; border-radius: 2px; background: var(--ink); }

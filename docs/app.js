@@ -1974,6 +1974,111 @@ function renderReal(c) {
     { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', zero: true, endLabels: false });
   setNote(c, 'Breakeven = 10Y nominal − 10Y real (TIPS) par yield: the inflation rate the bond market is pricing.');
 }
+// ------------------------------------------------------------------ SPREADS (Fixed Income → Spreads)
+// ICE BofA option-adjusted spreads (FRED keeps 3 years; this dashboard archives them so history grows), Moody's
+// Aaa/Baa − 10Y (since the 1980s), the mortgage spread and euro periphery 10Y spreads. Shown in basis points.
+const SP_SETS = {
+  ig: { lab: 'US investment grade', ids: ['IG_OAS', 'AAA_OAS', 'AA_OAS', 'A_OAS', 'BBB_OAS'] },
+  hy: { lab: 'US high yield', ids: ['HY_OAS', 'BB_OAS', 'B_OAS', 'CCC_OAS'] },
+  em: { lab: 'Europe & EM', ids: ['EUR_HY_OAS', 'EM_CORP_OAS', 'EM_HY_OAS', 'HY_OAS'] },
+  asia: { lab: 'Asia', ids: ['ASIA_CORP_OAS', 'EM_CORP_OAS', 'IG_OAS'] },
+  long: { lab: 'Long history', ids: ['BAA_10Y', 'AAA_10Y'] },
+};
+const SP_LADDER = [['AAA_OAS', 'AAA'], ['AA_OAS', 'AA'], ['A_OAS', 'A'], ['BBB_OAS', 'BBB'], ['BB_OAS', 'BB'], ['B_OAS', 'B'], ['CCC_OAS', 'CCC & lower']];
+const ordinal = x => { const n = Math.round(x), t = n % 100, u = n % 10; return n + (t >= 11 && t <= 13 ? 'th' : u === 1 ? 'st' : u === 2 ? 'nd' : u === 3 ? 'rd' : 'th'); };
+const SP_SRC = 'ICE BofA option-adjusted spreads and Moody’s via FRED; archived daily by this dashboard (FRED keeps 3 years)';
+state.spSet = 'ig';
+const bpS = s => s && { ...s, t: s.t, v: s.v.map(x => x * 100), unit: 'bp' };
+function median(a) { const b = a.filter(x => x != null).sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : null; }
+function spSeries(id) {   // spread in bp; derived spreads built on the page
+  if (id === 'MORT_10Y') return has('MORTGAGE30', 'UST10Y') ? combine(S.MORTGAGE30, S.UST10Y, (a, b) => (a - b) * 100, { label: 'Mortgage − 10Y Treasury', unit: 'bp' }, 7 * DAY) : null;
+  const m = /^(IT|ES|FR)_DE$/.exec(id);
+  if (m) return has(m[1] + '_10Y', 'DE_10Y') ? combine(S[m[1] + '_10Y'], S.DE_10Y, (a, b) => (a - b) * 100, { label: `${{ IT: 'Italy', ES: 'Spain', FR: 'France' }[m[1]]} − Germany 10Y`, unit: 'bp' }, 40 * DAY) : null;
+  return has(id) ? bpS(S[id]) : null;
+}
+function spStats(id, t = state.to) {
+  const s = spSeries(id); if (!s) return null;
+  const a = asOf(s, t); if (!a) return null;
+  const m1 = asOf(s, addMonths(a.t, -1)), y1 = s.v.slice(Math.max(0, idxLE(s, addMonths(a.t, -12))), a.i + 1);
+  const hist = s.v.slice(0, a.i + 1), pct = hist.filter(x => x <= a.v).length / hist.length * 100;
+  return { s, a, chg: m1 ? a.v - m1.v : null, lo: Math.min(...y1), hi: Math.max(...y1), pct, since: s.t[0], read: pct >= 80 ? 'Wide' : pct <= 20 ? 'Tight' : 'Normal' };
+}
+function renderSpCredit(c) {
+  const set = SP_SETS[state.spSet] || SP_SETS.ig, ids = set.ids.filter(id => spSeries(id));
+  if (!ids.length) return setEmpty(c, NO_FRED);
+  const head = spSeries(ids[0]), med = median(head.v);
+  drawLines(c, ids.map(id => ({ name: spSeries(id).label || S[id].label, data: pts(spSeries(id), state.from, state.to) })),
+    { fmt: v => fmtNum(v, 0) + 'bp', axisFmt: v => fmtNum(v, 0), hlines: med != null ? [{ y: med, label: `${S[ids[0]] ? S[ids[0]].label.replace(/ \(OAS\)| spread/g, '') : ''} median ${fmtNum(med, 0)}bp` }] : [], endLabels: false });
+  const st = spStats(ids[0]), short = state.spSet !== 'long';
+  setNote(c, `${S[ids[0]].label} ${fmtNum(st.a.v, 0)}bp: ${st.read.toLowerCase()}, at the ${ordinal(st.pct)} percentile of ${short ? 'its history since ' + monthLab(st.since) : 'its history since ' + new Date(st.since).getUTCFullYear()}. Dashed line = median of that history.${short ? ' ICE BofA spreads only reach back to the start of this dashboard’s archive; use “Long history” (Moody’s, since the 1980s) for cycle comparisons.' : ''}`);
+  setSource(c, state.spSet === 'long' ? 'Moody’s seasoned Aaa and Baa yields minus the 10Y Treasury, via FRED (AAA10Y, BAA10Y)' : SP_SRC);
+}
+function spRangeBar(lo, hi, v) {   // 1-year range with today's level
+  const w = 110, x = hi > lo ? (v - lo) / (hi - lo) * w : w / 2;
+  return el('span', { class: 'rbar', title: `1-year range ${fmtNum(lo, 0)}–${fmtNum(hi, 0)}bp` }, el('i', { style: `left:${Math.max(0, Math.min(w, x)).toFixed(0)}px` }));
+}
+function renderSpLadder(c) {
+  const b = htmlBody(c), rows = SP_LADDER.map(([id, lab]) => ({ id, lab, st: spStats(id) })).filter(r => r.st);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: NO_FRED })); return; }
+  const tbl = el('table', { class: 'perf asset-table' }), heads = ['Rating', 'Spread', '1M', '1-year range', 'Percentile'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 ? '' : i === 3 ? 'trend' : '' })))));
+  const tb = el('tbody');
+  for (const r of rows) { const st = r.st;
+    tb.append(el('tr', { class: 'row' }, el('td', { text: r.lab }), el('td', { class: 'num', text: fmtNum(st.a.v, 0) + 'bp' }),
+      el('td', { class: 'num ' + (st.chg > 0 ? 'dn' : st.chg < 0 ? 'up' : ''), text: st.chg == null ? '–' : sign(st.chg) + fmtNum(Math.abs(st.chg), 0) + 'bp' }),
+      el('td', { class: 'trend' }, spRangeBar(st.lo, st.hi, st.a.v)), el('td', { class: 'num', text: ordinal(st.pct) }))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [heads, ...rows.map(r => [r.lab, r.st.a.v.toFixed(0), r.st.chg == null ? '' : r.st.chg.toFixed(0), `${r.st.lo.toFixed(0)}-${r.st.hi.toFixed(0)}`, r.st.pct.toFixed(0)])];
+  setNote(c, `US corporate spreads by credit rating, option-adjusted, in bp over Treasuries; a wider spread (red change) means more risk priced. Percentile is against history since ${monthLab(rows[0].st.since)}.`);
+  setSource(c, SP_SRC);
+}
+const SP_ALL = [['IG_OAS', 'US investment grade'], ['HY_OAS', 'US high yield'], ['BBB_OAS', 'US BBB'], ['CCC_OAS', 'US CCC & lower'], ['EUR_HY_OAS', 'Euro high yield'],
+  ['EM_CORP_OAS', 'EM corporates'], ['EM_HY_OAS', 'EM high yield'], ['ASIA_CORP_OAS', 'Asia corporates'], ['BAA_10Y', 'Moody’s Baa − 10Y'], ['AAA_10Y', 'Moody’s Aaa − 10Y'],
+  ['MORT_10Y', 'Mortgage − 10Y'], ['IT_DE', 'Italy − Germany 10Y'], ['ES_DE', 'Spain − Germany 10Y'], ['FR_DE', 'France − Germany 10Y']];
+function renderSpTable(c) {
+  const b = htmlBody(c), rows = SP_ALL.map(([id, lab]) => ({ id, lab, st: spStats(id) })).filter(r => r.st).sort((x, y) => y.st.pct - x.st.pct);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: NO_FRED })); return; }
+  const tbl = el('table', { class: 'perf asset-table' }), heads = ['Spread', 'Level', '1M', 'Percentile', 'Read'];
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 || i === 4 ? 'l' : '' })))));
+  const tb = el('tbody'), tk = { Wide: '--critical', Normal: '--muted', Tight: '--good' };
+  for (const r of rows) { const st = r.st;
+    tb.append(el('tr', { class: 'row', title: `Percentile against history since ${monthLab(st.since)}` }, el('td', { text: r.lab }), el('td', { class: 'num', text: fmtNum(st.a.v, 0) + 'bp' }),
+      el('td', { class: 'num ' + (st.chg > 0 ? 'dn' : st.chg < 0 ? 'up' : ''), text: st.chg == null ? '–' : sign(st.chg) + fmtNum(Math.abs(st.chg), 0) + 'bp' }),
+      el('td', { class: 'num', text: ordinal(st.pct) }), el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(tk[st.read])}` }, st.read)))); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); capRows(tb, 'sp_table');
+  c.csv = [heads, ...rows.map(r => [r.lab, r.st.a.v.toFixed(0), r.st.chg == null ? '' : r.st.chg.toFixed(0), r.st.pct.toFixed(0), r.st.read, new Date(r.st.since).getUTCFullYear()])];
+  setNote(c, 'Widest relative to its own history first. Read: Wide above the 80th percentile, Tight below the 20th. Histories differ in length (ICE BofA from late 2023, Moody’s and euro yields from the 1980s–90s; hover a row), so compare readings with care.');
+  setSource(c, 'FRED: ICE BofA, Moody’s, Freddie Mac (mortgage), OECD (euro 10Y yields); archived by this dashboard');
+}
+function renderSpEuro(c) {
+  const ids = ['IT_DE', 'ES_DE', 'FR_DE'].filter(id => spSeries(id)); if (!ids.length) return setEmpty(c, NO_FRED);
+  drawLines(c, ids.map(id => ({ name: spSeries(id).label, data: pts(spSeries(id), state.from, state.to) })), { fmt: v => fmtNum(v, 0) + 'bp', axisFmt: v => fmtNum(v, 0), zero: true });
+  const it = spStats('IT_DE');
+  setNote(c, it ? `Italy pays ${fmtNum(it.a.v, 0)}bp more than Germany on 10-year debt (${monthLab(it.a.t)}), ${ordinal(it.pct)} percentile since ${new Date(it.since).getUTCFullYear()}. The euro area’s stress gauge: it blew out in 2011–12 and 2020.` : '');
+  setSource(c, 'OECD long-term government bond yields via FRED (IRLTLT01ITM156N, ESM, FRM, DEM), monthly averages');
+}
+function renderSpEq(c) {
+  if (!has('HY_OAS', 'SPX')) return setEmpty(c, NO_FRED);
+  const sp = S.SPX, dd = { t: [], v: [] }; let peak = -Infinity;
+  for (let i = 0; i < sp.t.length; i++) { peak = Math.max(peak, sp.v[i]); dd.t.push(sp.t[i]); dd.v.push((sp.v[i] / peak - 1) * 100); }
+  const hy = spSeries('HY_OAS');
+  drawPair(c, { name: 'US high-yield spread (bp)', data: pts(hy, state.from, state.to) }, { name: 'S&P 500, % below its high', data: pts(dd, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 0) + 'bp', fmtB: v => fmtNum(v, 1) + '%', axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) + '%' });
+  const r = corrW(hy, dd, state.from, state.to);
+  setNote(c, `Credit and equities usually crack together: spreads widen as the S&P falls from its high.${r != null ? ` Correlation of weekly changes over this range: ${fmtNum(r, 2)}.` : ''} When spreads widen but stocks hold up, credit is often the earlier warning.`);
+  setSource(c, 'ICE BofA via FRED (BAMLH0A0HYM2); Yahoo Finance (^GSPC)');
+}
+function spKpis() {
+  const box = $('#fiKpis'); box.replaceChildren();
+  if ((SUBTABS.fixed[state.sub.fixed || 0] || [])[0] !== 'Spreads') return;
+  for (const [id, lab] of [['IG_OAS', 'US IG spread'], ['HY_OAS', 'US HY spread'], ['BBB_OAS', 'BBB spread'], ['IT_DE', 'Italy − Germany 10Y'], ['MORT_10Y', 'Mortgage − 10Y']]) {
+    const st = spStats(id); if (!st) continue;
+    box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: lab }), el('div', { class: 'k-value', text: fmtNum(st.a.v, 0) + 'bp' }),
+      el('div', { class: 'k-delta', text: `${st.read} · ${ordinal(st.pct)} pct · 1M ${st.chg == null ? '–' : sign(st.chg) + fmtNum(Math.abs(st.chg), 0) + 'bp'}` }),
+      el('div', { class: 'k-asof', text: nice(st.a.t) })));
+  }
+}
+
 function buildFixedIncome() {
   const g = $('#fiGrid');
   makeCard(g, { key: 'curve', range: false, title: 'Yield curve', wide: true, tall: true, source: 'US Treasury, MOF Japan, ECB',
@@ -1984,10 +2089,16 @@ function buildFixedIncome() {
   makeCard(g, { key: 'real', title: 'US real yields & breakeven', sub: 'TIPS real par yields and 10Y breakeven inflation, %.', source: 'US Treasury', render: renderReal });
   makeCard(g, { key: 'diff', title: 'Rate differentials vs FX', wide: true, tall: true, source: 'US Treasury, MOF Japan, ECB, Yahoo Finance',
     seg: { key: 'fiDiff', options: [['JP', 'US − Japan vs USD/JPY'], ['EA', 'US − Euro vs EUR/USD']] }, render: renderDiff });
+  makeCard(g, { key: 'sp_credit', title: 'Credit spreads', wide: true, defaultRange: '3Y', seg: { key: 'spSet', options: Object.entries(SP_SETS).map(([k, v]) => [k, v.lab]) }, render: renderSpCredit });
+  makeCard(g, { key: 'sp_ladder', title: 'Rating ladder', range: false, render: renderSpLadder });
+  makeCard(g, { key: 'sp_table', title: 'Where spreads stand', range: false, render: renderSpTable });
+  makeCard(g, { key: 'sp_euro', title: 'Euro periphery vs Germany', defaultRange: '10Y', render: renderSpEuro });
+  makeCard(g, { key: 'sp_eq', title: 'High-yield spreads vs stocks', defaultRange: '3Y', render: renderSpEq });
+  for (const k of ['sp_ladder', 'sp_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard(g, { key: 'hedged', title: 'FX-hedged 10Y yields', wide: true, source: 'US Treasury, MOF Japan, ECB',
     seg: { key: 'fiHedge', options: [['usd', 'For a USD investor'], ['home', 'UST for JPY / EUR investors']] }, render: renderHedged });
 }
-function renderFixedIncome() { ['curve', 'xcurve', 'teny', 'slopes', 'real', 'diff', 'hedged'].forEach(k => cards[k].render()); }
+function renderFixedIncome() { spKpis(); ['curve', 'xcurve', 'teny', 'slopes', 'real', 'diff', 'hedged', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ ASIA & SINGAPORE
 // S$NEER proxy: approximate trade weights (dashboard estimate - MAS does not publish the basket)
@@ -3806,6 +3917,7 @@ const LL_PAIRS = [
   ['REAL10Y', 'chg', 'GOLD', 'yoy', 'Real yields → gold (inverse)'],
   ['CN_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'China exports → Malaysia exports'],
   ['PALM', 'yoy', 'MY_PLANT', 'yoy', 'Palm oil → Malaysian plantation stocks'],
+  ['BAA_10Y', 'level', 'LH_SPX', 'yoy', 'Credit spreads (Baa − 10Y) → S&P 500 (inverse)'],
   ['ISM_PMI', 'level', 'IPMAN', 'yoy', 'ISM manufacturing → factory output'],
   ['ISM_PMI', 'level', 'SRVPRD', 'yoy', 'ISM manufacturing → services payrolls'],
   ['BCI_USA', 'level', 'MY_EXPORTS_YOY', 'level', 'US business confidence (ISM-based) → Malaysia exports'],
@@ -5045,7 +5157,7 @@ const SUBTABS = {
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['US ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Leading'],
     ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading'],
     ['Recession watch', ['gdpnow', 'sahm', 'recprob', 'infl', 'claims'], 'Risk']],
-  fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['FX & hedging', ['diff', 'hedged']]],
+  fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['Australia', ['aurates', 'auinfl', 'audiff', 'augrowth', 'autot'], 'Region'],
     ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Japan', ['jp_infl', 'jp_policy', 'jp_tankan', 'jp_act', 'jp_boj'], 'Region'],
