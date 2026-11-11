@@ -41,7 +41,7 @@ jobs:
           mkdir -p docs/data
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data"
           cache="https://raw.githubusercontent.com/${{ github.repository }}/data-cache"
-          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json cbwatch.json sentiment.json stress.json signposts.json positioning.json ai.json health.json; do
+          for f in yahoo.json fred.json derived.json curves.json asia.json meta.json news.json calendar.json fedpath.json tickers.json cbwatch.json sentiment.json stress.json signposts.json positioning.json ai.json health.json korea.json ramp.json gpu.json; do
             curl -sfL "$base/$f" -o "docs/data/$f" || curl -sfL "$cache/$f" -o "docs/data/$f" || rm -f "docs/data/$f"
           done
           ls docs/data

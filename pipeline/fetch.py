@@ -641,6 +641,18 @@ def main() -> int:
     except Exception as e:   # scraped sentiment gauges must never break the data refresh
         print(f"Sentiment failed: {type(e).__name__}")
     try:
+        import korea
+        korea.build(status)
+        _lap("korea", t0)
+    except Exception as e:   # Korea chip exports must never break the data refresh
+        print(f"Korea failed: {type(e).__name__}")
+    for mod in ("ramp", "gpu"):   # scraped AI data: isolated, never breaks the refresh
+        try:
+            __import__(mod).build(status)
+            _lap(mod, t0)
+        except Exception as e:
+            print(f"{mod} failed: {type(e).__name__}")
+    try:
         import ai
         ai.build_ai(status)
         _lap("ai", t0)

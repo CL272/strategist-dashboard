@@ -1417,6 +1417,139 @@ function laggedCorr(lead, follow, maxLag = 12) {   // monthly: corr(lead_t, foll
   }
   return res;
 }
+// ------------------------------------------------------------------ AI: Korea memory cycle, Ramp vs OpenRouter, compute prices
+let RAMP_META = null, GPU_META = null;
+const RAMP_SRC = 'Ramp AI Index (ramp.com/data/ai-index), US firms on Ramp’s card and bill pay';
+const GPU_SRC = 'GetDeploying GPU price dataset (CC BY 4.0), median across cloud providers';
+const VAST_SRC = 'Vast.ai public GPU pricing feed (shown with attribution, not stored)';
+function lastRead(meta) { return meta && meta.fetched_utc ? `Source last read ${nice(dayMs(meta.fetched_utc.slice(0, 10)))}.` : ''; }
+// Korea
+function renderChipKorea(c) {
+  const id = has('KR_CHIP_EXP') ? 'KR_CHIP_EXP' : null; if (!id || !has('KOSPI')) return setEmpty(c, 'Korea chip exports arrive with the next data refresh.');
+  const k = +state.krLead || 0;
+  const r = leadPair(c, [id, 'yoy', 'Korea chip exports, % YoY'], ['KOSPI', 'yoy', 'KOSPI, % YoY'], k,
+    { fmtA: pctF1, fmtB: pctF1, axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true, zeroB: true });
+  const a = asOf(S[id], state.latest), y = asOf(yoyOf(id), state.latest);
+  setNote(c, `Latest: ${a ? '$' + fmtNum(a.v, 1) + 'bn in ' + monthLab(a.t) : '–'}${y ? ` (${pctF1(y.v)} YoY)` : ''}. ⚠ UN Comtrade runs several months behind Korea’s own release; the timely Bank of Korea feed needs a Korean-resident key. Correlation: ${r.c0 == null ? '–' : corrF(r.c0)} same month; best ${corrF(r.best[1])} with chip exports leading ${r.best[0]} month${r.best[0] === 1 ? '' : 's'}.`);
+  setSource(c, 'UN Comtrade (Korea exports, HS 8542 integrated circuits); Yahoo Finance (^KS11)');
+}
+function renderChipMem(c) {
+  const sy = ['000660.KS', '005930.KS'].map(x => TICK_SYM[x]).filter(Boolean);
+  if (!TICK) return setEmpty(c, 'Loading ticker prices…');
+  const L = [...sy.map(id => ({ name: (S[id].short || S[id].label).replace(/ (Co\.|Corporation|Electronics Co\.|Inc\.)[^]*$/, '').replace(', Ltd.', ''), data: rebase(S[id], state.from, state.to) })),
+    ...['KOSPI', 'SOX'].filter(id => has(id)).map(id => ({ name: id === 'SOX' ? 'SOX (USD)' : 'KOSPI', data: rebase(S[id], state.from, state.to) }))];
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }] });
+  c.subEl.textContent = `= 100 on ${nice(Math.max(state.from, S[sy[0]] ? S[sy[0]].t[0] : state.from))}; Korean names in KRW.`;
+  setNote(c, 'SK hynix and Samsung make most of the world’s memory, including the HBM stacked on AI accelerators; KOSPI is heavily weighted to both.');
+  setSource(c, 'Yahoo Finance (000660.KS, 005930.KS, ^KS11, ^SOX)');
+}
+// Ramp vs OpenRouter
+function renderAiRamp(c) {
+  const ids = ['RAMP_ADOPT', 'RAMP_ADOPT_OPENAI', 'RAMP_ADOPT_ANTHROPIC', 'RAMP_ADOPT_XAI'].filter(id => has(id));
+  if (!ids.length) return setEmpty(c, 'Ramp AI Index arrives with the next data refresh.');
+  drawLines(c, ids.map(id => ({ name: S[id].label.replace(' (Ramp)', ''), data: pts(S[id], state.from, state.to) })), { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%' });
+  const a = asOf(S.RAMP_ADOPT, state.latest), b = a && asOf(S.RAMP_ADOPT, addMonths(a.t, -12));
+  setNote(c, `${a ? `${fmtNum(a.v, 1)}% of US businesses on Ramp paid for AI in ${monthLab(a.t)}${b ? ` (${fmtNum(b.v, 1)}% a year earlier)` : ''}.` : ''} Ramp measures what companies pay for (card and bill-pay data), so it captures business adoption rather than developer usage. ${lastRead(RAMP_META)}`);
+  setSource(c, RAMP_SRC);
+}
+function orgShare() {   // OpenRouter token share by model maker, latest week
+  const w = AI && AI.openrouter && AI.openrouter.week; if (!w || !w.length) return null;
+  const tot = w.reduce((a, r) => a + r.tokens, 0), m = {};
+  for (const r of w) m[r.org] = (m[r.org] || 0) + r.tokens / tot * 100;
+  return m;
+}
+function renderAiVendor(c) {
+  const vendors = [['Anthropic', 'ANTHROPIC', 'anthropic'], ['OpenAI', 'OPENAI', 'openai'], ['Google', 'GOOGLE', 'google'], ['xAI', 'XAI', 'x-ai'], ['DeepSeek', 'DEEPSEEK', 'deepseek']];
+  const ramp = v => { const id = 'RAMP_TOK_SPEND_' + v; return has(id) ? asOf(S[id], state.latest) : null; }, or = orgShare();
+  if (!vendors.some(([, v]) => ramp(v)) && !or) return setEmpty(c, 'Waiting for data.');
+  const o = baseOpt(); o.legend.show = true; o.grid.top = 34; o.grid.left = 8;
+  o.yAxis = { type: 'category', data: vendors.map(x => x[0]).reverse(), axisLabel: { color: tok('--ink-2') }, axisTick: { show: false }, axisLine: { show: false } };
+  o.xAxis = valAxis(v => fmtNum(v, 0) + '%'); o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => v == null ? '–' : fmtNum(v, 1) + '%' };
+  o.series = [{ name: 'Ramp: share of business token spend', type: 'bar', data: vendors.map(([, v]) => { const a = ramp(v); return a ? +a.v.toFixed(1) : null; }).reverse(), itemStyle: { color: col(0) }, barGap: '15%' },
+    { name: 'OpenRouter: share of tokens, by model maker', type: 'bar', data: vendors.map(([, , k]) => or && or[k] != null ? +or[k].toFixed(1) : null).reverse(), itemStyle: { color: col(1) } }];
+  inst(c).setOption(o, true);
+  const a = ramp('ANTHROPIC');
+  setNote(c, `Latest week. Ramp tracks what companies pay model makers directly (Token Spend Management users); OpenRouter tracks tokens routed by apps and developers through its API, where cheap open models weigh more (no red bar = not among OpenRouter’s top 20 models that week). Different samples: compare direction, not levels.${a ? ` Ramp reading for the week ending ${nice(a.t)}.` : ''} ${lastRead(RAMP_META)}`);
+  setSource(c, RAMP_SRC + '; OpenRouter rankings');
+  c.csv = [['Vendor', 'Ramp token spend share %', 'OpenRouter token share %'], ...vendors.map(([n, v, k]) => [n, ramp(v) ? ramp(v).v : '', or && or[k] != null ? or[k].toFixed(2) : ''])];
+}
+function renderAiTokPrice(c) {
+  const L = [];
+  for (const [id, n] of [['RAMP_TOK_PRICE_OPENAI_ANTHROPIC', 'Ramp: blended price, OpenAI & Anthropic'], ['RAMP_TOK_PRICE_OPENAI', 'Ramp: OpenAI'], ['RAMP_TOK_PRICE_ANTHROPIC', 'Ramp: Anthropic']])
+    if (has(id)) L.push({ name: n, data: pts(S[id], state.from, state.to), extra: { showSymbol: true } });
+  const h = AI && AI.openrouter && AI.openrouter.history;
+  if (h && h.usage_weighted_input_price) L.push({ name: 'OpenRouter: average input price paid', data: h.date.map((d, i) => [dayMs(d), h.usage_weighted_input_price[i]]).filter(p => p[1] != null && p[0] >= state.from), extra: { showSymbol: true } });
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => '$' + fmtNum(v, 3), axisFmt: v => '$' + fmtNum(v, 2), endLabels: false });
+  setNote(c, 'US dollars per million tokens. Both histories are young: Ramp publishes the latest week and the same week a month earlier, and this dashboard stores each reading; OpenRouter’s builds daily. Ramp’s figure blends input and output; OpenRouter’s is input only.');
+  setSource(c, RAMP_SRC + '; OpenRouter');
+}
+function renderAiRampSpend(c) {
+  if (!has('RAMP_AI_SHARE', 'RAMP_PEPM')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'AI share of business spend, %', data: pts(S.RAMP_AI_SHARE, state.from, state.to) }, { name: 'AI spend per employee, median $ a month', data: pts(S.RAMP_PEPM, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 2) + '%', fmtB: v => '$' + fmtNum(v, 2), axisA: v => fmtNum(v, 1) + '%', axisB: v => '$' + fmtNum(v, 0) });
+  setNote(c, 'How much companies spend, not just whether they pay: AI’s share of all card and bill-pay spend, and the median monthly AI spend per employee. ' + lastRead(RAMP_META));
+  setSource(c, RAMP_SRC);
+}
+function renderAiRampSize(c) {
+  lines(c, ['RAMP_ADOPT_SMALL', 'RAMP_ADOPT_MEDIUM', 'RAMP_ADOPT_LARGE'].filter(id => has(id)).map(id => ({ name: S[id].label.replace(' (Ramp)', '').replace(' paying for AI', ''), data: pts(S[id], state.from, state.to) })),
+    v => fmtNum(v, 1) + '%', v => fmtNum(v, 0) + '%');
+  setNote(c, 'Share paying for AI by company size: large firms adopt first; small-business uptake shows how broad the spread is.'); setSource(c, RAMP_SRC);
+}
+// compute prices
+const GPU_LIST = ['H100', 'H200', 'B200', 'B300', 'A100'];
+state.gpuBill = 'OD';
+function renderGpuRent(c) {
+  const ids = GPU_LIST.map(g => `GPU_${g}_${state.gpuBill}`).filter(id => has(id));
+  if (!ids.length) return setEmpty(c, 'GPU rental prices arrive with the next data refresh.');
+  drawLines(c, ids.map(id => ({ name: id.split('_')[1], data: pts(S[id], state.from, state.to) })), { fmt: v => '$' + fmtNum(v, 2) + '/hr', axisFmt: v => '$' + fmtNum(v, 0) });
+  const h = has('GPU_H100_' + state.gpuBill) ? S['GPU_H100_' + state.gpuBill] : null, a = h && asOf(h, state.latest), y = a && (asOf(h, addMonths(a.t, -12)) || { t: h.t[0], v: h.v[0] });
+  setNote(c, `US dollars per GPU-hour, weekly median across cloud providers (${{ OD: 'on-demand', R12: '12-month reserved', SPOT: 'spot' }[state.gpuBill]}). ${a ? `H100 $${fmtNum(a.v, 2)}${y && a.t - y.t > 300 * DAY ? `, ${pctF1((a.v / y.v - 1) * 100)} since ${monthLab(y.t)}` : ''}.` : ''} Rising rents = compute is scarce; falling = supply is catching up. ${lastRead(GPU_META)} Reference: the Silicon Data H100 index (SDH100RT), the benchmark behind CME’s compute futures, is at silicondata.com.`);
+  setSource(c, GPU_SRC);
+}
+function renderGpuTable(c) {
+  const b = htmlBody(c), rows = ['H100', 'H200', 'B200', 'B300', 'GB200', 'A100', 'L40S'].map(g => ({ g, s: S[`GPU_${g}_OD`], r12: S[`GPU_${g}_R12`] })).filter(r => r.s);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Waiting for data.' })); return; }
+  const heads = ['GPU', '$/hr', '1M', '3M', '6M', '12M reserved', 'Providers'];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 ? '' : '' })))));
+  const tb = el('tbody'), csv = [heads];
+  for (const r of rows) { const a = asOf(r.s, state.latest); if (!a) continue;
+    const ch = m => { const x = asOf(r.s, addMonths(a.t, -m)); return x && a.t - x.t > (m * 30 - 10) * DAY ? (a.v / x.v - 1) * 100 : null; }, rr = r.r12 && asOf(r.r12, state.latest);
+    const vals = [ch(1), ch(3), ch(6)];
+    tb.append(el('tr', { class: 'row' }, el('td', { text: r.g }), el('td', { class: 'num', text: '$' + fmtNum(a.v, 2) }), ...vals.map(v => moveCell({ kind: 'price' }, v, 15, a.v)),
+      el('td', { class: 'num', text: rr ? '$' + fmtNum(rr.v, 2) : '–' }), el('td', { class: 'num muted', text: r.s.providers ? String(r.s.providers) : '–' })));
+    csv.push([r.g, a.v, ...vals.map(v => v == null ? '' : v.toFixed(1)), rr ? rr.v : '', r.s.providers || '']); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, 'On-demand median per GPU-hour across cloud providers listing that GPU; 12-month reserved is the median one-year commitment price.'); setSource(c, GPU_SRC);
+}
+function renderGpuVast(c) {
+  const L = [];
+  for (const g of ['H100', 'H200']) { if (has('VAST_' + g)) L.push({ name: `${g}: Vast.ai marketplace`, data: pts(S['VAST_' + g], state.from, state.to) });
+    if (has(`GPU_${g}_OD`)) L.push({ name: `${g}: cloud on-demand`, data: pts(S[`GPU_${g}_OD`], state.from, state.to), extra: { lineStyle: { type: 'dashed', width: 2 } } }); }
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => '$' + fmtNum(v, 2), axisFmt: v => '$' + fmtNum(v, 1), endLabels: false });
+  setNote(c, 'Vast.ai keeps about 90 days of history. Marketplace prices (spare GPUs rented by the hour) move first; a narrowing gap to cloud list prices signals tightening. ' + lastRead(GPU_META));
+  setSource(c, VAST_SRC + '; ' + GPU_SRC);
+}
+function renderGpuNvda(c) {
+  if (!has('GPU_H100_OD', 'NVDA')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'H100 rent, $ per GPU-hour', data: pts(S.GPU_H100_OD, state.from, state.to) }, { name: 'Nvidia share price', data: pts(S.NVDA, Math.max(state.from, S.GPU_H100_OD.t[0]), state.to) },
+    { fmtA: v => '$' + fmtNum(v, 2), fmtB: v => '$' + fmtNum(v, 0), axisA: v => '$' + fmtNum(v, 1), axisB: v => '$' + fmtNum(v, 0) });
+  setNote(c, 'Scarce compute (rising rents) supports pricing power for Nvidia and the neoclouds; falling rents would warn of oversupply.'); setSource(c, GPU_SRC + '; Yahoo Finance (NVDA)');
+}
+function aiExtraTiles() {
+  const box = $('#aiKpis'), tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  if (has('RAMP_ADOPT')) { const a = asOf(S.RAMP_ADOPT, state.latest), b = asOf(S.RAMP_ADOPT, addMonths(a.t, -12)); tile('Businesses paying for AI', fmtNum(a.v, 1) + '%', b ? `${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 1)}pp on a year` : '', 'Ramp · ' + monthLab(a.t)); }
+  if (has('RAMP_TOK_SPEND_ANTHROPIC')) { const a = asOf(S.RAMP_TOK_SPEND_ANTHROPIC, state.latest); tile('Anthropic share of token spend', fmtNum(a.v, 1) + '%', has('RAMP_TOK_SPEND_OPENAI') ? `OpenAI ${fmtNum(asOf(S.RAMP_TOK_SPEND_OPENAI, state.latest).v, 1)}%` : '', 'Ramp · week to ' + dShort(a.t)); }
+  for (const g of ['H100', 'H200', 'B200']) if (has(`GPU_${g}_OD`)) { const s = S[`GPU_${g}_OD`], a = asOf(s, state.latest), y = asOf(s, addMonths(a.t, -12)) || { t: s.t[0], v: s.v[0] };
+    tile(`${g} rent`, '$' + fmtNum(a.v, 2) + '/hr', y && a.t - y.t > 300 * DAY ? `${pctF1((a.v / y.v - 1) * 100)} since ${monthLab(y.t)}` : 'on-demand median', 'GetDeploying · ' + nice(a.t)); }
+  if (has('VAST_H100')) { const a = asOf(S.VAST_H100, state.latest); tile('Vast H100 marketplace', '$' + fmtNum(a.v, 2) + '/hr', 'daily median', 'Vast.ai · ' + nice(a.t)); }
+  if (has('KR_CHIP_EXP')) { const y = asOf(yoyOf('KR_CHIP_EXP'), state.latest); if (y) tile('Korea chip exports', pctF1(y.v) + ' YoY', '⚠ Comtrade, months behind', monthLab(y.t)); }
+  const hx = TICK && TICK_SYM['000660.KS']; if (hx) { const s = S[hx], a = asOf(s, state.latest), b = asOf(s, addMonths(a.t, -3)); if (b) tile('SK hynix, 3M', pctF1((a.v / b.v - 1) * 100), 'memory bellwether', nice(a.t)); }
+}
+state.krLead = '0';
+
 // ------------------------------------------------------------------ CHIP CYCLE (AI → Chip cycle)
 const CHIP_MY = ['0166.KL', '0097.KL', '3867.KL'];   // Inari, ViTrox, MPI
 function monthlyOf(id, mode) { const m = llSeries(id, mode), t = [...m.keys()].sort((a, b) => a - b); return { t, v: t.map(x => m.get(x)) }; }
@@ -1461,6 +1594,27 @@ function buildChip() {
   makeCard(g, { key: 'chip_rs', title: 'Semiconductors vs the market', defaultRange: '5Y', render: renderChipRS });
   makeCard(g, { key: 'chip_kr', title: 'Chip stocks vs Korea exports', defaultRange: '10Y', seg: { key: 'chipLead', options: [['0', 'As measured'], ['2', 'Lead +2m']] }, render: renderChipKr });
   makeCard(g, { key: 'chip_my', title: 'Malaysian tech vs the global chip cycle', wide: true, defaultRange: '3Y', render: renderChipMy });
+  makeCard(g, { key: 'chip_korea', title: 'Korea chip exports vs KOSPI', defaultRange: '5Y', seg: { key: 'krLead', options: [['0', 'As measured'], ['2', 'Lead +2m']] }, render: renderChipKorea });
+  makeCard(g, { key: 'chip_mem', title: 'Memory makers vs KOSPI and SOX', defaultRange: '1Y', render: renderChipMem });
+  makeCard(g, { key: 'ai_ramp', title: 'Business AI adoption (Ramp)', wide: true, defaultRange: '3Y', render: renderAiRamp });
+  makeCard(g, { key: 'ai_vendor', title: 'Who is winning, two ways', range: false, render: renderAiVendor });
+  makeCard(g, { key: 'ai_tokprice', title: 'Token prices, two ways', defaultRange: '1Y', render: renderAiTokPrice });
+  makeCard(g, { key: 'ai_rampspend', title: 'How much companies spend on AI', defaultRange: '3Y', render: renderAiRampSpend });
+  makeCard(g, { key: 'ai_rampsize', title: 'Adoption by company size', defaultRange: '3Y', render: renderAiRampSize });
+  makeCard(g, { key: 'gpu_rent', title: 'GPU rent per hour', wide: true, defaultRange: '1Y', seg: { key: 'gpuBill', options: [['OD', 'On-demand'], ['R12', '12-month reserved'], ['SPOT', 'Spot']] }, render: renderGpuRent });
+  makeCard(g, { key: 'gpu_table', title: 'GPU rental table', range: false, render: renderGpuTable });
+  makeCard(g, { key: 'gpu_vast', title: 'Marketplace vs cloud price', defaultRange: '3M', render: renderGpuVast });
+  makeCard(g, { key: 'gpu_nvda', title: 'H100 rent vs Nvidia', defaultRange: '1Y', render: renderGpuNvda });
+  makeCard(g, { key: 'gpu_tok', title: 'Compute cost vs token prices', defaultRange: '1Y', render: c => {
+    const L = [];
+    if (has('GPU_H100_OD')) L.push({ name: 'H100 rent, $ per GPU-hour', data: pts(S.GPU_H100_OD, state.from, state.to) });
+    const h = AI && AI.openrouter && AI.openrouter.history, t2 = has('RAMP_TOK_PRICE_OPENAI_ANTHROPIC') ? S.RAMP_TOK_PRICE_OPENAI_ANTHROPIC : null;
+    const B = t2 ? { name: 'Ramp blended token price, $/M tokens', data: pts(t2, state.from, state.to) } : h ? { name: 'OpenRouter avg input price, $/M tokens', data: h.date.map((d, i) => [dayMs(d), h.usage_weighted_input_price[i]]).filter(p => p[0] >= state.from) } : null;
+    if (!L.length || !B) return setEmpty(c, 'Waiting for data.');
+    drawPair(c, L[0], { ...B, extra: { showSymbol: true } }, { fmtA: v => '$' + fmtNum(v, 2), fmtB: v => '$' + fmtNum(v, 3), axisA: v => '$' + fmtNum(v, 1), axisB: v => '$' + fmtNum(v, 2) });
+    setNote(c, 'What it costs to rent the chips against what customers pay per token: rents up while token prices fall means model makers’ margins are being squeezed. The token history is young and builds weekly.');
+    setSource(c, GPU_SRC + '; ' + RAMP_SRC); } });
+  { const r = cards.gpu_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 state.chipLead = '0';
 // ------------------------------------------------------------------ US ISM (Regime & Leading → US ISM)
@@ -2647,8 +2801,8 @@ function buildAI() {
       setSource(c, srcOf([...ids, 'SPX', 'SMH']) + '; basket calculated'); } });
 }
 function renderAI() {
-  aiKpis();
-  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq', 'chip_rs', 'chip_kr', 'chip_my'].forEach(k => cards[k].render());
+  aiKpis(); aiExtraTiles();
+  ['ai_usage', 'ai_share', 'ai_hist', 'ai_frontier', 'ai_cpr', 'ai_bench', 'ai_rev', 'ai_dc', 'ai_chips', 'ai_eq', 'chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem', 'ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize', 'gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ VALUATION
@@ -3917,6 +4071,8 @@ const LL_PAIRS = [
   ['REAL10Y', 'chg', 'GOLD', 'yoy', 'Real yields → gold (inverse)'],
   ['CN_EXP_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'China exports → Malaysia exports'],
   ['PALM', 'yoy', 'MY_PLANT', 'yoy', 'Palm oil → Malaysian plantation stocks'],
+  ['KR_CHIP_EXP', 'yoy', 'KOSPI', 'yoy', 'Korea chip exports → KOSPI'],
+  ['KR_CHIP_EXP', 'yoy', 'SOX', 'yoy', 'Korea chip exports → SOX (chip stocks)'],
   ['BAA_10Y', 'level', 'LH_SPX', 'yoy', 'Credit spreads (Baa − 10Y) → S&P 500 (inverse)'],
   ['ISM_PMI', 'level', 'IPMAN', 'yoy', 'ISM manufacturing → factory output'],
   ['ISM_PMI', 'level', 'SRVPRD', 'yoy', 'ISM manufacturing → services payrolls'],
@@ -5164,7 +5320,7 @@ const SUBTABS = {
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare']],
-  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my']]],
+  ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business vs developers', ['ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
@@ -5484,7 +5640,9 @@ const TILE_SETS = {
     'Prices & cost': ['Avg price paid', 'Avg cost per request', 'Cheapest near-frontier', 'Frontier model'],
     'Build-out': ['Frontier model', 'OpenRouter weekly tokens', 'AI equity basket'],
     'AI stocks': ['AI equity basket'],
-    'Chip cycle': ['AI equity basket'],
+    'Business vs developers': ['Businesses paying for AI', 'Anthropic share of token spend', 'OpenRouter weekly tokens', 'Avg price paid'],
+    'Compute prices': ['H100 rent', 'H200 rent', 'B200 rent', 'Vast H100 marketplace'],
+    'Chip cycle': ['Korea chip exports', 'SK hynix', 'AI equity basket'],
   },
 };
 function fitTiles(tab) {
@@ -5565,7 +5723,7 @@ function wire() {
 }
 async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 async function init() {
-  const [meta, y, f, d, cv, as, cb] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json'].map(loadJSON));
+  const [meta, y, f, d, cv, as, cb, kr, rp, gp] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json', 'data/korea.json', 'data/ramp.json', 'data/gpu.json'].map(loadJSON));
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
@@ -5578,8 +5736,10 @@ async function init() {
   setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
   META = meta.status === 'fulfilled' ? meta.value : {};
   if (SENT && SENT.series) for (const [id, x] of Object.entries(SENT.series)) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
-  for (const res of [y, f, d, as, cb]) if (res.status === 'fulfilled') {
-    for (const [id, s] of Object.entries(res.value)) { S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
+  if (rp.status === 'fulfilled') RAMP_META = rp.value._meta || null;
+  if (gp.status === 'fulfilled') GPU_META = gp.value._meta || null;
+  for (const res of [y, f, d, as, cb, kr, rp, gp]) if (res.status === 'fulfilled') {
+    for (const [id, s] of Object.entries(res.value)) { if (id[0] === '_' || !s || !s.d) continue; S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
   }
   if (cv.status === 'fulfilled') {
     for (const [k, c] of Object.entries(cv.value)) CURVES[k] = { ...c, t: c.d.map(x => x * DAY) };

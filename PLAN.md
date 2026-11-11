@@ -15,6 +15,8 @@ Status of each data source is marked **[verified]** (fetched from the sandbox on
 
 ## To do next (owner's request, 11 Nov 2026): WP8, WP9, WP10, WP11, WP12
 
+**Status: all five built on 11 Nov 2026.** Departures: WP10 uses UN Comtrade only (the Bank of Korea ECOS key is issued to Korean residents only), so Korea chip exports run several months behind and say so on the card; WP11 sits in AI → Business vs developers; WP12 in AI → Compute prices (Silicon Data is linked in a note, not charted).
+
 Scheduled to be built at 13:50 SGT on 11 Nov, after the usage limit resets, in this order. Follow `CLAUDE.md` (sub-tabs, ≤ 2,300 px, ≤ 5 tiles,
 ≤ 16 rows at rest, quiet card headers) and run `node tools/design-check.js` before each push. One commit per package.
 
