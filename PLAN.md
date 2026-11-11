@@ -13,7 +13,7 @@ Status of each data source is marked **[verified]** (fetched from the sandbox on
 
 ---
 
-## To do next (owner's request, 11 Nov 2026): WP8, WP9, WP10, WP11
+## To do next (owner's request, 11 Nov 2026): WP8, WP9, WP10, WP11, WP12
 
 Scheduled to be built at 13:50 SGT on 11 Nov, after the usage limit resets, in this order. Follow `CLAUDE.md` (sub-tabs, ≤ 2,300 px, ≤ 5 tiles,
 ≤ 16 rows at rest, quiet card headers) and run `node tools/design-check.js` before each push. One commit per package.
@@ -119,6 +119,39 @@ for the series; fall back to the HTML tables), isolate in try/except, archive ev
 4. Tiles: Ramp adoption % (replaces the least useful AI tile on Adoption), Anthropic's Ramp token spend share.
 - Note on each card: Ramp covers US firms on Ramp's card and bill pay (85,000+); OpenRouter covers apps routing through
   its API. Different samples, so compare direction, not levels.
+
+### WP12. NVIDIA GPU rental prices (AI page)
+
+**Why:** the rent on AI chips is the cleanest real-time read of AI compute demand against supply. If rents rise,
+capacity is tight (good for Nvidia, memory, neoclouds); if they fall, supply is catching up.
+
+**Data** (all checked 11 Nov 2026; hosts added to the environment):
+- **GetDeploying weekly GPU price dataset**, `getdeploying.com/dataset/gpu-prices/weekly.csv`, **CC BY 4.0** (free with
+  attribution). Columns: gpu_slug, date, billing_type (ON_DEMAND, SPOT, RESERVATION, RESERVATION_12_MONTH, …),
+  reservation_months, min/max/median price, provider median, provider count, offering count; 82 providers. Use
+  `nvidia-h100`, `nvidia-h200`, `nvidia-b200`, `nvidia-b300`, `nvidia-gb200`, `nvidia-a100`, `nvidia-l40s`. On-demand
+  medians now: H100 $4.09/GPU-hr (a year ago $2.95), H200 $4.83 ($3.50), B200 $8.08 ($5.39), A100 $2.05 ($1.49). Archive
+  each week in `archive/gpu_*.csv` (allowed under CC BY) so history grows. Credit "GetDeploying (CC BY 4.0)" on the card.
+- **Vast.ai public pricing feed**, `storage.googleapis.com/vast-public-gpu-pricing/gpu-pricing-public.json`, hourly,
+  daily marketplace medians for about 90 days per GPU. Licence: "free for display and citation with attribution; bulk
+  collection, redistribution or use in an index requires a data licence". So **display the live 90-day window with
+  attribution only; do not archive it**.
+- **Silicon Data H100 index (SDH100RT)**, the benchmark behind the new CME compute futures: its page shows the last 30
+  daily readings (H100 $3.06 on 10 Nov). Its terms for reuse are unclear, so **do not chart or store it**; give the
+  latest reading as a linked reference line in the card note only if the terms allow, otherwise just a link.
+
+**Placement:** AI → new sub-tab **Compute prices** (after Build-out), about 1,600 px:
+1. Wide: **GPU rent per hour**, weekly on-demand median for H100, H200, B200 and A100 (5 lines max; B300/GB200 join
+   when they have 3 months of data), with a toggle **On-demand · 12-month reserved · Spot**.
+2. Half: **Rental table**: each GPU: $/hr on-demand, 1M, 3M and 1Y change, 12-month reserved price, number of providers.
+3. Half: **Marketplace vs cloud list price**: Vast.ai daily median vs GetDeploying on-demand median for H100 and H200
+   (90 days), so tightness in the spot market shows before list prices move.
+4. Half: **Compute cost vs AI stocks**: H100 rent YoY vs Nvidia (NVDA) share price YoY, dual axis.
+5. Half: **Compute cost vs token prices**: H100 rent vs OpenRouter average price paid per million tokens, dual axis
+   (and the Ramp token price index once WP11 lands).
+- Tiles (≤ 5): H100 $/hr (1Y change), B200 $/hr, H200 $/hr, Vast H100 marketplace median.
+- LL_PAIRS: H100 rent → NVDA; H100 rent → Korea chip exports (WP10).
+- health.py: weekly series; the scraper is isolated like the sentiment gauges and never raises the health alert.
 
 ---
 
