@@ -2792,9 +2792,11 @@ function buildAsiaMore() {
     setNote(c, `Korean 10Y yields move with Treasuries in the same month${st ? ` (12-month changes correlate ${cF(st.r0)})` : ''}; no Korean data point tested here leads them reliably. Korean yields are monthly averages (OECD).`);
     setSource(c, 'OECD Main Economic Indicators (KOR IRLT, IR3TIB); US Treasury'); } });
   state.krAct = 'out';
-  makeCard(g, { key: 'kr_act', title: 'Korea: activity', defaultRange: '10Y', seg: { key: 'krAct', options: [['out', 'Output'], ['conf', 'Confidence']] }, render: c => {
+  makeCard(g, { key: 'kr_act', title: 'Korea: activity', defaultRange: '10Y', seg: { key: 'krAct', options: [['out', 'Output'], ['conf', 'Confidence'], ['ca', 'Current account']] }, render: c => {
     const o = state.krAct === 'out';
-    segLines(c, 'krAct', { out: ['KR_IP_YOY', 'KR_RETAIL_YOY', 'KR_GDP_YOY'], conf: ['KR_BCI', 'KR_CCI'] }, o ? pct1 : v => fmtNum(v, 1), o ? a0 : v => fmtNum(v, 0), { zero: true });
+    const ca = state.krAct === 'ca';
+    segLines(c, 'krAct', { out: ['KR_IP_YOY', 'KR_RETAIL_YOY', 'KR_GDP_YOY'], conf: ['KR_BCI', 'KR_CCI'], ca: ['KR_CA_GDP'] }, o || ca ? pct1 : v => fmtNum(v, 1), o || ca ? a0 : v => fmtNum(v, 0), { zero: true });
+    if (ca) { const a = has('KR_CA_GDP') ? asOf(S.KR_CA_GDP, state.to) : null; return setNote(c, `Current account balance, % of GDP, quarterly${a ? `: ${pctF1(a.v)} in the quarter to ${monthLab(addMonths(a.t, 2))} (provisional)` : ''}. The 2026 jump matches Korea’s goods surplus, which roughly quadrupled as chip exports surged; a surplus this size puts upward pressure on the won.`); }
     setNote(c, o ? 'Industrial production and retail sales volume, year-on-year %; real GDP year-on-year (quarterly, stepped).' : 'OECD business and consumer confidence balances (0 = long-run average). Confidence moves with KOSPI rather than ahead of it.'); } });
   // India
   g.append(el('h3', { class: 'section', text: 'India' }));
@@ -2817,9 +2819,10 @@ function buildAsiaMore() {
     setNote(c, `Indian 10Y yields also move with Treasuries in the same month${st ? ` (12-month changes correlate ${cF(st.r0)})` : ''}; oil is the one series tested that leads them (see Oil vs India 10Y yield).`);
     setSource(c, 'OECD Main Economic Indicators (IND IRLT, IR3TIB); US Treasury'); } });
   state.inAct = 'out';
-  makeCard(g, { key: 'in_act', title: 'India: activity and trade', defaultRange: '10Y', seg: { key: 'inAct', options: [['out', 'Output'], ['trade', 'Trade']] }, render: c => {
+  makeCard(g, { key: 'in_act', title: 'India: activity and trade', defaultRange: '10Y', seg: { key: 'inAct', options: [['out', 'Output'], ['trade', 'Trade'], ['ca', 'Current account']] }, render: c => {
     const o = state.inAct === 'out';
-    segLines(c, 'inAct', { out: ['IN_IP_YOY', 'IN_MFG_YOY', 'IN_GDP_YOY'], trade: ['IN_EXP_YOY', 'IN_IMP_YOY'] }, pct1, a0, { zero: true });
+    segLines(c, 'inAct', { out: ['IN_IP_YOY', 'IN_MFG_YOY', 'IN_GDP_YOY'], trade: ['IN_EXP_YOY', 'IN_IMP_YOY'], ca: ['IN_CA_GDP'] }, pct1, a0, { zero: true });
+    if (state.inAct === 'ca') return setNote(c, 'Current account balance, % of GDP, quarterly. India runs a large goods deficit (oil, gold, electronics) largely offset by services exports and remittances, so the balance stays near zero; oil prices are the main swing factor for it and for the rupee.');
     setNote(c, o ? 'Industrial production and manufacturing output, year-on-year %; real GDP year-on-year (quarterly, stepped).' : 'Merchandise exports and imports in US dollars, seasonally adjusted, year-on-year %.'); } });
   makeCard(g, { key: 'in_lead', title: 'Leading index vs Nifty 50', defaultRange: '10Y',
     ...leadCard('inLeadK', ['CLI_IND', 'chg6', 'India leading index, 6-month change'], ['NIFTY', 'yoy', 'Nifty 50, % YoY'], 5) });

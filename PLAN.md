@@ -350,7 +350,7 @@ afterwards) or isolated fetchers in `pipeline/taiwan.py` that fail quietly. Keep
 exports and vs Taiwan Weighted (test with the lead rule), TSMC revenue YoY vs SOX, the monitoring score with its
 colour bands, CBC discount rate. Drop the rest and say so in PLAN.md.
 
-**WP21. Korea and India current account.** Re-fetch OECD `CA_GDP` (quarterly). Korea's provisional 2026 values were
+**WP21. Korea and India current account.** *Built 11 Nov 2026. IMF data on DBnomics stops at Q1 2025, so Korea's 2026 figures were cross-checked against its goods trade instead (OECD exports and imports in USD): the goods surplus went from US$27bn in Q4 2025 to US$58bn in Q1 2026 and US$83bn in Q2, about 19% of quarterly GDP, consistent with the reported 16.0% and 20.9% current account. India's figures (around -0.3% to -1% of GDP) are steady and plausible. Both added as a "Current account" toggle on the Korea and India activity cards.* Re-fetch OECD `CA_GDP` (quarterly). Korea's provisional 2026 values were
 16 to 21% of GDP against about 6 to 8% in 2025. Cross-check against another public source (IMF via DBnomics, or the
 OECD's balance of payments dataset). Add the series to the Korea and India activity cards (toggle or "⋯") only if
 the figures agree; otherwise leave them out and note why.

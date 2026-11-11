@@ -64,10 +64,13 @@ KEI = [
     ("AU_EXP_YOY",  "AUS", "EX",     "GR", "_T",  "GY", "Australia exports YoY (USD, SA)",  "%",   "Macro · Australia"),
     ("AU_CCI",      "AUS", "CCICP",  "PB", None,  None, "Australia consumer confidence",    "idx", "Macro · Australia"),
 ]
-# quarterly key indicators: real GDP growth
+# quarterly key indicators: real GDP growth and the current account
 KEI_Q = [
     ("KR_GDP_YOY",  "KOR", "B1GQ_Q", "GR",      "_T", "GY", "Korea real GDP YoY",              "%", "Macro · Korea"),
     ("IN_GDP_YOY",  "IND", "B1GQ_Q", "GR",      "_T", "GY", "India real GDP YoY",              "%", "Macro · India"),
+    # current account: Korea's 2026 surge (16-21% of GDP) was cross-checked against its goods trade surplus (WP21)
+    ("KR_CA_GDP",   "KOR", "CA_GDP", "PT_B1GQ", None, None, "Korea current account, % of GDP", "%", "Macro · Korea"),
+    ("IN_CA_GDP",   "IND", "CA_GDP", "PT_B1GQ", None, None, "India current account, % of GDP", "%", "Macro · India"),
 ]
 CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
              "AUS": "Australia", "IDN": "Indonesia"}
