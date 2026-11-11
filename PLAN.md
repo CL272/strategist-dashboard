@@ -159,7 +159,7 @@ capacity is tight (good for Nvidia, memory, neoclouds); if they fall, supply is 
 
 ## Planned, not built (owner's request, 11 Nov 2026): WP13 to WP16, Asia ex-Japan
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` (sub-tabs,
+**Status: WP13 to WP16 built on 11 Nov 2026.** Departures: Taiwan uses DGBAS only (CPI, industrial and electronics output, unemployment, exports and imports, GDP); export orders (MOEA), the NDC leading index and monitoring score, CBC rates and TSMC revenue were blocked or timed out, so they are not shown. Korea and India current account left out (OECD's provisional 2026 Korea figures looked wrong). India's leading index fails the lead rule (0.37) and says so on its card. Taiwan tests: Taiwan Weighted leads Taiwan exports by 4 months (0.77) and electronics output by 2 (0.68); Korea's leading index leads Taiwan exports by 9 months (0.54); Brent leads Taiwan CPI by 2 months (0.49). Calendar entries for Taiwan and India were not added. Follow `CLAUDE.md` (sub-tabs,
 ≤ 2,300 px, ≤ 5 tiles, ≤ 16 rows at rest, ≤ 5 coloured lines) and run `node tools/design-check.js` before each push.
 One commit per package.
 
