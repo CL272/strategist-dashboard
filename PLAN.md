@@ -362,6 +362,191 @@ indicators can go live first; Taiwan follows once its sources are proven.
 
 ---
 
+## Planned, not built (owner's request, 11 Nov 2026): WP22 to WP29, signals and strategist tools
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` and run
+`node tools/design-check.js` before each push. One commit per package.
+
+**The request:** (1) what else a strategist's dashboard should have; (2) have the dashboard turn its signals into
+investment ideas for the owner to note and dig into, to get ahead of the market.
+
+**What the dashboard already has (do not rebuild):** regime and "what worked in each regime", leading indicators,
+stress composite and peak signposts, liquidity (Fed, global central bank balance sheets, NFCI), central bank pricing,
+region pages, performance with distance from the 200-day average, breadth, styles and sectors, commodities, curves,
+spreads, valuation scorecard (CAPE, ERP, term premium, REER), volatility, CFTC positioning, sentiment, correlation and
+lead-lag, the AI pages, the idea log, a "what changed" list, the weekly brief and the calendar.
+
+### What a prototype showed (11 Nov 2026): most famous signals have no edge; a few do
+
+An event study was run on the dashboard's own history: each time a condition switched on (at least 6 months after the
+previous time), what did the target do over the next 1, 3, 6 and 12 months, against what it did in all months
+(the baseline)?
+
+| Signal → target | Times | After the signal | Baseline (all months) | Verdict | On now? |
+|---|---|---|---|---|---|
+| Taiwan M1B − M2 gap turns down → Taiwan Weighted, next 3m | 26 | median −1.2%, up 38% of the time | +2.9%, up 67% | Edge (caution signal) | Yes, since Jul 2026 |
+| Korea leading index turns up → KOSPI, next 6m | 26 | +4.5%, up 73% | +2.7%, up 60% | Edge, moderate | Yes, since May 2026 |
+| Korea leading index turns up → Taiwan Weighted, next 12m | 25 | +12.7%, up 80% | +10.4%, up 72% | Small edge | Yes |
+| Dollar up more than 8% on a year → Asia ex-Japan (AAXJ), next 3m | 9 | −3.7%, up 22% | +2.2%, up 58% | Edge, thin sample | No |
+| Brent up more than 40% on a year → India 10Y, next 3m | 6 | +0.3 pts, up 83% | 0.0 pts, up 45% | Edge, thin sample | Yes, since Sep 2026 |
+| VIX curve inverts → S&P 500, next 3m | 15 | +3.6%, up 60% | +3.2%, up 72% | No edge | No |
+| S&P 500 falls below its 10-month average → S&P 500, next 6m | 16 | +10.3%, up 75% | +5.5%, up 76% | No sell signal | No |
+| 2s10s curve un-inverts → S&P 500, next 12m | 20 | +10.9%, up 75% | +12.8%, up 81% | No edge | Yes |
+| Malaysia leading diffusion above 50 → KLCI, next 6m | 37 | +2.7%, up 62% | +1.8%, up 59% | No real edge | Yes |
+
+Lessons for the build: (a) every idea must show its edge against the baseline, or it is noise; (b) samples are small,
+so the page must say "thin evidence" where it is; (c) credit spreads (ICE series, 3 years of history) and the
+sentiment gauges have too little history to test: use long-history stand-ins (Baa − 10Y) or label "not enough
+history"; (d) markets lead most macro data (WP13 to WP15), so the useful ideas come from tested leads, from one market
+moving while a linked one has not, from extremes in positioning and valuation, and from dated catalysts.
+
+Divergences today (3-month moves against the usual relationship, in standard deviations): KLCI has lagged the S&P 500
+(−1.6), KOSPI has fallen more than the SOX implies (−1.5), Asia ex-Japan more than copper implies (−1.5). None is
+past the ±2 trigger.
+
+### WP22. Signal engine and "Signals" page (the idea generator)
+
+**Principle:** rules, not opinions. Each signal is a fixed, published rule, tested on history, shown with its record.
+The page offers research prompts, never recommendations. The site is public: generated signals are visible to anyone
+with the link (they are built from public data); what the owner does with them (watch, dismiss, add to the idea log)
+stays in the browser only.
+
+**Pipeline** (new `pipeline/signals.py`, run last; reads the published JSON files; writes `docs/data/signals.json`;
+appends each new firing to `archive/signals_log.csv`; add to the carry-over list in `update.yml` and to `health.py`):
+- `SIGNALS`: a declarative list. Each entry: id, family, plain-language name, the condition (a small function of named
+  series), target asset(s), whether the target is a return or a change (yields), horizons (1, 3, 6, 12 months), the
+  minimum gap between events, and the publication lag of each input.
+- **No look-ahead:** monthly macro inputs are shifted by their publication lag before the condition is tested
+  (OECD leading index 2 months, exports and CPI 1 month, DOSM leading index 3 months, market prices 0). Signals built
+  on revised series (OECD leading indices) carry a "revised data" tag.
+- `study()`: events = the condition switching on after the gap; forward return of the target from the date the data
+  was known; per horizon: n, median, 25th to 75th percentile, hit rate; the same for the baseline over the same
+  period; edge = signal median − baseline median; and the edge in each half of the history.
+- **Tier rule** (best horizon): *Tested edge* = n ≥ 12, hit rate at least 12 points from the baseline's, same sign of
+  edge in both halves. *Thin evidence* = n 6 to 11 and hit rate at least 20 points from the baseline's. *Context
+  only* = everything else: shown, but labelled "has not helped historically". *Not enough history* = n < 6.
+- **Active now:** the condition is on and switched on within its best horizon. Output: since when, how much of the
+  usual window is left, and "priced in?": the target's move since the signal against the typical move.
+- **Ideas** = active signals grouped by target and direction: "3 for, 1 against", score = tier-weighted sum (tested 3,
+  thin 1, context 0). Each idea carries: headline, what fired (with the numbers), the evidence table, what would
+  cancel it (the condition switching off; the target breaking its 200-day average the wrong way), the next calendar
+  events for that market within 14 days (from `calendar.json`), and links to the charts.
+- Keep the engine under 60 seconds; cache nothing in the browser.
+
+**Signal families to encode first** (about 40 signals; ids are existing dashboard series):
+1. *Tested leads* (from `LL_PAIRS` and the Asia tables, using the same acceptance rule): Korea leading index → Taiwan
+   Weighted, KOSPI, Taiwan exports; Indonesia leading index → JCI; Taiwan M1B − M2 → Taiwan Weighted; Taiwan export
+   orders → Malaysia exports and the Malaysia tech basket; Brent → India 10Y, Korea, Taiwan, Singapore, Malaysia CPI;
+   dollar → Korea exports and AAXJ; China leading index → copper; US leading index and ISM → S&P 500 sectors; Fed net
+   liquidity and global central bank assets → S&P 500, gold, Bitcoin; Korea chip exports → SOX.
+2. *Regime:* the growth/inflation regime switching → the assets "What worked in each regime" favours, flagged when
+   the asset has not yet moved in line.
+3. *Extremes:* valuation scorecard percentiles (above 90th, below 10th); Baa − 10Y and HY spreads; CFTC positioning
+   beyond ±2 standard deviations (contrarian); AAII, NAAIM, Fear & Greed extremes; breadth below 20% or above 80%;
+   REER percentiles for FX.
+4. *Trend and relative strength* (from WP23): new 12-month highs and lows; 50/200-day crosses; ratios turning
+   (KLCI ÷ AAXJ, AAXJ ÷ ACWI, EM ÷ S&P 500, growth ÷ value, small ÷ large, SOX ÷ S&P 500, copper ÷ gold, HY ÷
+   Treasuries).
+5. *Divergences* (from WP23): a linked pair more than 2 standard deviations apart; the study asks which side closed
+   the gap in the past.
+6. *Policy:* market pricing against the central bank (Fed path against the dots; the BNM, RBA, BoJ, ECB gauges) and
+   decisions due within 14 days.
+7. *Stress:* stress composite changing band; peak signposts count rising; recession probability crossing 30%.
+8. *AI theme:* GPU rents rising while token prices fall (margin squeeze); Ramp adoption accelerating; Korea chip
+   exports and Taiwan electronics output turning.
+
+**Front end:** new page **Signals** in the Overview group, sub-tabs:
+- **Ideas to investigate**: at most 8 cards, ranked by score. Each: headline in plain words ("Taiwan equities:
+  caution for the next 3 months"), tier chip, "for / against" count, the evidence line ("26 times since 2001: median
+  −1.2% over 3 months, up 38% of the time; normal is +2.9%, up 67%"), priced-in bar, cancel conditions, next catalyst,
+  and buttons **Add to idea log** (pre-fills instrument, direction, entry, horizon and rationale), **Watch**,
+  **Dismiss** (browser only).
+- **All signals**: table (view chips by family; ≤ 16 rows at rest): state now, since, tier, best horizon, edge.
+- **Divergences**: the pairs, the gap in standard deviations, which side moved, how past gaps closed.
+- **Track record**: every firing since the engine went live, with the return since; live hit rate next to the
+  back-test, by signal and family. Starts empty and says so.
+- **How it works**: the rules, the tier definitions and the limits (small samples, revised data, public information,
+  not advice).
+Also: the top 3 ideas as a strip on Strategist View → Today (inside the height budget: fold them into "What changed"
+if needed) and a "Signals to watch" block in the Weekly brief if it still prints on one page. Tiles: active ideas,
+tested-edge signals on, divergences beyond ±2, signals that switched this week.
+
+**Acceptance:** each number on a card can be reproduced from the published data; no signal uses data before it was
+published; the nine rows of the prototype table above are reproduced to within rounding (allowing for the lag shift).
+
+### WP23. Trend, relative strength and divergence monitor (build before WP22: it feeds it)
+
+- Markets → new sub-tab **Trend**: table of the main assets (view chips by asset class; `capRows`): 12-1 month
+  momentum, distance from the 200-day average, date of the last 50/200-day cross, distance from the 52-week high,
+  current drawdown. Tiles: share of assets in an uptrend, new 12-month highs and lows this week.
+- Same sub-tab: **relative-strength pairs** (the ratios listed in WP22 family 4): ratio against its 200-day average,
+  date it last turned, 3-month change.
+- Correlation → new sub-tab **Divergences**: pairs that normally move together (S&P 500 and KLCI, SOX and Taiwan
+  Weighted, SOX and KOSPI, copper and AAXJ, dollar and USD/MYR, UST 10Y and Korea, India, Singapore 10Y, real yields
+  and gold, HY spread and S&P 500, Brent and USD/INR). Method: 3-month changes, 60-month rolling beta, gap = actual −
+  implied, in standard deviations; flag beyond ±2; chart of the gap for the selected pair.
+
+### WP24. Country scorecard
+
+Regions group → new page **Country scorecard** (one screen): rows US, euro area, Japan, China, Korea, Taiwan, India,
+Indonesia, Malaysia, Singapore, Australia. Columns, each an arrow with a tooltip number: growth momentum (leading
+index 6-month change, else industrial production or exports), inflation momentum (CPI against 3 months ago and against
+target), policy (real short rate; direction over 6 months), equity trend (200-day, 12-1 momentum, 3 months against
+ACWI), currency (3 months against USD; REER percentile), 10Y yield (3-month change). Last column: a plain one-line
+read ("growth up, inflation easing, equities lagging"). Click a row to open that region's page.
+
+### WP25. Malaysia sectors (clients are mostly in Malaysia)
+
+Asia ex-Japan → Malaysia group → new sub-tab **Sectors**: equal-weight baskets from the Bursa ticker list (banks,
+plantations, technology, utilities, telecoms, REITs, oil and gas, construction, gloves and healthcare, consumer;
+add tickers to `pipeline/tickers.py` where a basket has fewer than 3 names): performance table (1M, 3M, YTD, against
+KLCI), relative-strength chart, each basket against its driver (plantations and palm oil, technology and SOX, oil and
+gas and Brent, banks and the OPR / 3M interbank gap). Ticker history is about 3 years: say so.
+
+### WP26. House views and model portfolios (private, browser only)
+
+Idea log → new views **House views** and **Model portfolio**. House views: a grid of asset classes and regions with
+a stance (overweight, neutral, underweight), date and one-line reason; relative performance since each change against
+a benchmark; a log of changes; shown in the Weekly brief. Model portfolio: weights the owner sets (presets: 60/40
+global, Malaysian balanced); return, drawdown and volatility in MYR, SGD or USD. Stored like the idea log
+(localStorage, export and import), never published.
+
+### WP27. FX carry and value
+
+Asia ex-Japan → Asian FX gains a table for MYR, SGD, KRW, INR, IDR, CNY, JPY, AUD, EUR, TWD: 3-month rate gap against
+the US (carry), 3-month realised volatility, carry ÷ volatility, REER percentile (value), 3- and 12-month spot move,
+200-day trend. Add Indonesia's short rate from the OECD feed. Taiwan has no short rate on file: leave the cell blank.
+
+### WP28. Seasonality and sensitivities
+
+- Markets → new sub-tab **Seasonality**: for a chosen asset, average return and hit rate by calendar month (20 years),
+  this year's path against the average year; a table of this month's and next month's record across assets.
+- Correlation → new sub-tab **Sensitivities**: 2-year weekly betas of each asset to the S&P 500, UST 10Y (per 10bp),
+  the dollar and Brent, as a table ("S&P 500 −10% has gone with KLCI −x%"), with a stability flag.
+
+### WP29. Uncertainty, oil curve and flows (probe first; build what loads)
+
+- Stress → new sub-tab **Uncertainty**: FRED economic policy uncertainty (US daily `USEPUINDXD`, global
+  `GEPUCURRENT`), trade policy uncertainty and the geopolitical risk index if their sources are reachable.
+- Markets → Commodities: Brent and WTI front month against the 12-month contract (backwardation = tight market), from
+  Yahoo contract symbols if they resolve.
+- Fund flows (ICI weekly mutual fund and ETF flows): probe from the runner; skip if there is no stable file.
+
+### Suggested order
+
+WP23 → WP22 → WP24 → WP25 → WP26 → WP27 → WP28 → WP29. WP23 and WP22 answer the idea-generation request and need no new
+data source. Still not possible with free data: earnings revisions and forward P/E, MGS yields, Bursa foreign flows.
+
+### Decisions for the owner
+
+1. Wording: call the page **Signals** with "ideas to investigate", not "investment ideas" (recommended: the site is
+   public and these are untested-in-real-time rules).
+2. Whether to build all of WP24 to WP29 or pick.
+3. Optional later: a written daily summary of the signals by an AI model in the data run. It needs a paid API key
+   stored as a repository secret; not planned unless asked.
+
+---
+
 ## WP1. Central bank watch (highest priority)
 
 **Why:** the Fed page shows market pricing against the Fed. Clients in Malaysia, Singapore and Australia
