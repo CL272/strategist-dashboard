@@ -13,9 +13,9 @@ Status of each data source is marked **[verified]** (fetched from the sandbox on
 
 ---
 
-## To do next (owner's request, 11 Nov 2026): WP8 then WP9
+## To do next (owner's request, 11 Nov 2026): WP8, WP9, WP10, WP11
 
-Both are scheduled to be built after the usage limit resets. Follow `CLAUDE.md` (sub-tabs, ≤ 2,300 px, ≤ 5 tiles,
+Scheduled to be built at 13:50 SGT on 11 Nov, after the usage limit resets, in this order. Follow `CLAUDE.md` (sub-tabs, ≤ 2,300 px, ≤ 5 tiles,
 ≤ 16 rows at rest, quiet card headers) and run `node tools/design-check.js` before each push. One commit per package.
 
 ### WP8. Spreads in Fixed Income
@@ -79,6 +79,46 @@ chart is needed on two pages, build a second card from the same render function 
 
 **Acceptance:** five region pages in the sidebar; no card appears twice by accident; every old bookmark lands on a
 page; design check passes; no script errors.
+
+### WP10. Korea: the AI memory cycle (AI → Chip cycle)
+
+**Why:** Korean exports are dominated by memory chips (DRAM, HBM), so they are the timeliest hard data on AI hardware
+demand; KOSPI is now heavily weighted to Samsung and SK hynix.
+
+**Data**
+- Korea semiconductor exports, monthly, USD: **Bank of Korea ECOS API** (exports by commodity, customs basis), which
+  is timely but needs a free key in the URL. If the owner adds a GitHub secret `ECOS_API_KEY`, use it. Otherwise fall
+  back to **UN Comtrade** public preview (`comtradeapi.un.org/public/v1/preview/C/M/HS`, reporter 410, HS 8542 and 854232
+  memory, flow X, one period per call, keyless), checked 11 Nov 2026: data to Dec 2025, about a 9-month lag; label the
+  lag on the card. Archive the series in `archive/` (Comtrade revises little; ECOS may revise, newest wins).
+- Already loaded: Korea total exports YoY (OECD), KOSPI, SMH, SOX, tickers 005930.KS (Samsung) and 000660.KS (SK hynix).
+
+**Cards** (Chip cycle sub-tab gets a second row, or a new "Korea & memory" sub-tab if it passes 2,300 px):
+1. Korea chip exports YoY (or total exports YoY until chip data loads) vs KOSPI YoY, dual axis, with a lead toggle;
+   note the measured lead (live `laggedCorr`).
+2. Memory makers: SK hynix and Samsung (rebased, KRW) vs KOSPI and SOX.
+3. Tile: Korea exports YoY (latest month); tile: SK hynix 3M.
+- LL_PAIRS: Korea chip exports → KOSPI; Korea chip exports → SOX.
+
+### WP11. Ramp AI Index on the AI page, shown with OpenRouter
+
+**Data:** `ramp.com/data/ai-index` (reachable, checked 11 Nov 2026). The page carries the monthly series (Jul 2023
+to Sep 2026): share of US businesses paying for AI (55.9% in Sep 2026), adoption by vendor (OpenAI, Anthropic, …), AI
+spend per employee, token volume and spend, token spend share by vendor (Anthropic 60.5% in the week to 23 Oct) and
+token prices. New scraper `pipeline/ramp.py`: parse the embedded chart data (look in the page's JSON/RSC payload
+for the series; fall back to the HTML tables), isolate in try/except, archive every reading in `archive/ramp_*.csv`, show
+"last read" like the sentiment gauges. Add `ramp.json` to the carry-over list in `update.yml`.
+
+**Showing both together** (OpenRouter = developers and apps through one API; Ramp = what US companies pay for):
+1. **Adoption: two lenses** (Adoption sub-tab, wide): Ramp share of businesses paying for AI (%) vs OpenRouter weekly
+   tokens (log scale), dual axis, both from mid-2023.
+2. **Who is winning, two ways** (Adoption, half): latest share by vendor, side-by-side bars: Ramp business adoption or
+   token spend share vs OpenRouter token share by model maker (OpenAI, Anthropic, Google, others).
+3. **Prices, two ways** (Prices & cost, half): Ramp token price index vs OpenRouter average price paid per million
+   tokens, dual axis.
+4. Tiles: Ramp adoption % (replaces the least useful AI tile on Adoption), Anthropic's Ramp token spend share.
+- Note on each card: Ramp covers US firms on Ramp's card and bill pay (85,000+); OpenRouter covers apps routing through
+  its API. Different samples, so compare direction, not levels.
 
 ---
 
