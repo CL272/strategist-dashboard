@@ -38,6 +38,7 @@
     <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
     <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central banks</button>
     <div class="nav-group">Regions</div>
+    <button role="tab" data-tab="scorecard" aria-selected="false"><span class="ic">▥</span>Country scorecard</button>
     <button role="tab" data-tab="us" aria-selected="false"><span class="ic">◧</span>US</button>
     <button role="tab" data-tab="europe" aria-selected="false"><span class="ic">◨</span>Europe</button>
     <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia ex-Japan</button>
@@ -183,6 +184,11 @@
       <div class="table-wrap"><table class="perf asset-table" id="perfTable"></table></div>
       <p class="src perf-src">Source: Yahoo Finance (indices, ETFs, FX, commodities, crypto, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB, SingStat/MAS, Bank Negara (yields, spreads). Hover a row for its exact series.</p>
     </div>
+  </section>
+
+  <section id="tab-scorecard" class="tab-panel" hidden>
+    <div class="kpis" id="scKpis"></div>
+    <div class="grid" id="scGrid"></div>
   </section>
 
   <section id="tab-signals" class="tab-panel" hidden>

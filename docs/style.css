@@ -756,3 +756,5 @@ table.llt td:last-child { white-space: nowrap; }
 .sig-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 ul.changes.sig-list { grid-template-columns: 1fr; columns: auto; }
 ul.changes.sig-list li { display: block; }
+table.sc-table td.sc-read { white-space: normal; text-align: left; min-width: 14em; }
+table.sc-table td { padding-top: 7px; padding-bottom: 7px; }
