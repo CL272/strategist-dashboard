@@ -336,7 +336,7 @@ adoption and spend series about 75 days, weekly token series about 21 days; GPU 
 daily about 7 days; Taiwan monthly series the usual monthly rule, GDP quarterly. Skip keys starting with "_".
 Check that nothing new shows as stale today (the alert issue must stay closed).
 
-**WP19. Calendar: Taiwan, India and MAS 2027.** In `pipeline/econcal.py`, add Taiwan (exports, about the 7th to 9th
+**WP19. Calendar: Taiwan, India and MAS 2027.** *Built 11 Nov 2026: Taiwan (exports, CPI, export orders without a number, advance GDP) and India (CPI, industrial production, GDP) windows; RBI decisions 4 Dec 2026 and 5 Feb 2027 (MPC schedule from 23 Mar 2026, as reported by Indian press: rbi.org.in is unreachable here); Taiwan CBC 17 Dec 2026 (provisional). MAS has published only 29 Jan 2027 so far (already on file); April to October 2027 are not out yet, so the Singapore coverage warning will show from mid-November until MAS adds them. Strategist View → Coming up now shows 9 events (height budget).* In `pipeline/econcal.py`, add Taiwan (exports, about the 7th to 9th
 for the previous month; CPI, about the 5th to 8th; advance GDP, end of the month after the quarter) and India (CPI,
 the 12th; GDP, end of the second month after the quarter; RBI policy decisions, 2026/27 schedule from the RBI site)
 using the existing helpers and their "estimated date" labelling where dates are rule-based. Add MAS's 2027 monetary

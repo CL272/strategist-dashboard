@@ -3,7 +3,7 @@ Economic calendar: releases and central bank decisions, with the actual printed
 (past events) and the previous reading (upcoming events).
 
 Ported from the earlier Streamlit version (legacy/data/econ_calendar.py) and widened
-to Singapore, Australia, China, Korea and the UK.
+to Singapore, Australia, China, Korea, Taiwan, India and the UK.
 
 Three kinds of date, never blurred:
   Live       US releases: dates from FRED's own release calendar (release/dates).
@@ -25,12 +25,12 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from fetch import DIAG, fetch_fred, get, load_existing, write
+from fetch import DIAG, fetch_fred, get, load_existing, unpack, write
 
 LOOKBACK_DAYS, HORIZON_DAYS = 21, 75
 SGT = ZoneInfo("Asia/Singapore")
 TZ = {"ET": "America/New_York", "CET": "Europe/Berlin", "JST": "Asia/Tokyo", "MYT": "Asia/Kuala_Lumpur", "SGT": "Asia/Singapore",
-      "SYD": "Australia/Sydney", "UK": "Europe/London", "CST": "Asia/Shanghai", "KST": "Asia/Seoul"}
+      "SYD": "Australia/Sydney", "UK": "Europe/London", "CST": "Asia/Shanghai", "KST": "Asia/Seoul", "TPE": "Asia/Taipei", "IST": "Asia/Kolkata"}
 FRED_API = "https://api.stlouisfed.org/fred/{path}"
 
 # ---------------------------------------------------------------- data releases
@@ -104,6 +104,18 @@ EVENTS = [
     # ---- Korea: first major economy to report trade each month
     ev("Korea", "Exports (YoY)", ("asia", "KR_EXP_YOY", "level"), "%", ("win", 1, 1, None, "previous month"), ("KST", "09:00"), True,
        "Global trade and chip-cycle bellwether", "Korea Customs"),
+    # ---- Taiwan (numbers from DGBAS via taiwan.json)
+    ev("Taiwan", "Exports (YoY)", ("asia", "TW_EXP_YOY", "level"), "%", ("win", 7, 10, None, "previous month"), ("TPE", "16:00"), True,
+       "Number shown is the 3-month-sum YoY the dashboard charts; the headline single-month figure differs", "Ministry of Finance"),
+    ev("Taiwan", "CPI (YoY)", ("asia", "TW_CPI_YOY", "level"), "%", ("win", 5, 9, None, "previous month"), ("TPE", "16:00"), src="DGBAS"),
+    ev("Taiwan", "Export orders (YoY)", None, "%", ("win", 18, 23, None, "previous month"), ("TPE", "16:00"), True,
+       "Leads exports by about a quarter; not carried by this dashboard (the ministry's site is unreachable from the data runner)", "Ministry of Economic Affairs"),
+    ev("Taiwan", "GDP advance estimate (YoY)", ("asia", "TW_GDP_YOY", "level"), "%", ("win", 28, 31, Q_NEXT, "previous quarter"), ("TPE", "16:00"), True, src="DGBAS"),
+    # ---- India
+    ev("India", "CPI (YoY)", ("asia", "IN_CPI_YOY", "level"), "%", ("win", 12, 14, None, "previous month"), ("IST", "16:00"), True,
+       "Number shown is the OECD series", "MoSPI"),
+    ev("India", "Industrial production (YoY)", ("asia", "IN_IP_YOY", "level"), "%", ("win", 27, 31, None, "previous month"), ("IST", "16:00"), src="MoSPI"),
+    ev("India", "GDP (YoY)", ("asia", "IN_GDP_YOY", "level"), "%", ("win", 27, 31, Q_MID, "previous quarter"), ("IST", "16:00"), True, src="MoSPI"),
 ]
 
 # ---------------------------------------------------------------- central bank decisions (Confirmed)
@@ -114,6 +126,8 @@ BNM = "bnm.gov.my (Schedule of Monetary Policy Decisions 2027, published 5 Nov 2
 RBA = "rba.gov.au/schedules-events/board-meeting-schedules.html"
 BOE = "bankofengland.co.uk (MPC dates for 2027)"
 MAS = "mas.gov.sg (Advance Release Calendar)"
+RBI = "rbi.org.in (MPC schedule for 2026-27, announced 23 Mar 2026; dates as reported by Indian press, official page unreachable from here)"
+CBC = "cbc.gov.tw (provisional 2026 board meeting schedule, as reported; check the bank's site)"
 SEP = "with Summary of Economic Projections"
 MEETINGS = [
     # (region, event, decision date, local time (tz, HH:MM) or None, detail, source, policy-rate (source, id) or None)
@@ -132,12 +146,15 @@ MEETINGS = [
     *[("UK", "BoE decision", d, ("UK", "12:00"), "", BOE, None) for d in [
         "2026-11-05", "2026-12-17", "2027-02-04", "2027-03-18", "2027-04-29", "2027-06-17", "2027-07-29", "2027-09-16", "2027-11-04", "2027-12-16"]],
     ("Singapore", "MAS monetary policy statement", "2026-10-14", ("SGT", "08:00"), "S$NEER policy band", MAS, None),
+    *[("India", "RBI repo rate decision", d, ("IST", "10:00"), "Monetary Policy Committee resolution", RBI, None) for d in [
+        "2026-10-07", "2026-12-04", "2027-02-05"]],
+    ("Taiwan", "CBC discount rate decision", "2026-12-17", None, "Quarterly board meeting (provisional date); news conference follows, usually late afternoon Taipei time", CBC, None),
 ]
 # MAS gives only a "no later than" date for its next statement
 MAS_WINDOWS = [("2027-01-20", "2027-01-29", "Due no later than 29 Jan 2027 (MAS advance release calendar); S$NEER policy band")]
 COVERAGE = {"US": "2027-12-08", "Euro area": "2027-12-16", "Japan": "2027-12-17", "Malaysia": "2027-11-04", "Australia": "2027-12-14",
-            "UK": "2027-12-16", "Singapore": "2027-01-29"}
-VERIFIED_ON = "2026-11-08"
+            "UK": "2027-12-16", "Singapore": "2027-01-29", "India": "2027-02-05", "Taiwan": "2026-12-17"}
+VERIFIED_ON = "2026-11-11"
 
 # The People's Bank of China sets its loan prime rates on the 20th (next business day if a weekend or holiday)
 LPR_NOTE = "1Y and 5Y loan prime rates, 09:00 Beijing time on the 20th (moved to the next business day if it falls on a weekend or holiday)"
@@ -312,6 +329,8 @@ def fred_release_dates(codes: list[str], key: str, start: dt.date, end: dt.date)
 # ---------------------------------------------------------------- build
 def build(fred_key: str | None, asia: dict[str, pd.Series], status: dict) -> None:
     print("Economic calendar")
+    tw = load_existing("taiwan.json")   # Taiwan numbers live in their own file (DGBAS)
+    asia = {**asia, **{k: unpack(v) for k, v in tw.items() if not k.startswith("_") and isinstance(v, dict) and v.get("d")}}
     today = dt.date.today()
     start, end = today - dt.timedelta(days=LOOKBACK_DAYS), today + dt.timedelta(days=HORIZON_DAYS)
     old = load_existing("calendar.json")

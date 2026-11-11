@@ -5531,7 +5531,7 @@ function renderFedPath() { fpKpis(); ['fp_path', 'fp_years', 'fp_table', 'fp_bar
 // ------------------------------------------------------------------ ECONOMIC CALENDAR
 let CAL = null;
 const CAL_VIEWS = [['This week', 'this'], ['Next week', 'next'], ['Later', 'later'], ['Recent results', 'past']];
-const CAL_REGIONS = ['Malaysia', 'Singapore', 'Australia', 'US', 'China', 'Japan', 'Korea', 'Euro area', 'UK'];
+const CAL_REGIONS = ['Malaysia', 'Singapore', 'Australia', 'US', 'China', 'Japan', 'Korea', 'Taiwan', 'India', 'Euro area', 'UK'];
 state.calRegions = new Set(CAL_REGIONS); state.calKey = false;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayMs = s => Date.parse(s + 'T00:00:00Z');
@@ -5655,9 +5655,9 @@ function renderCalNext(c) {
     .sort((x, y) => (x.day - y.day) || (x.e.sgt || '99').localeCompare(y.e.sgt || '99'));
   const [tbl, tb, csv] = calTable(list, today, { compact: true });
   b.append(el('div', { class: 'table-wrap' }, tbl));
-  // at most 12 events here; the full week is one click away
+  // at most 9 events here; the full week is one click away
   const rows = [...tb.querySelectorAll(':scope > tr')]; let n = 0, cut = false;
-  for (const r of rows) { if (!r.classList.contains('grp')) n++; if (n > 12) { r.hidden = true; cut = true; } }
+  for (const r of rows) { if (!r.classList.contains('grp')) n++; if (n > 9) { r.hidden = true; cut = true; } }
   rows.filter(r => r.classList.contains('grp')).forEach(g => { let x = g.nextElementSibling, any = false; while (x && !x.classList.contains('grp')) { if (!x.hidden) any = true; x = x.nextElementSibling; } if (!any) g.hidden = true; });
   if (cut) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: `All ${list.length} events this week → Calendar`, onclick: () => setTab('calendar') }));
   c.csv = csv;
