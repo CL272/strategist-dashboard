@@ -311,6 +311,23 @@ Korea leading index 6-month change, Brent YoY, DXY YoY, KOSPI YoY.
 README (Asia ex-Japan row, sources), `tools/design-check.js` allow-list only if a deliberate exception is needed,
 PLAN.md status line. Check the live run: new OECD series loaded, Taiwan feed status in Data health.
 
+### WP17. Ramp token volume, spend and prices in more detail (owner's request, later; not now)
+
+**Status: to do later, after WP13 to WP16.** The AI → Business vs developers sub-tab now shows Ramp's token spend share
+and blended price only as small parts of two cards. The owner wants:
+1. **Token volume and spend by model maker** (OpenAI, Anthropic, Google, xAI, DeepSeek, Cursor and others): share of
+   token volume and share of token spend side by side, latest week and the trend as the weekly archive grows
+   (`RAMP_TOK_VOL_*`, `RAMP_TOK_SPEND_*` are already archived from 11 Nov 2026).
+2. **By model** where Ramp publishes it: first inspect the page payload (`_props` in `pipeline/ramp.py` keeps only the
+   chart object; search the full `self.__next_f` payload and the Tokenomics section for model-level rows such as
+   "Claude Sonnet" or "GPT-5"). If model-level data exists, scrape it into `RAMP_TOKM_*` and archive it; if not, say so
+   on the card and fall back to OpenRouter's model ranking for the model view.
+3. **Token prices, blended input and output**: Ramp's blended price per million tokens (overall, OpenAI, Anthropic),
+   with input and output shown separately if the page has them; next to OpenRouter's usage-weighted input price and,
+   if added to `pipeline/ai.py`, its output price, so the two are compared like for like.
+Layout: its own AI sub-tab ("Token market"), wide chart plus three half cards, ≤ 5 tiles; move `ai_vendor` and
+`ai_tokprice` there so the topic is in one place.
+
 ### Suggested order
 
 WP13 → WP15 → WP14 → WP16. WP13 and WP15 need no new source and no approvals, so Korea, India and the lead

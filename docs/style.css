@@ -737,3 +737,8 @@ table.asset-table tr.grp td { padding-top: 10px; }
 /* WP8: 1-year range bar in the rating ladder */
 .rbar { position: relative; display: inline-block; width: 110px; height: 6px; border-radius: 3px; background: var(--wash); vertical-align: middle; }
 .rbar i { position: absolute; top: -3px; width: 4px; height: 12px; margin-left: -2px; border-radius: 2px; background: var(--ink); }
+
+/* lead tables on Asia ex-Japan → What leads: names wrap so every column fits a half-width card */
+table.llt td:first-child { white-space: normal; min-width: 9em; }
+table.llt td, table.llt th { padding-left: 6px; padding-right: 6px; }
+table.llt td:last-child { white-space: nowrap; }

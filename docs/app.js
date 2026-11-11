@@ -2514,10 +2514,11 @@ function buildAsia() {
 const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
   'aurates', 'auinfl', 'audiff', 'augrowth', 'autot', 'ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf', 'asiafx', 'asiaidx'];
 const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'], Singapore: ['3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
-  Australia: ['RBA cash rate', 'Australia 10Y yield'] };
+  Australia: ['RBA cash rate', 'Australia 10Y yield'], Korea: ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'],
+  India: ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'], 'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'] };
 const ASIA_KPI_MIX = ['Malaysia OPR', 'USD/MYR', '3M compounded SORA', 'USD/SGD', 'RBA cash rate', 'Australia 10Y yield'];
 function renderAsia() {
-  regionKpis();
+  regionKpis(); asiaMoreKpis();
   const [lab, , grp] = SUBTABS.asia[state.sub.asia || 0], sub = grp === 'Malaysia' ? 'Malaysia' : lab, cj = lab === 'China';
   filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? '*' : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
   $('#asiaKpis').hidden = cj; $('#cnjpKpis').hidden = !cj;
@@ -2615,6 +2616,236 @@ function renderCnSpread(c) {
   setSource(c, srcOf(['UST10Y', 'CN_10Y', 'USDCNY']) + '; spread calculated');
   setNote(c, 'China 10Y is a monthly average (OECD); UST 10Y daily, matched to the month. A US yield advantage over China puts weakening pressure on the yuan.');
 }
+// ------------------------------------------------------------------ ASIA EX-JAPAN: Korea, India, What leads
+// Lead tests run live on the loaded history. A pair is called a lead only if: lead ≥ 2 months, |corr| ≥ 0.40 and at
+// least 0.05 above the same-month figure, and the same sign (|corr| ≥ 0.25) in each half of the history.
+function llCorrAt(A, B, k, lo = -Infinity, hi = Infinity) {
+  const x = [], y = [];
+  for (const [t, v] of A) { if (t < lo || t >= hi) continue; const w = B.get(addMonths(t, k)); if (w != null) { x.push(v); y.push(w); } }
+  return x.length >= 36 ? pearson(x, y) : null;
+}
+const PUB_LAG = id => /^CLI_|^BCI_/.test(id) ? 2 : /^MY_LEAD/.test(id) ? 3 : S[id] && /Yahoo/.test(S[id].source || '') ? 0 : /^(UST|DXY|BRENT|SOX|COPPER)/.test(id) ? 0 : 1;
+function leadStats(a, ma, b, mb, k) {
+  if (!has(a, b)) return null;
+  const A = llSeries(a, ma), B = llSeries(b, mb), ts = [...A.keys()].filter(t => B.has(addMonths(t, k))).sort((p, q) => p - q);
+  if (ts.length < 72) return null;
+  const mid = ts[Math.floor(ts.length / 2)], rk = llCorrAt(A, B, k), r0 = llCorrAt(A, B, 0), h1 = llCorrAt(A, B, k, -Infinity, mid), h2 = llCorrAt(A, B, k, mid, Infinity);
+  let rev = null; for (let j = 1; j <= 12; j++) { const r = llCorrAt(B, A, j); if (r != null && (!rev || Math.abs(r) > Math.abs(rev.r))) rev = { k: j, r }; }
+  const sg = Math.sign(rk || 0), ok = rk != null && r0 != null && h1 != null && h2 != null && k >= 2 && Math.abs(rk) >= 0.4 && Math.abs(rk) - Math.abs(r0) >= 0.05
+    && Math.sign(h1) === sg && Math.sign(h2) === sg && Math.abs(h1) >= 0.25 && Math.abs(h2) >= 0.25;
+  const verdict = ok ? 'Leads' : rev && Math.abs(rev.r) >= 0.4 && Math.abs(rev.r) > Math.max(Math.abs(rk || 0), Math.abs(r0 || 0)) + 0.05 ? 'Market leads the data'
+    : Math.abs(r0 || 0) >= 0.4 ? 'Moves together' : 'Weak link';
+  return { k, rk, r0, h1, h2, n: ts.length, from: ts[0], rev, ok, verdict, usable: Math.max(0, k - PUB_LAG(a)) };
+}
+const cF = v => v == null ? '–' : corrF(v);
+function leadNote(st, aLab, bLab) {
+  if (!st) return 'Not enough overlapping history to test a lead.';
+  const yrs = Math.round(st.n / 12);
+  if (st.ok) { const lag = PUB_LAG(st.a || '');
+    return `Over ${yrs} years, ${aLab} has led ${bLab} by ${st.k} months: correlation ${cF(st.rk)} against ${cF(st.r0)} in the same month, and ${cF(st.h1)} / ${cF(st.h2)} in each half of the history.`
+      + (lag ? ` It is published about ${lag} month${lag === 1 ? '' : 's'} after the month, so the usable lead is about ${st.usable} month${st.usable === 1 ? '' : 's'}.` : ''); }
+  return `Not a reliable lead on this history (${yrs} years): ${cF(st.rk)} at ${st.k} months against ${cF(st.r0)} in the same month; halves ${cF(st.h1)} / ${cF(st.h2)}. Read it as ${st.verdict === 'Market leads the data' ? 'the market leading the data' : 'moving together'}, not as a signal.`;
+}
+const LL_CAVEAT = 'The OECD leading indices are revised after the fact, smoothed and partly built from share prices, so the real-time lead is shorter than the history suggests; year-on-year changes overlap month to month, which flatters correlations.';
+const llFmtF = mode => v => mode === 'yoy' ? pctF1(v) : mode === 'level' ? fmtNum(v, 1) : sign(v) + fmtNum(Math.abs(v), 2);
+const llAxF = mode => v => fmtNum(v, mode === 'level' ? 0 : 1) + (mode === 'yoy' ? '%' : '');
+// a dual-axis lead card with an "As measured / Lead +km" toggle
+function leadCard(key, a, b, k, intro) {   // a, b = [id, mode, name]
+  state[key] = String(k);
+  return { seg: { key, options: [['0', 'As measured'], [String(k), `Lead +${k}m`]] }, render: c => {
+    if (!has(a[0], b[0])) return setEmpty(c, 'Waiting for data.');
+    leadPair(c, a, b, +state[key] || 0, { fmtA: llFmtF(a[1]), fmtB: llFmtF(b[1]), axisA: llAxF(a[1]), axisB: llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
+    const st = leadStats(a[0], a[1], b[0], b[1], k);
+    setNote(c, (intro ? intro + ' ' : '') + leadNote(st && { ...st, a: a[0] }, a[2].replace(/,.*$/, ''), b[2].replace(/,.*$/, '')) + (+state[key] ? ` The first series is drawn ${k} months later than measured; the part past today hints at the months ahead. ` : ' ') + (/^CLI_/.test(a[0]) ? LL_CAVEAT : ''));
+    setSource(c, srcOf([a[0], b[0]]));
+  } };
+}
+function rebasedLines(c, list, note) {   // list = [[series, name]]
+  const L = list.filter(([s]) => s && s.t && s.t.length).map(([s, name]) => ({ name, data: rebase(s, state.from, state.to) })).filter(x => x.data.length);
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }] });
+  c.subEl.textContent = `Each = 100 on ${nice(state.from)}.`;
+  if (note) setNote(c, note);
+}
+function segLines(c, key, sets, fmt, axisFmt, opts = {}) {   // sets: { option: [ids] }
+  const ids = (sets[state[key]] || Object.values(sets)[0]).filter(id => has(id));
+  if (!ids.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i), extra: S[id].freq === 'Q' ? { step: 'end' } : {} })), { fmt, axisFmt, endLabels: false, ...opts });
+  setSource(c, srcOf(ids));
+}
+function buildAsiaMore() {
+  const g = $('#asiaGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
+  // Korea
+  g.append(el('h3', { class: 'section', text: 'Korea' }));
+  makeCard(g, { key: 'kr_mkt', title: 'KOSPI vs Asia ex-Japan', defaultRange: '3Y', render: c => {
+    rebasedLines(c, [[S.KOSPI, 'KOSPI (won)'], [has('KOSPI') && inCcy('KOSPI', 'USD'), 'KOSPI in US dollars'], [S.AAXJ, 'Asia ex-Japan (AAXJ, USD)'], [S.SOX, 'SOX (chip stocks, USD)']]);
+    const st = leadStats('SOX', 'yoy', 'KOSPI', 'yoy', 2);
+    setNote(c, `KOSPI is a chip market: Samsung and SK hynix are about a third of it.${st ? ` Its yearly return has moved with the SOX in the same month (correlation ${cF(st.r0)} since ${new Date(st.from).getUTCFullYear()}).` : ''}`);
+    setSource(c, 'Yahoo Finance (^KS11, AAXJ, ^SOX), converted at daily USD/KRW'); } });
+  makeCard(g, { key: 'kr_lead', title: 'Leading index vs KOSPI', defaultRange: '10Y',
+    ...leadCard('krLeadK', ['CLI_KOR', 'chg6', 'Korea leading index, 6-month change'], ['KOSPI', 'yoy', 'KOSPI, % YoY'], 4) });
+  makeCard(g, { key: 'kr_trade', title: 'Korea: exports, imports and chips', defaultRange: '5Y', render: c => {
+    const L = ['KR_EXP_YOY', 'KR_IMP_YOY'].filter(id => has(id)).map(id => ({ name: S[id].label, data: pts(S[id], state.from, state.to) }));
+    if (has('KR_CHIP_EXP')) L.push({ name: 'Chip exports YoY (UN Comtrade, lags)', data: pts(yoyOf('KR_CHIP_EXP'), state.from, state.to) });
+    if (!L.length) return setEmpty(c, 'Waiting for data.');
+    drawLines(c, L, { fmt: pctF1, axisFmt: a0, zero: true, endLabels: false });
+    const m = leadStats('KOSPI', 'yoy', 'KR_EXP_YOY', 'level', 4), d = leadStats('DXY', 'yoy', 'KR_EXP_YOY', 'level', 4);
+    setNote(c, `Korea reports trade first in Asia each month. But the market moves first: KOSPI has led exports by about 4 months (correlation ${cF(m && m.rk)}), so exports confirm a KOSPI move rather than predict it. A strong US dollar has led weaker exports by about 4 months (${cF(d && d.rk)}).`);
+    setSource(c, 'OECD Main Economic Indicators (KOR EX, IM); UN Comtrade (HS 8542); Yahoo Finance'); } });
+  makeCard(g, { key: 'kr_infl', title: 'Korea: inflation and policy', defaultRange: '10Y', render: c => {
+    if (!has('KR_CPI_YOY')) return setEmpty(c, 'Waiting for data.');
+    lines(c, ['KR_CPI_YOY', 'KR_CALL'], p1, a0, { hlines: [{ y: 2, label: 'BoK 2% target' }], endLabels: false });
+    const st = leadStats('BRENT', 'yoy', 'KR_CPI_YOY', 'level', 7);
+    setNote(c, `The overnight call rate tracks the Bank of Korea base rate. ${st && st.ok ? `Oil has led Korean inflation by about 7 months (correlation ${cF(st.rk)}), so today’s Brent move shows up in CPI by next spring or so.` : 'Oil is the main swing factor in Korean inflation.'}`);
+    setSource(c, 'OECD Main Economic Indicators (KOR CP, IRSTCI)'); } });
+  makeCard(g, { key: 'kr_rates', title: 'Korean yields vs US Treasuries', defaultRange: '10Y', render: c => {
+    lines(c, ['KR_10Y', 'KR_3M', 'UST10Y'], p2, p1, { endLabels: false });
+    const st = leadStats('UST10Y', 'chg', 'KR_10Y', 'chg', 1);
+    setNote(c, `Korean 10Y yields move with Treasuries in the same month${st ? ` (12-month changes correlate ${cF(st.r0)})` : ''}; no Korean data point tested here leads them reliably. Korean yields are monthly averages (OECD).`);
+    setSource(c, 'OECD Main Economic Indicators (KOR IRLT, IR3TIB); US Treasury'); } });
+  state.krAct = 'out';
+  makeCard(g, { key: 'kr_act', title: 'Korea: activity', defaultRange: '10Y', seg: { key: 'krAct', options: [['out', 'Output'], ['conf', 'Confidence']] }, render: c => {
+    const o = state.krAct === 'out';
+    segLines(c, 'krAct', { out: ['KR_IP_YOY', 'KR_RETAIL_YOY', 'KR_GDP_YOY'], conf: ['KR_BCI', 'KR_CCI'] }, o ? pct1 : v => fmtNum(v, 1), o ? a0 : v => fmtNum(v, 0), { zero: true });
+    setNote(c, o ? 'Industrial production and retail sales volume, year-on-year %; real GDP year-on-year (quarterly, stepped).' : 'OECD business and consumer confidence balances (0 = long-run average). Confidence moves with KOSPI rather than ahead of it.'); } });
+  // India
+  g.append(el('h3', { class: 'section', text: 'India' }));
+  makeCard(g, { key: 'in_mkt', title: 'Nifty 50 vs Asia ex-Japan', defaultRange: '3Y', render: c => {
+    rebasedLines(c, [[S.NIFTY, 'Nifty 50 (rupees)'], [has('NIFTY') && inCcy('NIFTY', 'USD'), 'Nifty 50 in US dollars'], [S.AAXJ, 'Asia ex-Japan (AAXJ, USD)']]);
+    const st = leadStats('USDINR', 'yoy', 'NIFTY', 'yoy', 1);
+    setNote(c, `India is a domestic-demand market, less tied to the chip cycle than Korea or Taiwan.${st ? ` A weaker rupee has gone with a weaker Nifty in the same month (correlation ${cF(st.r0)}).` : ''}`);
+    setSource(c, 'Yahoo Finance (^NSEI, AAXJ), converted at daily USD/INR'); } });
+  makeCard(g, { key: 'in_oil', title: 'Oil vs India 10Y yield', defaultRange: '10Y',
+    ...leadCard('inOilK', ['BRENT', 'yoy', 'Brent oil, % YoY'], ['IN_10Y', 'chg', 'India 10Y yield, 12-month change (pts)'], 2,
+      'India imports most of its oil, so oil feeds inflation, the rupee and the fiscal bill.') });
+  makeCard(g, { key: 'in_infl', title: 'India: inflation and policy', defaultRange: '10Y', render: c => {
+    if (!has('IN_CPI_YOY')) return setEmpty(c, 'Waiting for data.');
+    lines(c, ['IN_CPI_YOY', 'IN_CALL'], p1, a0, { hlines: [{ y: 4, label: 'RBI 4% target' }, { y: 6, label: '6% ceiling' }, { y: 2, label: '2% floor' }], endLabels: false });
+    setNote(c, 'The RBI targets 4% CPI inflation within a 2–6% band. The overnight call rate tracks the repo rate. CPI has not led Indian yields on this history.');
+    setSource(c, 'OECD Main Economic Indicators (IND CP, IRSTCI)'); } });
+  makeCard(g, { key: 'in_rates', title: 'Indian yields vs US Treasuries', defaultRange: '10Y', render: c => {
+    lines(c, ['IN_10Y', 'IN_3M', 'UST10Y'], p2, p1, { endLabels: false });
+    const st = leadStats('UST10Y', 'chg', 'IN_10Y', 'chg', 1);
+    setNote(c, `Indian 10Y yields also move with Treasuries in the same month${st ? ` (12-month changes correlate ${cF(st.r0)})` : ''}; oil is the one series tested that leads them (see Oil vs India 10Y yield).`);
+    setSource(c, 'OECD Main Economic Indicators (IND IRLT, IR3TIB); US Treasury'); } });
+  state.inAct = 'out';
+  makeCard(g, { key: 'in_act', title: 'India: activity and trade', defaultRange: '10Y', seg: { key: 'inAct', options: [['out', 'Output'], ['trade', 'Trade']] }, render: c => {
+    const o = state.inAct === 'out';
+    segLines(c, 'inAct', { out: ['IN_IP_YOY', 'IN_MFG_YOY', 'IN_GDP_YOY'], trade: ['IN_EXP_YOY', 'IN_IMP_YOY'] }, pct1, a0, { zero: true });
+    setNote(c, o ? 'Industrial production and manufacturing output, year-on-year %; real GDP year-on-year (quarterly, stepped).' : 'Merchandise exports and imports in US dollars, seasonally adjusted, year-on-year %.'); } });
+  makeCard(g, { key: 'in_lead', title: 'Leading index vs Nifty 50', defaultRange: '10Y',
+    ...leadCard('inLeadK', ['CLI_IND', 'chg6', 'India leading index, 6-month change'], ['NIFTY', 'yoy', 'Nifty 50, % YoY'], 5) });
+  // What leads
+  g.append(el('h3', { class: 'section', text: 'What leads' }));
+  makeCard(g, { key: 'asia_now', title: 'Leading index momentum now', wide: true, range: false, render: renderAsiaNow });
+  makeCard(g, { key: 'asia_ll', title: 'What has led what', range: false, render: renderAsiaLL });
+  makeCard(g, { key: 'asia_llchart', title: 'The selected pair', defaultRange: '10Y', render: renderAsiaLLChart });
+  makeCard(g, { key: 'asia_mktlead', title: 'Where the market leads the data', range: false, render: renderAsiaMktLead });
+  state.oilT = 'in10';
+  makeCard(g, { key: 'asia_oil', title: 'Oil into Asian inflation and yields', defaultRange: '10Y',
+    seg: { key: 'oilT', options: [['in10', 'India 10Y'], ['krcpi', 'Korea CPI'], ['sgcore', 'Singapore core'], ['mycpi', 'Malaysia CPI']] }, render: renderAsiaOil });
+  for (const k of ['asia_ll', 'asia_mktlead']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+// indicator, mode, target, mode, lead (months), what the indicator is, what it leads
+const ASIA_LL = [
+  ['CLI_KOR', 'chg6', 'TWSE', 'yoy', 5], ['CLI_KOR', 'chg6', 'KOSPI', 'yoy', 4], ['CLI_IDN', 'chg6', 'JCI', 'yoy', 4], ['CLI_IND', 'chg6', 'NIFTY', 'yoy', 5],
+  ['CLI_CHN', 'chg6', 'COPPER', 'yoy', 7], ['MY_LEAD_DIFF', 'level', 'KLCI', 'yoy', 4], ['BRENT', 'yoy', 'IN_10Y', 'chg', 2], ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 7],
+  ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['KR_3M', 'chg', 'KOSPI', 'yoy', 8], ['CLI_CHN', 'chg6', 'HSI', 'yoy', 5],
+  ['UST10Y', 'chg', 'KR_10Y', 'chg', 1], ['UST10Y', 'chg', 'IN_10Y', 'chg', 1], ['SOX', 'yoy', 'TWSE', 'yoy', 1],
+];
+const SHORT = { CLI_KOR: 'Korea leading index', CLI_IDN: 'Indonesia leading index', CLI_IND: 'India leading index', CLI_CHN: 'China leading index', MY_LEAD_DIFF: 'Malaysia leading diffusion',
+  BRENT: 'Brent oil', DXY: 'US dollar', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
+  COPPER: 'Copper', KLCI: 'KLCI', IN_10Y: 'India 10Y', KR_CPI_YOY: 'Korea CPI', SG_CORE_YOY: 'Singapore core CPI', KR_EXP_YOY: 'Korea exports', HSI: 'Hang Seng', KR_10Y: 'Korea 10Y',
+  STI: 'STI', SG_NODX_YOY: 'Singapore NODX', MY_EXPORTS_YOY: 'Malaysia exports', CN_EXP_YOY: 'China exports', MY_CPI_YOY: 'Malaysia CPI' };
+const shortOf = id => SHORT[id] || (S[id] ? S[id].label : id);
+state.asiaLLsel = 0;
+function llLatest(id, mode) { const m = llSeries(id, mode), ks = [...m.keys()].sort((a, b) => a - b); return ks.length ? { t: ks[ks.length - 1], v: m.get(ks[ks.length - 1]) } : null; }
+function renderAsiaLL(c) {
+  const b = htmlBody(c), heads = ['Indicator → target', 'Lead', 'Corr.', 'Verdict · now'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  ASIA_LL.forEach((p, i) => {
+    const st = leadStats(p[0], p[1], p[2], p[3], p[4]); if (!st) return;
+    const now = llLatest(p[0], p[1]), dir = now ? (now.v > 0 ? '↑' : now.v < 0 ? '↓' : '→') : '–';
+    const pointer = st.ok && now ? ((now.v > 0) === (st.rk > 0) ? '· up' : '· down') : '';
+    const both = st.h1 != null && st.h2 != null && Math.sign(st.h1) === Math.sign(st.h2) && Math.abs(st.h1) >= 0.25 && Math.abs(st.h2) >= 0.25 ? 'yes' : 'no';
+    const row = el('tr', { class: 'row' + (i === state.asiaLLsel ? ' sel' : ''), style: 'cursor:pointer', title: `Same month ${cF(st.r0)} · halves ${cF(st.h1)} / ${cF(st.h2)} (stable in both: ${both}) · ${st.n} months from ${monthLab(st.from)}. Click to chart.`,
+      onclick: () => { state.asiaLLsel = i; cards.asia_ll.render(); cards.asia_llchart.render(); } },
+      el('td', { text: `${shortOf(p[0])} → ${shortOf(p[2])}` }), el('td', { class: 'num', text: p[4] + 'm' }), el('td', { class: 'num', text: cF(st.rk) }),
+      el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), text: st.ok ? `Leads ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
+    tb.append(row); csv.push([`${shortOf(p[0])} → ${shortOf(p[2])}`, p[4], st.rk, st.r0, both, st.ok ? st.usable : '', now ? now.v : '', st.verdict]);
+  });
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, '"Leads" = lead of at least 2 months, correlation at least 0.40 and above the same-month figure, and the same sign in both halves of the history. "Usable" = lead minus the publication delay. The arrow is the indicator’s latest direction; "up" or "down" is where the target has tended to go next. Hover a row for the same-month and half-sample figures; click it to chart. ' + LL_CAVEAT);
+  setSource(c, 'Calculated on OECD, DOSM, Yahoo Finance and US Treasury data; monthly');
+}
+function renderAsiaLLChart(c) {
+  const p = ASIA_LL[state.asiaLLsel] || ASIA_LL[0];
+  if (!has(p[0], p[2])) return setEmpty(c, 'Waiting for data.');
+  c.root.querySelector('.card-head h2').textContent = `${shortOf(p[0])} → ${shortOf(p[2])}`;
+  leadPair(c, [p[0], p[1], llLabel(p[0], p[1])], [p[2], p[3], llLabel(p[2], p[3])], p[4], { fmtA: llFmtF(p[1]), fmtB: llFmtF(p[3]), axisA: llAxF(p[1]), axisB: llAxF(p[3]), zeroA: p[1] !== 'level', zeroB: p[3] !== 'level' });
+  const st = leadStats(p[0], p[1], p[2], p[3], p[4]);
+  setNote(c, leadNote(st && { ...st, a: p[0] }, shortOf(p[0]), shortOf(p[2])) + ` The first series is drawn ${p[4]} month${p[4] === 1 ? '' : 's'} later than measured.`);
+  setSource(c, srcOf([p[0], p[2]]));
+}
+const MKT_LEAD = [['KOSPI', 'KR_EXP_YOY', 4], ['TWSE', 'KR_EXP_YOY', 2], ['STI', 'SG_NODX_YOY', 3], ['KLCI', 'MY_EXPORTS_YOY', 4], ['HSI', 'CN_EXP_YOY', 3]];
+function renderAsiaMktLead(c) {
+  const b = htmlBody(c), heads = ['Market → data', 'Lead', 'Corr.', 'Same month', 'Reverse'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  for (const [m, d, k] of MKT_LEAD) { const st = leadStats(m, 'yoy', d, 'level', k), rv = leadStats(d, 'level', m, 'yoy', k); if (!st) continue;
+    tb.append(el('tr', { class: 'row' }, el('td', { text: `${shortOf(m)} → ${shortOf(d)}` }), el('td', { class: 'num', text: k + 'm' }), el('td', { class: 'num', text: cF(st.rk) }),
+      el('td', { class: 'num muted', text: cF(st.r0) }), el('td', { class: 'num muted', text: rv ? cF(rv.rk) : '–' })));
+    csv.push([`${shortOf(m)} → ${shortOf(d)}`, k, st.rk, st.r0, rv ? rv.rk : '']); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, 'Equity markets turn before the export data they are usually explained by: the yearly return leads export growth by 2 to 4 months. Treat strong exports as confirmation of a move already in prices, not as a buy signal. Last column: the same lead the other way round, for comparison.');
+  setSource(c, 'Calculated on Yahoo Finance, OECD, SingStat and DOSM data; monthly');
+}
+const OIL_T = { in10: ['IN_10Y', 'chg', 2, 'India 10Y yield, 12-month change'], krcpi: ['KR_CPI_YOY', 'level', 7, 'Korea CPI, % YoY'], sgcore: ['SG_CORE_YOY', 'level', 8, 'Singapore core inflation, %'], mycpi: ['MY_CPI_YOY', 'level', 2, 'Malaysia CPI, % YoY'] };
+function renderAsiaOil(c) {
+  const [id, mode, k, lab] = OIL_T[state.oilT] || OIL_T.in10;
+  if (!has('BRENT', id)) return setEmpty(c, 'Waiting for data.');
+  leadPair(c, ['BRENT', 'yoy', 'Brent oil, % YoY'], [id, mode, lab], k, { fmtA: pctF1, fmtB: llFmtF(mode), axisA: v => fmtNum(v, 0) + '%', axisB: llAxF(mode), zeroA: true, zeroB: mode !== 'level' });
+  const st = leadStats('BRENT', 'yoy', id, mode, k), now = llLatest('BRENT', 'yoy');
+  setNote(c, `Brent is drawn ${k} months later than measured. ${leadNote(st && { ...st, a: 'BRENT' }, 'Brent oil', shortOf(id))}${now ? ` Brent is ${pctF1(now.v)} on a year now.` : ''}`);
+  setSource(c, srcOf(['BRENT', id]));
+}
+const NOW_CLI = [['CLI_KOR', 'chg6', 'Korea', 'led Taiwan Weighted ~5m, KOSPI ~4m'], ['CLI_IND', 'chg6', 'India', 'led Nifty 50 ~5m (modest)'], ['CLI_IDN', 'chg6', 'Indonesia', 'led Jakarta Composite ~4m'],
+  ['CLI_CHN', 'chg6', 'China', 'led copper ~7m'], ['MY_LEADING', 'chg6p', 'Malaysia (DOSM)', 'diffusion led KLCI ~4m']];
+function nowCli(id, mode) {
+  if (!has(id)) return null;
+  if (mode === 'chg6p') { const m = llSeries(id, 'level'), ks = [...m.keys()].sort((a, b) => a - b), t = ks[ks.length - 1], p = m.get(addMonths(t, -6)); return p ? { t, v: (m.get(t) / p - 1) * 100 } : null; }
+  return llLatest(id, mode);
+}
+function renderAsiaNow(c) {
+  const rows = NOW_CLI.map(([id, mode, name, led]) => ({ name, led, x: nowCli(id, mode), id })).filter(r => r.x);
+  if (!rows.length) return setEmpty(c, 'Waiting for data.');
+  const o = baseOpt(); o.grid.left = 8; o.grid.top = 10; o.legend.show = false;
+  o.yAxis = { type: 'category', inverse: true, data: rows.map(r => `${r.name} · ${monthLab(r.x.t)}`), axisLabel: { color: tok('--ink-2') }, axisTick: { show: false }, axisLine: { show: false } };
+  o.xAxis = valAxis(v => fmtNum(v, 1)); o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => sign(v) + fmtNum(Math.abs(v), 2) };
+  o.series = [{ type: 'bar', barWidth: '55%', data: rows.map(r => ({ value: +r.x.v.toFixed(2), itemStyle: { color: r.x.v >= 0 ? tok('--pos') : tok('--neg') } })),
+    label: { show: true, position: 'right', color: tok('--muted'), fontSize: 11, formatter: p => rows[p.dataIndex].led } }];
+  inst(c).setOption(o, true);
+  const up = rows.filter(r => r.x.v > 0).length;
+  setNote(c, `${up} of ${rows.length} leading indices are rising over six months. 6-month change of each OECD leading index (points; Malaysia: % change of the DOSM leading index). Rising = the economy is gaining momentum; on this history that has come before stronger local equities, by the lead shown beside each bar. ` + LL_CAVEAT);
+  setSource(c, 'OECD Composite Leading Indicators; DOSM via OpenDOSM');
+  c.csv = [['Economy', 'Month', '6-month change', 'History'], ...rows.map(r => [r.name, monthLab(r.x.t), r.x.v, r.led])];
+}
+function asiaMoreKpis() {
+  const box = $('#asiaKpis'), tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  const eq = (id, l) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to), b = asOf(s, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)); tile(l, fmtNum(a.v, 0), b ? `YTD ${fmtChg(s, chg(s, b.v, a.v))}` : '', 'Yahoo Finance · ' + nice(a.t)); };
+  const fx = (id, l) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -1)); tile(l, fmtNum(a.v, a.v > 100 ? 1 : 3), `1M ${fmtChg(s, chg(s, b.v, a.v))}`, 'Yahoo Finance · ' + nice(a.t)); };
+  const yl = (id, l) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -3)); tile(l, fmtNum(a.v, 2) + '%', b ? `3M ${fmtChg(s, chg(s, b.v, a.v))}` : '', 'OECD · ' + monthLab(a.t)); };
+  const lv = (id, l, foot) => { if (!has(id)) return; const a = asOf(S[id], state.to); tile(l, pctF1(a.v), foot, 'OECD · ' + (S[id].freq === 'Q' ? 'quarter to ' : '') + monthLab(a.t)); };
+  eq('KOSPI', 'KOSPI'); fx('USDKRW', 'USD/KRW'); yl('KR_10Y', 'Korea 10Y yield'); lv('KR_CPI_YOY', 'Korea CPI', 'year-on-year'); lv('KR_EXP_YOY', 'Korea exports', 'year-on-year, USD');
+  eq('NIFTY', 'Nifty 50'); fx('USDINR', 'USD/INR'); yl('IN_10Y', 'India 10Y yield'); lv('IN_CPI_YOY', 'India CPI', 'RBI target 4%'); lv('IN_GDP_YOY', 'India GDP', 'real, year-on-year');
+  const rows = NOW_CLI.map(([id, mode]) => nowCli(id, mode)).filter(Boolean);
+  if (rows.length) tile('Leading indices rising', `${rows.filter(r => r.v > 0).length} of ${rows.length}`, 'six-month change', 'OECD, DOSM');
+  const k = nowCli('CLI_KOR', 'chg6'); if (k) tile('Korea leading index', sign(k.v) + fmtNum(Math.abs(k.v), 2) + ' pts', '6-month change; led Taiwan ~5m', 'OECD · ' + monthLab(k.t));
+  const br = llLatest('BRENT', 'yoy'); if (br) tile('Brent, YoY', pctF1(br.v), 'led India 10Y ~2m, Korea CPI ~7m', 'month-end ' + monthLab(br.t));
+  const dx = llLatest('DXY', 'yoy'); if (dx) tile('US dollar (DXY), YoY', pctF1(dx.v), 'strong dollar led weaker Korea exports', 'month-end ' + monthLab(dx.t));
+}
+
 function buildCnJp() {
   const g = $('#asiaGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
   g.append(el('h3', { class: 'section', text: 'China' }));
@@ -4083,6 +4314,13 @@ const LL_PAIRS = [
   ['BCI_USA', 'level', 'SG_NODX_YOY', 'level', 'US business confidence → Singapore NODX'],
   ['LH_SPX', 'yoy', 'BCI_USA', 'level', 'S&P 500 → US business confidence (the market leads)'],
   ['IRONORE', 'yoy', 'AUDUSD', 'yoy', 'Iron ore → Australian dollar'],
+  ['CLI_KOR', 'chg6', 'TWSE', 'yoy', 'Korea leading index → Taiwan equities'],
+  ['CLI_KOR', 'chg6', 'KOSPI', 'yoy', 'Korea leading index → KOSPI'],
+  ['CLI_IDN', 'chg6', 'JCI', 'yoy', 'Indonesia leading index → Jakarta Composite'],
+  ['CLI_IND', 'chg6', 'NIFTY', 'yoy', 'India leading index → Nifty 50'],
+  ['BRENT', 'yoy', 'IN_10Y', 'chg', 'Oil → India 10Y yield'],
+  ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 'Oil → Korea inflation'],
+  ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 'US dollar → Korea exports (inverse)'],
 ];
 const llCache = new Map();
 const llMode = id => S[id].kind === 'price' ? 'yoy' : S[id].kind === 'yield' ? 'chg' : 'level';
@@ -4091,7 +4329,7 @@ function llSeries(id, mode) {   // Map(month start -> value), gaps of up to 3 mo
   const me = monthEnds(S[id]), ks = [...me.keys()].sort((a, b) => a - b), raw = new Map();
   if (ks.length) { let last = null, gap = 9; for (let t = ks[0]; t <= ks[ks.length - 1]; t = addMonths(t, 1)) { if (me.has(t)) { last = me.get(t); gap = 0; } else gap++; if (last != null && gap <= 3) raw.set(t, last); } }
   let out = raw;
-  if (mode !== 'level') { out = new Map(); for (const [t, v] of raw) { const p = raw.get(addMonths(t, -12)); if (p != null && (mode === 'chg' || p !== 0)) out.set(t, mode === 'yoy' ? (v / p - 1) * 100 : v - p); } }
+  if (mode !== 'level') { const lag = mode === 'chg6' ? 6 : 12; out = new Map(); for (const [t, v] of raw) { const p = raw.get(addMonths(t, -lag)); if (p != null && (mode !== 'yoy' || p !== 0)) out.set(t, mode === 'yoy' ? (v / p - 1) * 100 : v - p); } }
   llCache.set(key, out); return out;
 }
 function llScan(a, ma, b, mb, max = 24) {   // correlation of A(t) with B(t+k), k = -max..max; k > 0 means A leads
@@ -4104,8 +4342,8 @@ function llScan(a, ma, b, mb, max = 24) {   // correlation of A(t) with B(t+k), 
   const best = ok.reduce((m, z) => Math.abs(z.r) > Math.abs(m.r) ? z : m), zero = res.find(z => z.k === 0);
   return { res, best, zero };
 }
-const llLabel = (id, mode) => S[id].label + (mode === 'yoy' ? ', YoY %' : mode === 'chg' ? ', 12m change' : '');
-const llFmt = mode => v => (mode === 'level' ? '' : sign(v)) + fmtNum(mode === 'level' ? v : Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + (mode === 'yoy' ? '%' : mode === 'chg' ? ' pts' : '');
+const llLabel = (id, mode) => S[id].label + (mode === 'yoy' ? ', YoY %' : mode === 'chg' ? ', 12m change' : mode === 'chg6' ? ', 6m change' : '');
+const llFmt = mode => v => (mode === 'level' ? '' : sign(v)) + fmtNum(mode === 'level' ? v : Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + (mode === 'yoy' ? '%' : mode === 'chg' || mode === 'chg6' ? ' pts' : '');
 state.ll = { a: 'LEI_6M', ma: 'level', b: 'REG_GM', mb: 'level', lag: 'best' };
 function llNow() { const L = state.ll; if (!has(L.a, L.b) || L.a === L.b) return null; const sc = llScan(L.a, L.ma, L.b, L.mb); if (!sc) return null;
   return { sc, k: L.lag === 'best' ? sc.best.k : +L.lag }; }
@@ -5319,8 +5557,8 @@ const SUBTABS = {
   australia: [['Economy', ['auinfl', 'augrowth', 'autot']], ['Rates & markets', ['aurates', 'au_eq', 'au_rba', 'audiff']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
-    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'],
-    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare']],
+    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
+    ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business vs developers', ['ai_ramp', 'ai_vendor', 'ai_tokprice', 'ai_rampspend', 'ai_rampsize']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
@@ -5635,6 +5873,9 @@ const TILE_SETS = {
   asia: {
     'Singapore': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
     'Asian FX': ['USD/MYR', 'USD/SGD', 'Malaysia OPR', '3M compounded SORA', 'RBA cash rate'],
+    'Korea': ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'],
+    'India': ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'],
+    'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'],
   },
   ai: {
     'Adoption': ['OpenRouter weekly tokens', 'Avg price paid', 'Avg cost per request', 'Frontier model'],
@@ -5770,7 +6011,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
