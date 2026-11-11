@@ -1,5 +1,10 @@
 # Design clean-up plan
 
+**Status (11 Nov 2026): D1–D9 built and published.** Departures from the plan: Where we are keeps all asset
+classes open (it is the one-screen snapshot) but shares the new table style; Positioning, Stress and Valuation tables
+are grouped and within budget, so they are not capped; Data health and the calendar already folded, so they are
+unchanged. Exceptions are listed in `tools/design-check.js`.
+
 Written 11 Nov 2026 after reviewing every page and sub-tab at 1440×900 (62 views). No new data in this
 plan: it is about making what exists calmer to look at and faster to find. Build in the order below, one
 package per commit, and re-measure after each (script in D9). `CLAUDE.md` rules still apply.

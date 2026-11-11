@@ -2313,7 +2313,7 @@ function renderNews() {
 function renderHeadlinesCard(c) {
   const b = htmlBody(c);
   if (!NEWS || !NEWS.items) { b.append(el('div', { class: 'empty', text: 'Headlines arrive with the next run.' })); return; }
-  b.append(newsList(NEWS.items, 10));
+  b.append(newsList(NEWS.items, 8));
   setNote(c, `Refreshed ${NEWS.updated_utc}. More on the News tab.`);
   setSource(c, 'Public RSS feeds: ' + Object.entries(NEWS.feeds || {}).filter(([, v]) => v.startsWith('ok')).map(([k]) => k).join(', '));
 }
@@ -5023,6 +5023,11 @@ function renderCalNext(c) {
     .sort((x, y) => (x.day - y.day) || (x.e.sgt || '99').localeCompare(y.e.sgt || '99'));
   const [tbl, tb, csv] = calTable(list, today, { compact: true });
   b.append(el('div', { class: 'table-wrap' }, tbl));
+  // at most 12 events here; the full week is one click away
+  const rows = [...tb.querySelectorAll(':scope > tr')]; let n = 0, cut = false;
+  for (const r of rows) { if (!r.classList.contains('grp')) n++; if (n > 12) { r.hidden = true; cut = true; } }
+  rows.filter(r => r.classList.contains('grp')).forEach(g => { let x = g.nextElementSibling, any = false; while (x && !x.classList.contains('grp')) { if (!x.hidden) any = true; x = x.nextElementSibling; } if (!any) g.hidden = true; });
+  if (cut) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: `All ${list.length} events this week → Calendar`, onclick: () => setTab('calendar') }));
   c.csv = csv;
   setNote(c, 'Estimated windows (Asian releases) are listed from today until the window closes.');
 }
