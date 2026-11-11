@@ -512,6 +512,8 @@ read ("growth up, inflation easing, equities lagging"). Click a row to open that
 
 ### WP25. Malaysia sectors (clients are mostly in Malaysia)
 
+*Built 12 Nov 2026: ten baskets (REITs added to the ticker list: Sunway REIT, IGB REIT, Axis REIT, KLCC Property); healthcare & gloves and consumer kept as defined; three sector tiles on the Malaysia tiles row.*
+
 Asia ex-Japan → Malaysia group → new sub-tab **Sectors**: equal-weight baskets from the Bursa ticker list (banks,
 plantations, technology, utilities, telecoms, REITs, oil and gas, construction, gloves and healthcare, consumer;
 add tickers to `pipeline/tickers.py` where a basket has fewer than 3 names): performance table (1M, 3M, YTD, against

@@ -2600,13 +2600,13 @@ function buildAsia() {
 }
 const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
   'aurates', 'auinfl', 'audiff', 'augrowth', 'autot', 'ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf', 'asiafx', 'asiaidx'];
-const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'], Singapore: ['3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
+const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index', 'Best sector (3M)', 'Worst sector (3M)', 'Sectors beating KLCI (3M)'], Singapore: ['3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
   Australia: ['RBA cash rate', 'Australia 10Y yield'], Korea: ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'],
   Taiwan: ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'],
   India: ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'], 'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'] };
 const ASIA_KPI_MIX = ['Malaysia OPR', 'USD/MYR', '3M compounded SORA', 'USD/SGD', 'RBA cash rate', 'Australia 10Y yield'];
 function renderAsia() {
-  regionKpis(); asiaMoreKpis();
+  regionKpis(); asiaMoreKpis(); mySectorTiles();
   const [lab, , grp] = SUBTABS.asia[state.sub.asia || 0], sub = grp === 'Malaysia' ? 'Malaysia' : lab, cj = lab === 'China';
   filterKpis('#asiaKpis', l => ASIA_KPI[sub] ? (ASIA_KPI[sub].includes(l) ? '*' : '') : (ASIA_KPI_MIX.includes(l) ? '*' : ''));
   $('#asiaKpis').hidden = cj; $('#cnjpKpis').hidden = !cj;
@@ -2761,6 +2761,96 @@ function segLines(c, key, sets, fmt, axisFmt, opts = {}) {   // sets: { option: 
   drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i), extra: S[id].freq === 'Q' ? { step: 'end' } : {} })), { fmt, axisFmt, endLabels: false, ...opts });
   setSource(c, srcOf(ids));
 }
+// ------------------------------------------------------------------ MALAYSIA SECTORS (WP25)
+// Equal-weight baskets of Bursa large caps from the ticker list (about 3 years of daily history).
+const MY_SECTORS = [
+  ['MYS_BANKS', 'Banks', ['1155.KL', '1295.KL', '1023.KL', '1066.KL', '5819.KL', '1015.KL']],
+  ['MYS_PLANT', 'Plantations', ['1961.KL', '2445.KL', '5285.KL']],
+  ['MYS_TECH', 'Technology', ['0166.KL', '0097.KL', '3867.KL']],
+  ['MYS_UTIL', 'Utilities', ['5347.KL', '6033.KL', '6742.KL', '4677.KL']],
+  ['MYS_TELCO', 'Telecoms', ['6012.KL', '6947.KL', '4863.KL', '6888.KL']],
+  ['MYS_REIT', 'REITs', ['5176.KL', '5227.KL', '5106.KL', '5235SS.KL']],
+  ['MYS_OG', 'Oil & gas', ['5183.KL', '3816.KL', '5681.KL', '7277.KL']],
+  ['MYS_CONS', 'Construction & property', ['5398.KL', '5211.KL', '5249.KL', '8664.KL']],
+  ['MYS_HEALTH', 'Healthcare & gloves', ['5225.KL', '7113.KL', '5168.KL']],
+  ['MYS_CONSUMER', 'Consumer', ['4707.KL', '7084.KL', '5296.KL', '4715.KL']],
+];
+function buildMySectorBaskets() { for (const [id, name, syms] of MY_SECTORS) addBasket(id, syms, `Malaysia ${name.toLowerCase()} basket`, 'MYR'); }
+const myRet = (id, back) => { if (!S[id]) return null; const a = asOf(S[id], state.latest); if (!a) return null; const b = asOf(S[id], back(a.t)); return b && b.v && a.t - b.t < 400 * DAY ? (a.v / b.v - 1) * 100 : null; };
+const MY_PERIODS = [['1M', t => addMonths(t, -1)], ['3M', t => addMonths(t, -3)], ['YTD', t => Date.UTC(new Date(t).getUTCFullYear() - 1, 11, 31)], ['1Y', t => addMonths(t, -12)]];
+function mySectorRows() {
+  return MY_SECTORS.filter(([id]) => S[id]).map(([id, name]) => {
+    const r = MY_PERIODS.map(([, f]) => myRet(id, f)), k = MY_PERIODS.map(([, f]) => myRet('KLCI', f));
+    trCache.delete(id); const t = trendStats(id);
+    return { id, name, r, rel: r.map((x, i) => x == null || k[i] == null ? null : x - k[i]), t, n: (S[id].label.match(/\((.*)\)$/) || [, ''])[1] };
+  });
+}
+function renderMySecTable(c) {
+  const b = htmlBody(c); if (!TICK) { b.append(el('div', { class: 'empty', text: 'Loading ticker prices…' })); return; }
+  const rows = mySectorRows().sort((p, q) => (q.rel[1] ?? -1e9) - (p.rel[1] ?? -1e9));
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Bursa tickers not available.' })); return; }
+  const heads = ['Sector (equal weight)', ...MY_PERIODS.map(p => p[0]), '3M vs KLCI', 'YTD vs KLCI', 'Trend'];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  const cell = (v, big) => el('td', { class: 'num ' + (v == null ? '' : v > 0 ? 'up' : v < 0 ? 'dn' : ''), text: v == null ? '–' : pctF1(v), style: v != null && Math.abs(v) >= big ? `background:${hexA(v > 0 ? tok('--pos') : tok('--neg'), 0.14)}` : '' });
+  for (const r of rows) {
+    tb.append(el('tr', { class: 'row', title: r.n }, el('td', { text: r.name }), ...r.r.map((v, i) => cell(v, [5, 10, 15, 20][i])), cell(r.rel[1], 5), cell(r.rel[2], 8),
+      el('td', { class: 'num ' + (r.t ? (r.t.up ? 'up' : 'dn') : ''), text: r.t ? `${r.t.up ? '▲ up' : '▼ down'} · ${pctF1(r.t.vs200)} vs 200d` : '–' })));
+    csv.push([r.name, ...r.r, r.rel[1], r.rel[2], r.t ? r.t.vs200 : '']);
+  }
+  const k = MY_PERIODS.map(([, f]) => myRet('KLCI', f));
+  tb.append(el('tr', { class: 'row muted' }, el('td', { text: 'FBM KLCI' }), ...k.map(v => el('td', { class: 'num muted', text: v == null ? '–' : pctF1(v) })), el('td', {}), el('td', {}), el('td', {})));
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `Sorted by 3-month performance against the KLCI. Each sector is an equal-weight basket of the Bursa large caps in the ticker list (hover a row for the names), in ringgit, price only (no dividends, which matter for banks, utilities and REITs). Ticker history is about 3 years. Data to ${nice(state.latest)}.`);
+  setSource(c, 'Yahoo Finance (Bursa Malaysia); calculated');
+}
+function renderMySecRs(c) {
+  if (!TICK || !has('KLCI')) return setEmpty(c, 'Loading ticker prices…');
+  const k = S.KLCI, L = [];
+  for (const [id, name] of MY_SECTORS) { const s0 = S[id]; if (!s0) continue;
+    const p = pts(s0, state.from, state.to); if (!p.length) continue;
+    const ratio = p.map(([t, v]) => { const x = asOf(k, t); return x ? [t, v / x.v] : null; }).filter(Boolean); const b0 = ratio.length ? ratio[0][1] : 1;
+    L.push({ name, data: ratio.map(([t, v]) => [t, v / b0 * 100]) }); }
+  if (!L.length) return setEmpty(c, 'Bursa tickers not available.');
+  L.sort((p, q) => Math.abs(q.data[q.data.length - 1][1] - 100) - Math.abs(p.data[p.data.length - 1][1] - 100));
+  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
+  setNote(c, 'Each sector basket divided by the KLCI, = 100 at the start of the range: rising = beating the index. The five sectors that moved most are coloured.');
+  setSource(c, 'Yahoo Finance (Bursa Malaysia); calculated');
+}
+const MY_DRIVERS = { plant: ['MYS_PLANT', 'PALM', 'Palm oil (IMF, USD/t)', 'Plantation earnings track the crude palm oil price.'],
+  tech: ['MYS_TECH', 'SOX', 'SOX (US chip stocks)', 'Malaysian test, automation and back-end suppliers follow the global chip cycle.'],
+  og: ['MYS_OG', 'BRENT', 'Brent oil', 'Petronas-linked names follow oil and gas prices, with a lag for contract flows.'],
+  banks: ['MYS_BANKS', 'MY_IB_3M', 'Malaysia 3M interbank rate (%)', 'Bank margins move with the level of rates: the 3-month interbank rate follows the OPR.'] };
+state.mySecDrv = 'plant';
+function renderMySecDriver(c) {
+  const [id, drv, lab, why] = MY_DRIVERS[state.mySecDrv] || MY_DRIVERS.plant;
+  if (!S[id]) return setEmpty(c, 'Loading ticker prices…');
+  const d = has(drv) ? drv : (drv === 'MY_IB_3M' && has('MY_OPR') ? 'MY_OPR' : null); if (!d) return setEmpty(c, `${lab}: not loaded.`);
+  const from = Math.max(state.from, S[id].t[0]);
+  drawPair(c, { name: S[id].label.replace(/ \(.*$/, '') + ' (MYR)', data: pts(S[id], from, state.to) }, { name: d === drv ? lab : 'OPR (%)', data: pts(S[d], from, state.to) },
+    { fmtA: v => fmtNum(v, 1), fmtB: v => fmtNum(v, 2), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, S[d].kind === 'yield' ? 1 : 0) });
+  const r = S[d].kind === 'yield' ? null : corrW(S[id], S[d], from, state.to);
+  setNote(c, `${why}${r != null ? ` Correlation of weekly changes over this range: ${fmtNum(r, 2)}.` : ''} Basket in ringgit, equal weight, about 3 years of history.`);
+  setSource(c, 'Yahoo Finance (Bursa Malaysia); ' + srcOf([d]));
+}
+function mySectorTiles() {
+  const box = $('#asiaKpis'); if (!box || !TICK) return;
+  const rows = mySectorRows().filter(r => r.rel[1] != null).sort((p, q) => q.rel[1] - p.rel[1]); if (!rows.length) return;
+  const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  const top = rows[0], bot = rows[rows.length - 1];
+  tile('Best sector (3M)', top.name, `${pctF1(top.rel[1])} vs KLCI`, `equal-weight basket · ${nice(state.latest)}`);
+  tile('Worst sector (3M)', bot.name, `${pctF1(bot.rel[1])} vs KLCI`, `equal-weight basket · ${nice(state.latest)}`);
+  tile('Sectors beating KLCI (3M)', `${rows.filter(r => r.rel[1] > 0).length} of ${rows.length}`, 'equal-weight baskets', 'breadth of leadership');
+}
+function buildMySectors() {
+  const g = $('#asiaGrid');
+  g.append(el('h3', { class: 'section', text: 'Malaysia sectors' }));
+  makeCard(g, { key: 'my_sec_table', title: 'Malaysia sectors vs the KLCI', wide: true, range: false, render: renderMySecTable });
+  makeCard(g, { key: 'my_sec_rs', title: 'Sector strength vs the KLCI', defaultRange: '1Y', render: renderMySecRs });
+  makeCard(g, { key: 'my_sec_drv', title: 'Sectors and their drivers', defaultRange: '3Y', seg: { key: 'mySecDrv', select: true, label: 'Sector', options: [['plant', 'Plantations vs palm oil'], ['tech', 'Technology vs SOX'], ['og', 'Oil & gas vs Brent'], ['banks', 'Banks vs rates']] }, render: renderMySecDriver });
+  const r = cards.my_sec_table.root; r.querySelector('[title^="Focus"]').hidden = true; const d = r.querySelector('[title^="Download chart as"]'); if (d) d.hidden = true;
+}
+
 function buildAsiaMore() {
   const g = $('#asiaGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
   // Korea
@@ -5006,8 +5096,8 @@ async function loadTickers() {
       source: `Yahoo Finance (${sym})`, stale: !!x.stale, mine: x.src === 'watchlist', t: x.d.map(d => d * DAY), v: x.v };
     TICK_SYM[sym.toUpperCase()] = id;
   }
-  addBasket('MY_PLANT', CM_PLANT, 'Malaysia plantation basket', 'MYR'); addBasket('MY_TECH', CHIP_MY, 'Malaysia tech basket', 'MYR');
-  if (['overview', 'ideas', 'weekly', 'correlation', 'markets', 'ai'].includes(state.tab)) renderTab();
+  addBasket('MY_PLANT', CM_PLANT, 'Malaysia plantation basket', 'MYR'); addBasket('MY_TECH', CHIP_MY, 'Malaysia tech basket', 'MYR'); buildMySectorBaskets();
+  if (['overview', 'ideas', 'weekly', 'correlation', 'markets', 'ai', 'asia'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
   let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
@@ -6076,7 +6166,7 @@ const SUBTABS = {
   japan: [['Economy', ['jp_infl', 'jp_tankan', 'jp_act']], ['Rates & markets', ['jp_eq', 'jp_policy', 'jp_boj', 'jp_bojsum']]],
   australia: [['Economy', ['auinfl', 'augrowth', 'autot']], ['Rates & markets', ['aurates', 'au_eq', 'au_rba', 'audiff']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
-  asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
+  asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'], ['Sectors', ['my_sec_table', 'my_sec_rs', 'my_sec_drv'], 'Malaysia'],
     ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['Taiwan', ['tw_mkt', 'tw_lead', 'tw_trade', 'tw_money', 'tw_growth', 'tw_infl'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
@@ -6395,6 +6485,9 @@ const TILE_SETS = {
     'Singapore': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
     'Asian FX': ['USD/MYR', 'USD/SGD', 'Malaysia OPR', '3M compounded SORA', 'RBA cash rate'],
     'Korea': ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'],
+    'Markets & rates': ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'],
+    'Economy': ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'],
+    'Sectors': ['FBM KLCI', 'Best sector (3M)', 'Worst sector (3M)', 'Sectors beating KLCI (3M)', 'USD/MYR'],
     'India': ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'],
     'Taiwan': ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'],
     'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'],
@@ -6535,7 +6628,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
