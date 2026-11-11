@@ -157,6 +157,167 @@ capacity is tight (good for Nvidia, memory, neoclouds); if they fall, supply is 
 
 ---
 
+## Planned, not built (owner's request, 11 Nov 2026): WP13 to WP16, Asia ex-Japan
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` (sub-tabs,
+≤ 2,300 px, ≤ 5 tiles, ≤ 16 rows at rest, ≤ 5 coloured lines) and run `node tools/design-check.js` before each push.
+One commit per package.
+
+**The request:** (1) Asia ex-Japan should cover Korea, Taiwan and India, not only Singapore and China.
+(2) Check whether the region's data points lead the local equity market or yields.
+
+### What the data says about leads (tested 11 Nov 2026)
+
+Tested on the dashboard's own monthly data, mostly 2006 to 2026: correlation of the indicator with the target 0 to 12
+months later, the reverse direction, and each half of the sample separately. Equities are year-on-year %, yields are
+12-month changes. "Halves" = the correlation in the first and second half of the sample; a real lead holds in both.
+
+**Confirmed leads (build these as "leading" cards):**
+
+| Indicator | Target | Lead | Corr. | Halves | Comment |
+|---|---|---|---|---|---|
+| Korea OECD leading index, 6-month change | Taiwan Weighted (TWSE) | 5 months | 0.72 | 0.74 / 0.76 | Strongest and most stable |
+| Korea OECD leading index, 6-month change | KOSPI | 4 months | 0.53 | 0.54 / 0.61 | Same-month correlation is only 0.35 |
+| Indonesia OECD leading index, 6-month change | Jakarta Composite (JCI) | 4 months | 0.59 | 0.78 / 0.56 | |
+| India OECD leading index, 6-month change | Nifty 50 | 5 months | 0.38 | 0.75 / 0.47 | Modest; say so on the card |
+| China OECD leading index, 6-month change | Copper | 7 months | 0.51 | 0.62 / 0.45 | |
+| Malaysia leading index diffusion (DOSM) | KLCI | 4 months | 0.55 | 0.66 / 0.38 | Weaker since 2016 |
+| Brent, % YoY | India 10Y yield | 2 months | 0.60 | 0.56 / 0.67 | The one clear lead for yields |
+| Brent, % YoY | Korea CPI | 7 months | 0.51 | 0.54 / 0.47 | Inflation, so indirectly policy |
+| Brent, % YoY | Singapore core inflation | 8 months | 0.56 | 0.69 / 0.48 | |
+| US dollar (DXY), % YoY | Korea exports | 4 months | −0.53 | −0.61 / −0.47 | Strong dollar, weaker exports later |
+| Korea 3M rate, 12-month change | KOSPI | 8 months | −0.35 | −0.34 / −0.48 | Modest: rate rises precede weaker equities |
+| Korea exports | Malaysia and Indonesia exports | 1 month | 0.79 / 0.70 | stable | Already on the dashboard |
+
+**The market leads the data (show as a caution, not as a signal):** KOSPI leads Korea's exports by 4 months (0.83),
+Taiwan Weighted by 2 months (0.76), STI leads Singapore NODX by 3 months (0.61), KLCI leads Malaysia's exports by
+4 months (0.41), Hang Seng leads China's exports by 3 months (0.46). Exports confirm a move in equities; they do not
+predict it.
+
+**Moves together, no lead:** local 10Y yields follow US Treasuries in the same month (Korea 0.65, India 0.67,
+Singapore 0.83). The US dollar and copper move with Asian equities in the same month (DXY vs Hang Seng −0.57,
+copper vs AAXJ 0.83). SOX and Taiwan Weighted 0.86, same month.
+
+**Tested and not confirmed (do not present as leading):** money supply M1 and M3 (Korea, India, China, Indonesia),
+consumer confidence, the Korea and India yield curves against equities, CPI against local 10Y yields, China's PMI-based
+confidence against the CSI 300, China's leading index against Hang Seng since 2016 (0.22). US 2Y leads Korea's 3M rate
+by 3 months (0.62) but only in the second half (0.33 / 0.88): show as a note, not a claim.
+
+**Caveats to print in "How to read":** the OECD leading indices are revised after the fact, smoothed, and partly built
+from share prices, so the real-time lead is shorter than the table shows. They are published about 6 weeks after the
+month, so a 4-month statistical lead is roughly 2 to 3 usable months. Year-on-year series overstate correlations.
+
+**Acceptance rule for any new "leads" claim** (Taiwan's indicators cannot be tested until WP14 loads them): lead of
+at least 2 months, correlation at least 0.40 in size and at least 0.05 above the same-month figure, same sign in both
+halves and at least 0.25 in each. Compute it live in the browser (as the existing lead cards do), never hard-code it.
+If a pair fails, show the chart without the word "leads".
+
+### WP13. Korea and India sub-tabs (no new data source)
+
+Asia ex-Japan sub-tabs become: **Malaysia:** Markets & rates · Economy | **Region:** Singapore · China · **Korea ·
+Taiwan · India** | **Compare:** Across Asia · Asian FX · **What leads**.
+
+**Data** (`pipeline/cnjp.py`, OECD key indicators, same call as today; all checked present to Sep/Oct 2026):
+- Korea: `KR_IMP_YOY` (IM, GY), `KR_CCI` (CCICP), `KR_RETAIL_YOY` (TOVM G47, GY), `KR_CALL` (IRSTCI, overnight call
+  rate, tracks the Bank of Korea base rate), `KR_GDP_YOY` (B1GQ_Q, GY, **quarterly**), `KR_CA_GDP` (quarterly).
+- India: `IN_IMP_YOY`, `IN_CALL` (IRSTCI, tracks the RBI repo rate), `IN_MFG_YOY` (PRVM activity C, GY),
+  `IN_GDP_YOY` and `IN_CA_GDP` (quarterly).
+- The current call is monthly only (`.M.`): add one quarterly call (`.Q.`) for GDP and current account.
+- Money supply is deliberately left out (no lead found; OECD's India and China money series stop in 2018).
+
+**Korea sub-tab** (6 half cards; tiles: KOSPI, USD/KRW, Korea 10Y, CPI YoY, Exports YoY):
+1. `kr_mkt` KOSPI vs Asia ex-Japan: KOSPI in won, KOSPI in USD (`inCcy`), AAXJ; all = 100 at the range start.
+2. `kr_lead` Leading index vs KOSPI: CLI 6-month change vs KOSPI YoY, dual axis, toggle "As measured / Lead +4m"
+   (`leadPair`). Note states the live correlation, the halves and the publication lag.
+3. `kr_trade` Exports, imports and chips: `KR_EXP_YOY`, `KR_IMP_YOY`, `KR_CHIP_EXP` YoY (Comtrade, lag labelled).
+   Note: KOSPI has led exports by about 4 months; DXY has led exports by about 4 months (inverse).
+4. `kr_infl` Inflation and policy: CPI YoY vs call rate, dual axis; note on Brent leading CPI by about 7 months.
+5. `kr_rates` Korean yields vs US: `KR_10Y`, `KR_3M`, `UST10Y`; note: moves with Treasuries in the same month.
+6. `kr_act` Activity: IP YoY, retail YoY, GDP YoY (quarterly, stepped), business and consumer confidence in the "⋯".
+Link line to AI → Chip cycle for memory makers (do not duplicate those cards).
+
+**India sub-tab** (6 half cards; tiles: Nifty 50, USD/INR, India 10Y, CPI YoY, GDP YoY):
+1. `in_mkt` Nifty vs Asia ex-Japan (rupee, USD, AAXJ).
+2. `in_oil` Oil vs Indian yields: Brent YoY vs India 10Y 12-month change, toggle "Lead +2m". The yields lead card.
+3. `in_infl` Inflation and policy: CPI YoY with the RBI's 2 to 6% band shaded (4% line), call rate on the right axis.
+4. `in_rates` Indian yields vs US: `IN_10Y`, `IN_3M`, `UST10Y`.
+5. `in_act` Activity: IP, manufacturing, GDP YoY; exports and imports YoY.
+6. `in_lead` Leading index vs Nifty: CLI 6-month change vs Nifty YoY, toggle "Lead +5m", labelled a modest lead.
+   Current account (% of GDP) vs USD/INR goes in this card's "⋯" or replaces card 5's trade lines if space is tight.
+
+### WP14. Taiwan sub-tab (new sources: check first)
+
+Today the dashboard has only Taiwan Weighted, USD/TWD and TSM. Taiwan is not in the OECD, UN Comtrade (checked: no
+reporter data) or DBnomics. The official Taiwan sites could not be reached from the planning session (the session's
+network allow-list blocks them), so **the endpoints below are unverified**. Step 1 of the build is a probe.
+
+**Step 1, probe** (ask the owner to approve the hosts; test each from the session and confirm it works from a GitHub
+runner, since some government sites block cloud addresses):
+
+| Data | Likely source | Host to allow |
+|---|---|---|
+| Export orders (total, electronics), industrial production | Ministry of Economic Affairs statistics | `dmz26.moea.gov.tw` |
+| Exports, imports | Ministry of Finance trade statistics | `web02.mof.gov.tw` |
+| CPI, core CPI, unemployment, GDP | DGBAS national statistics database | `nstatdb.dgbas.gov.tw` |
+| Leading index, coincident index, monitoring score ("business cycle light", 9 to 45) | National Development Council | `index.ndc.gov.tw` |
+| Discount rate, M1B, M2, 10Y government bond yield | Central Bank (CBC) statistics API | `cpx.cbc.gov.tw` |
+| TSMC monthly revenue (published about the 10th) | TSMC investor relations | `investor.tsmc.com` |
+| Mirror for most of the above | Taiwan open data portal | `data.gov.tw` |
+
+New module `pipeline/taiwan.py` → `docs/data/taiwan.json`, isolated like `ramp.py` (a failure keeps the previous file
+and does not raise the health alert until the feed has proved stable). Add the file to the carry-over list in
+`update.yml` and to the loader. Archive TSMC revenue (`merge_archive`) if the page only shows recent months.
+
+**Fallback if the official sites cannot be used:** build a markets-only Taiwan sub-tab (cards 1 and 2 below, plus Korea
+chip exports as the trade proxy) and say on the page that Taiwan's official statistics have no usable public feed.
+
+**Taiwan sub-tab** (6 half cards; tiles: Taiwan Weighted, USD/TWD, Export orders YoY, CPI YoY, TSMC revenue YoY):
+1. `tw_mkt` Taiwan Weighted vs SOX and TSMC (rebased); note: moves with the SOX in the same month (0.86).
+2. `tw_lead` Korea's leading index vs Taiwan Weighted: 6-month change, toggle "Lead +5m" (0.72, the best lead found).
+3. `tw_orders` Export orders vs exports, YoY, toggle "Lead"; electronics orders in the "⋯". Test orders → exports,
+   → Taiwan Weighted and → SOX against the acceptance rule.
+4. `tw_tsmc` TSMC monthly revenue YoY vs SOX YoY: the timeliest hard number on AI hardware demand. Test it.
+5. `tw_cycle` Business cycle signal: NDC monitoring score with its five colour bands, leading index on the right axis.
+6. `tw_infl` Inflation and policy: CPI, core CPI, CBC discount rate. M1B minus M2 growth vs Taiwan Weighted (the gap
+   local investors watch) goes in only if it passes the acceptance rule.
+Also add Taiwan to the Across Asia charts (inflation, exports, 10Y, policy rates) and to the calendar (`econcal.py`):
+export orders (about the 20th), TSMC revenue (about the 10th), plus India CPI (about the 12th).
+
+### WP15. "What leads" sub-tab (Asia ex-Japan → Compare)
+
+One place that answers "what is pointing where, and how far ahead". Tiles (≤ 5): leading indices rising (n of 5),
+Korea leading index 6-month change, Brent YoY, DXY YoY, KOSPI YoY.
+1. Wide `asia_now` **Leading index momentum now**: horizontal bars, 6-month change of the leading index for Korea,
+   India, Indonesia, China and Malaysia (DOSM), each labelled with the market it has led and by how many months.
+2. Half `asia_ll` **What has led what**: table (≤ 16 rows, `capRows`): indicator → target, lead (months), correlation,
+   stable in both halves (yes / no), usable lead after publication lag, and the indicator's current direction.
+   Verdict chip per row: "Leads" / "Moves together" / "Market leads the data". Computed live; click a row to chart it.
+3. Half `asia_llchart` the selected pair as a dual-axis chart with the lead applied (default: Korea leading index →
+   Taiwan Weighted).
+4. Half `asia_mktlead` **Where the market leads the data**: KOSPI → Korea exports, Taiwan Weighted → Korea exports,
+   STI → NODX, KLCI → Malaysia exports, Hang Seng → China exports, with months and correlation.
+5. Half `asia_oil` **Oil into Asian inflation and yields**: Brent YoY led forward against India 10Y, Korea CPI,
+   Singapore core, Malaysia CPI (choice in a `seg`).
+
+**Code notes:**
+- `llSeries` needs a new mode `chg6` (6-month change); `leadPair` and `llScan` take it unchanged.
+- Add a half-sample stability check next to `llScan` (split the overlapping months in two) and a publication-lag
+  table per indicator (OECD leading index 2 months, exports 1, CPI 1, Brent 0) for the "usable lead" column.
+- Add the confirmed pairs to `LL_PAIRS` so the Lead-lag page picks them up.
+- `TILE_SETS.asia` gets entries for Korea, Taiwan, India and What leads. Search picks up the new cards by title.
+
+### WP16. Housekeeping
+
+README (Asia ex-Japan row, sources), `tools/design-check.js` allow-list only if a deliberate exception is needed,
+PLAN.md status line. Check the live run: new OECD series loaded, Taiwan feed status in Data health.
+
+### Suggested order
+
+WP13 → WP15 → WP14 → WP16. WP13 and WP15 need no new source and no approvals, so Korea, India and the lead
+indicators can go live first; Taiwan follows once its sources are proven.
+
+---
+
 ## WP1. Central bank watch (highest priority)
 
 **Why:** the Fed page shows market pricing against the Fed. Clients in Malaysia, Singapore and Australia
