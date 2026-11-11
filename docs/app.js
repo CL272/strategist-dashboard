@@ -2724,7 +2724,7 @@ function leadStats(a, ma, b, mb, k) {
     && Math.sign(h1) === sg && Math.sign(h2) === sg && Math.abs(h1) >= 0.25 && Math.abs(h2) >= 0.25;
   const verdict = ok ? 'Leads' : rev && Math.abs(rev.r) >= 0.4 && Math.abs(rev.r) > Math.max(Math.abs(rk || 0), Math.abs(r0 || 0)) + 0.05 ? 'Market leads the data'
     : Math.abs(r0 || 0) >= 0.4 ? 'Moves together' : 'Weak link';
-  return { k, rk, r0, h1, h2, n: ts.length, from: ts[0], rev, ok, verdict, usable: Math.max(0, k - PUB_LAG(a)) };
+  return { k, rk, r0, h1, h2, n: ts.length, from: ts[0], rev, ok, verdict, usable: Math.max(0, k - PUB_LAG(a)), sp: /^CLI_|^LEI_/.test(a) };
 }
 const cF = v => v == null ? '–' : corrF(v);
 function leadNote(st, aLab, bLab) {
@@ -2735,7 +2735,20 @@ function leadNote(st, aLab, bLab) {
       + (lag ? ` It is published about ${lag} month${lag === 1 ? '' : 's'} after the month, so the usable lead is about ${st.usable} month${st.usable === 1 ? '' : 's'}.` : ''); }
   return `Not a reliable lead on this history (${yrs} years): ${cF(st.rk)} at ${st.k} months against ${cF(st.r0)} in the same month; halves ${cF(st.h1)} / ${cF(st.h2)}. Read it as ${st.verdict === 'Market leads the data' ? 'the market leading the data' : 'moving together'}, not as a signal.`;
 }
-const LL_CAVEAT = 'The OECD leading indices are revised after the fact, smoothed and partly built from share prices, so the real-time lead is shorter than the history suggests; year-on-year changes overlap month to month, which flatters correlations.';
+const LL_CAVEAT = 'The OECD leading indices are revised after the fact, smoothed and partly built from share prices (Korea’s includes the KOSPI), so part of their lead over equity markets is circular and the real-time lead is shorter than the history suggests; year-on-year changes overlap month to month, which flatters correlations.';
+// stock-free candidates for Korea and Taiwan: the best one that passes the lead rule is shown next to the OECD index
+const CLEAN_ALT = [['BCI_USA', 'chg6', 'US business confidence (ISM-based)'], ['KR_BCI', 'chg6', 'Korea business confidence'], ['KR_CCI', 'chg6', 'Korea consumer confidence'],
+  ['KR_EXP_YOY', 'level', 'Korea exports'], ['TW_ORDERS_YOY', 'level', 'Taiwan export orders']];
+function cleanAlt(target) {
+  let best = null;
+  for (const [id, mode, name] of CLEAN_ALT) for (let k = 2; k <= 8; k++) { const st = leadStats(id, mode, target, 'yoy', k); if (st && st.ok && (!best || st.rk > best.st.rk)) best = { id, mode, name, st }; }
+  return best;
+}
+function cleanAltNote(target, tname) {
+  const b = cleanAlt(target);
+  return b ? ` Best lead without share prices: ${b.name} (${b.mode === 'chg6' ? '6-month change' : 'growth'}) has led ${tname} by ${b.st.k} months (correlation ${cF(b.st.rk)} against ${cF(b.st.r0)} in the same month; ${cF(b.st.h1)} / ${cF(b.st.h2)} in each half).`
+    : ` No stock-free series tested (US and Korea business confidence, Korea consumer confidence, Korea exports, Taiwan export orders) passes the lead rule for ${tname}.`;
+}
 const llFmtF = mode => v => mode === 'yoy' ? pctF1(v) : mode === 'level' ? fmtNum(v, 1) : sign(v) + fmtNum(Math.abs(v), 2);
 const llAxF = mode => v => fmtNum(v, mode === 'level' ? 0 : 1) + (mode === 'yoy' ? '%' : '');
 // a dual-axis lead card with an "As measured / Lead +km" toggle
@@ -2745,7 +2758,7 @@ function leadCard(key, a, b, k, intro) {   // a, b = [id, mode, name]
     if (!has(a[0], b[0])) return setEmpty(c, 'Waiting for data.');
     leadPair(c, a, b, +state[key] || 0, { fmtA: llFmtF(a[1]), fmtB: llFmtF(b[1]), axisA: llAxF(a[1]), axisB: llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
     const st = leadStats(a[0], a[1], b[0], b[1], k);
-    setNote(c, (intro ? intro + ' ' : '') + leadNote(st && { ...st, a: a[0] }, a[2].replace(/,.*$/, ''), b[2].replace(/,.*$/, '')) + (+state[key] ? ` The first series is drawn ${k} months later than measured; the part past today hints at the months ahead. ` : ' ') + (/^CLI_/.test(a[0]) ? LL_CAVEAT : ''));
+    setNote(c, (intro ? intro + ' ' : '') + leadNote(st && { ...st, a: a[0] }, a[2].replace(/,.*$/, ''), b[2].replace(/,.*$/, '')) + (+state[key] ? ` The first series is drawn ${k} months later than measured; the part past today hints at the months ahead. ` : ' ') + (/^CLI_/.test(a[0]) ? LL_CAVEAT + (['KOSPI', 'TWSE'].includes(b[0]) ? cleanAltNote(b[0], b[0] === 'KOSPI' ? 'KOSPI' : 'Taiwan Weighted') : '') : ''));
     setSource(c, srcOf([a[0], b[0]]));
   } };
 }
@@ -2963,7 +2976,7 @@ function buildAsiaMore() {
     setSource(c, 'Yahoo Finance (^TWII, ^SOX, TSM), converted at daily USD/TWD'); } });
   makeCard(g, { key: 'tw_lead', title: 'Korea leading index vs Taiwan', defaultRange: '10Y',
     ...leadCard('twLeadK', ['CLI_KOR', 'chg6', 'Korea leading index, 6-month change'], ['TWSE', 'yoy', 'Taiwan Weighted, % YoY'], 5,
-      'Taiwan has no OECD leading index, and its own (National Development Council) could not be reached; Korea’s, built on the same export and chip cycle, has been the best lead found.') });
+      'Taiwan has no OECD leading index, and its own (National Development Council) could not be reached; Korea’s, built on the same export and chip cycle, is used here, with the best stock-free alternative named at the end.') });
   state.twTrade = 'exp';
   makeCard(g, { key: 'tw_trade', title: 'Taiwan: trade and orders', defaultRange: '5Y',
     seg: { key: 'twTrade', options: [['exp', 'Exports'], ['ord', 'Export orders'], ['ict', 'Electronics output']] }, render: c => {
@@ -3014,12 +3027,11 @@ function buildAsiaMore() {
 const ASIA_LL = [
   ['CLI_KOR', 'chg6', 'TWSE', 'yoy', 5], ['CLI_KOR', 'chg6', 'KOSPI', 'yoy', 4], ['CLI_IDN', 'chg6', 'JCI', 'yoy', 4], ['CLI_IND', 'chg6', 'NIFTY', 'yoy', 5],
   ['CLI_CHN', 'chg6', 'COPPER', 'yoy', 7], ['MY_LEAD_DIFF', 'level', 'KLCI', 'yoy', 4], ['BRENT', 'yoy', 'IN_10Y', 'chg', 2], ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 7],
-  ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['KR_3M', 'chg', 'KOSPI', 'yoy', 8], ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 5],
+  ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['BCI_USA', 'chg6', 'TWSE', 'yoy', 3], ['BCI_USA', 'chg6', 'KOSPI', 'yoy', 3], ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 5],
   ['CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 9], ['BRENT', 'yoy', 'TW_CPI_YOY', 'level', 2],
-  ['SOX', 'yoy', 'TWSE', 'yoy', 1],
 ];
 const SHORT = { CLI_KOR: 'Korea leading index', CLI_IDN: 'Indonesia leading index', CLI_IND: 'India leading index', CLI_CHN: 'China leading index', MY_LEAD_DIFF: 'Malaysia leading diffusion',
-  BRENT: 'Brent oil', DXY: 'US dollar', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
+  BRENT: 'Brent oil', DXY: 'US dollar', BCI_USA: 'US business confidence', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
   COPPER: 'Copper', KLCI: 'KLCI', IN_10Y: 'India 10Y', KR_CPI_YOY: 'Korea CPI', SG_CORE_YOY: 'Singapore core CPI', KR_EXP_YOY: 'Korea exports', HSI: 'Hang Seng', KR_10Y: 'Korea 10Y',
   STI: 'STI', SG_NODX_YOY: 'Singapore NODX', TW_EXP_YOY: 'Taiwan exports', TW_ORDERS_YOY: 'Taiwan export orders', TW_M1B_M2: 'Taiwan M1B − M2 gap', TW_CPI_YOY: 'Taiwan CPI', TW_IP_ICT_YOY: 'Taiwan electronics output', MY_EXPORTS_YOY: 'Malaysia exports', CN_EXP_YOY: 'China exports', MY_CPI_YOY: 'Malaysia CPI' };
 const shortOf = id => SHORT[id] || (S[id] ? S[id].label : id);
@@ -3037,11 +3049,11 @@ function renderAsiaLL(c) {
     const row = el('tr', { class: 'row' + (i === state.asiaLLsel ? ' sel' : ''), style: 'cursor:pointer', title: `Same month ${cF(st.r0)} · halves ${cF(st.h1)} / ${cF(st.h2)} (stable in both: ${both}) · ${st.n} months from ${monthLab(st.from)}. Click to chart.`,
       onclick: () => { state.asiaLLsel = i; cards.asia_ll.render(); cards.asia_llchart.render(); } },
       el('td', { text: `${shortOf(p[0])} → ${shortOf(p[2])}` }), el('td', { class: 'num', text: p[4] + 'm' }), el('td', { class: 'num', text: cF(st.rk) }),
-      el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), text: st.ok ? `Leads ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
+      el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), title: st.sp ? 'Contains share prices: the leading index includes the stock market it is compared with, so part of the lead is circular' : '', text: st.ok ? `Leads${st.sp ? ' ⓢ' : ''} ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
     tb.append(row); csv.push([`${shortOf(p[0])} → ${shortOf(p[2])}`, p[4], st.rk, st.r0, both, st.ok ? st.usable : '', now ? now.v : '', st.verdict]);
   });
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
-  setNote(c, '"Leads" = lead of at least 2 months, correlation at least 0.40 and above the same-month figure, and the same sign in both halves of the history. "Usable" = lead minus the publication delay. The arrow is the indicator’s latest direction; "up" or "down" is where the target has tended to go next. Hover a row for the same-month and half-sample figures; click it to chart. ' + LL_CAVEAT);
+  setNote(c, 'ⓢ = contains share prices: the leading index includes the stock market it is compared with, so part of its lead is circular; US business confidence is the stock-free alternative. "Leads" = lead of at least 2 months, correlation at least 0.40 and above the same-month figure, and the same sign in both halves of the history. "Usable" = lead minus the publication delay. The arrow is the indicator’s latest direction; "up" or "down" is where the target has tended to go next. Hover a row for the same-month and half-sample figures; click it to chart. ' + LL_CAVEAT);
   setSource(c, 'Calculated on OECD, DOSM, Yahoo Finance and US Treasury data; monthly');
 }
 function renderAsiaLLChart(c) {
@@ -4737,6 +4749,7 @@ const LL_PAIRS = [
   ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 'Oil → Korea inflation'],
   ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 'US dollar → Korea exports (inverse)'],
   ['CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 'Korea leading index → Taiwan exports'],
+  ['BCI_USA', 'chg6', 'TWSE', 'yoy', 'US business confidence → Taiwan equities (no share prices inside)'],
   ['TWSE', 'yoy', 'TW_EXP_YOY', 'level', 'Taiwan equities → Taiwan exports (the market leads)'],
   ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'Taiwan export orders → Malaysia exports'],
   ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 'Taiwan M1B − M2 gap → Taiwan equities'],
@@ -5081,7 +5094,7 @@ function renderSigIdeas(c) {
     const box = el('div', { class: 'sig-idea' + (dis[key] ? ' dismissed' : '') + (watch[key] ? ' watched' : '') });
     box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), sigChip(lead.tier)));
     box.append(el('div', { class: 'muted small', text: `${sigs.length} signal${sigs.length === 1 ? '' : 's'} for${g.against.length ? `, ${g.against.length} against` : ', none against'} · since ${lead.since ? monthLab(dayMs(lead.since)) : '–'}` }));
-    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') }), el('div', { class: 'muted small', text: sigEvidence(x) })));
+    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + (x.share_prices ? ` · contains share prices: graded down from ${x.tier_before.toLowerCase()}` : '') }), el('div', { class: 'muted small', text: sigEvidence(x) })));
     if (frac != null) box.append(el('div', { class: 'sig-priced' }, el('span', { class: 'muted small', text: `Since it fired: ${sigMove(lead.kind, moved)} (typical over ${h}m: ${sigMove(lead.kind, typ)})` }),
       el('div', { class: 'rbar' }, el('div', { class: 'rbar-fill', style: `width:${Math.round(Math.min(frac, 1) * 100)}%` }))));
     box.append(el('div', { class: 'muted small', text: `Cancels if the rule stops holding (${lead.rule}), or ${g.target_name} breaks its trend the other way.` }));
@@ -5122,12 +5135,12 @@ function renderSigTable(c) {
   if (!state.sigSel && L.length) state.sigSel = L[0].id;
   for (const x of L) { const st = x.best_h ? x.stats[String(x.best_h)] : null;
     tb.append(el('tr', { class: 'row' + (x.id === state.sigSel ? ' sel' : ''), style: 'cursor:pointer', title: x.rule + (x.revised ? ' · uses revised data' : '') + ' · click for detail', onclick: () => { state.sigSel = x.id; c.render(); cards.sig_detail.render(); } },
-      el('td', { text: x.name }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
+      el('td', { text: x.name + (x.share_prices ? ' ⓢ' : ''), title: x.share_prices ? `Contains share prices (OECD leading index or the dashboard’s US leading index): graded down one tier from ${x.tier_before}` : '' }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
       el('td', {}, sigChip(x.tier)), el('td', { class: 'num', text: x.best_h ? x.best_h + 'm' : '–' }),
       el('td', { class: 'num', text: st ? `${sigMove(x.kind, st.med)} · ${fmtNum(st.hit, 0)}% up · n${st.n}` : '–' }), el('td', { class: 'num muted', text: st ? `${sigMove(x.kind, st.base_med)} · ${fmtNum(st.base_hit, 0)}% up` : '–' })));
     csv.push([x.name, x.family, x.on, x.since || '', x.tier, x.best_h || '', st ? st.n : '', st ? st.med : '', st ? st.hit : '', st ? st.base_med : '', st ? st.base_hit : '']); }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); capRows(tb, 'sig_' + state.sigFam, 14); c.csv = csv;
-  setNote(c, `${SIG.signals.length} rules. Best = the horizon (3, 6 or 12 months) where the record differs most from normal. "After signal" = median move of the target after the rule switched on, share of rises, number of times; "All months" = the same for every month in the period. Click a row for the detail.`);
+  setNote(c, `${SIG.signals.length} rules. Best = the horizon (3, 6 or 12 months) where the record differs most from normal. "After signal" = median move of the target after the rule switched on, share of rises, number of times; "All months" = the same for every month in the period. Click a row for the detail. ⓢ = built on a leading index that contains share prices (circular with equity markets and revised after the fact), so graded down one tier.`);
   setSource(c, 'Dashboard signal engine; calculated');
 }
 function renderSigDetail(c) {
@@ -5217,7 +5230,7 @@ function buildSignals() {
     const ul = el('ul', { class: 'changes sig-list' }); for (const d of SIG.divergences.slice(0, 4)) ul.append(el('li', {}, el('a', { href: '#', text: `${d.name_b} vs ${d.name_a}: ${sign(d.z)}${fmtNum(Math.abs(d.z), 1)}σ`, onclick: e => { e.preventDefault(); state.sigDiv = SIG.divergences.indexOf(d); goSub('signals', 'Divergences'); } }),
       el('span', { class: 'muted small', text: ` · ${d.name_b} ${pctF1(d.ret_b)} vs implied ${pctF1(d.implied_b)} over 3 months` }))); b.append(ul);
     setNote(c, 'Pairs that usually move together, ranked by how far apart they are now (standard deviations of the usual gap). Beyond ±2σ is unusual.'); } });
-  makeCard(g, { key: 'sig_table', title: 'All signals', wide: true, range: false, seg: { key: 'sigFam', select: true, label: 'Family', options: [['All', 'All families'], ['Tested leads', 'Tested leads'], ['Regime', 'Regime'], ['Policy', 'Central bank pricing'], ['Stress', 'Stress'], ['Extremes', 'Extremes'], ['Trend', 'Trend'], ['Malaysia', 'Malaysia'], ['AI theme', 'AI theme']] }, render: renderSigTable });
+  makeCard(g, { key: 'sig_table', title: 'All signals', wide: true, range: false, seg: { key: 'sigFam', select: true, label: 'Family', options: [['All', 'All families'], ['Tested leads', 'Tested leads'], ['Clean leads', 'Clean leads (no share prices)'], ['Regime', 'Regime'], ['Policy', 'Central bank pricing'], ['Stress', 'Stress'], ['Extremes', 'Extremes'], ['Trend', 'Trend'], ['Malaysia', 'Malaysia'], ['AI theme', 'AI theme']] }, render: renderSigTable });
   makeCard(g, { key: 'sig_detail', title: 'Signal detail', wide: true, defaultRange: 'MAX', render: renderSigDetail });
   makeCard(g, { key: 'sig_div', title: 'Divergence monitor', range: false, render: renderSigDiv });
   makeCard(g, { key: 'sig_divchart', title: 'Gap history', range: false, render: renderSigDivChart });

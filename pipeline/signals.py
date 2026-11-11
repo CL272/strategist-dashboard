@@ -29,6 +29,7 @@ from fetch import ARCHIVE_DIR, OUT, load_existing, unpack, write
 FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "taiwan.json", "gpu.json", "ramp.json"]
 HORIZONS = (1, 3, 6, 12)
 TIER_W = {"Tested edge": 3, "Thin evidence": 1, "Context only": 0, "Not enough history": 0}
+DOWN = {"Tested edge": "Thin evidence", "Thin evidence": "Context only"}
 NAMES = {"TWSE": "Taiwan Weighted", "KOSPI": "KOSPI", "JCI": "Jakarta Composite", "NIFTY": "Nifty 50", "COPPER": "Copper", "IN_10Y": "India 10Y yield",
          "AAXJ": "Asia ex-Japan (AAXJ)", "LH_SPX": "S&P 500", "SPX": "S&P 500", "UST10Y": "US 10Y yield", "GOLD": "Gold", "KLCI": "FBM KLCI",
          "R_AAXJ_ACWI": "Asia ex-Japan vs world", "R_EEM_SPX": "Emerging markets vs S&P 500", "R_SOX_SPX": "Chip stocks vs S&P 500",
@@ -45,6 +46,8 @@ def lag_of(sid: str) -> int:
         return 2
     if sid.startswith("MY_LEAD"):
         return 3
+    if sid == "KR_CHIP_EXP":
+        return 10   # UN Comtrade publishes Korea's trade about 10 months late
     if sid in ("PALM", "STLFSI", "NFCI"):
         return 1 if sid == "PALM" else 0
     if sid.startswith(("KR_", "TW_", "IN_", "ID_", "CN_", "LEI_", "REG_")) and not sid.endswith(("_10Y", "_3M")):
@@ -197,6 +200,20 @@ def rules():
         ["MY_LEAD_DIFF"], lambda M: M["MY_LEAD_DIFF"] > 50, "KLCI", 1)
     add("palm_up_klci", "Malaysia", "Palm oil up sharply → KLCI", "Palm oil (IMF) more than 20% higher than a year earlier",
         ["PALM"], lambda M: yoy(M["PALM"]) > 20, "KLCI", 1)
+    # clean leads: no share prices inside (the OECD leading indices and the dashboard's US leading index contain them)
+    for tgt, k in (("TWSE", "Taiwan Weighted"), ("KOSPI", "KOSPI")):
+        add(f"bci_us_up_{tgt.lower()}", "Clean leads", f"US business confidence turning up → {k}", "OECD US business confidence (ISM-based) higher than 6 months earlier",
+            ["BCI_USA"], lambda M: chg(M["BCI_USA"], 6) > 0, tgt, 1)
+        add(f"bci_us_dn_{tgt.lower()}", "Clean leads", f"US business confidence turning down → {k}", "OECD US business confidence (ISM-based) lower than 6 months earlier",
+            ["BCI_USA"], lambda M: chg(M["BCI_USA"], 6) < 0, tgt, -1)
+        add(f"kr_bci_up_{tgt.lower()}", "Clean leads", f"Korea business confidence turning up → {k}", "OECD Korea business confidence higher than 6 months earlier",
+            ["KR_BCI"], lambda M: chg(M["KR_BCI"], 6) > 0, tgt, 1)
+    add("kr_exp_accel_kospi", "Clean leads", "Korea exports accelerating → KOSPI", "Korea export growth higher than 3 months earlier",
+        ["KR_EXP_YOY"], lambda M: chg(M["KR_EXP_YOY"], 3) > 0, "KOSPI", 1)
+    add("kr_chip_up_kospi", "Clean leads", "Korea chip exports growing → KOSPI", "Korea chip exports (UN Comtrade) higher than a year earlier, as published (about 10 months late)",
+        ["KR_CHIP_EXP"], lambda M: yoy(M["KR_CHIP_EXP"]) > 0, "KOSPI", 1)
+    add("tw_orders_accel_twse", "Clean leads", "Taiwan export orders accelerating → Taiwan Weighted", "Taiwan export-order growth higher than 3 months earlier",
+        ["TW_ORDERS_YOY"], lambda M: chg(M["TW_ORDERS_YOY"], 3) > 0, "TWSE", 1)
     # AI theme (short histories: shown, graded honestly)
     add("gpu_rent_up", "AI theme", "GPU rents rising → Nvidia", "H100 on-demand rent more than 5% higher than 3 months earlier",
         ["GPU_H100_OD"], lambda M: (M["GPU_H100_OD"] / M["GPU_H100_OD"].shift(3) - 1) * 100 > 5, "NVDA", 1, gap=3)
@@ -361,7 +378,12 @@ def build(status: dict) -> None:
                 for i in r["inputs"]:
                     m = M_get(i)
                     now_vals[i] = [str(m.dropna().index[-1].date()), float(m.dropna().iloc[-1])]
-                sigs.append(dict(id=r["id"], family=r["family"], name=r["name"], rule=r["rule"], inputs=r["inputs"], inputs_now=now_vals,
+                sp = any(i.startswith("CLI_") or i == "LEI_6M" for i in r["inputs"])
+                if sp:   # owner's rule: keep, but one tier lower (circular with equity markets, and revised after the fact)
+                    res["tier_before"] = res["tier"]
+                    res["tier"] = DOWN.get(res["tier"], res["tier"])
+                    active = res["on"] and res["best_h"] is not None and months_on is not None and months_on <= res["best_h"]
+                sigs.append(dict(id=r["id"], family=r["family"], name=r["name"], rule=r["rule"], inputs=r["inputs"], inputs_now=now_vals, share_prices=sp,
                                  target=r["target"], target_name=NAMES.get(r["target"], r["target"]), dir=r["dir"], kind=r["kind"],
                                  revised=any(i.startswith("CLI_") or i == "REG_QUAD" for i in r["inputs"]),
                                  lags={i: lag_of(i) for i in r["inputs"]}, months_on=months_on, active=bool(active), moved=moved, **res))

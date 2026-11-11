@@ -557,6 +557,19 @@ the US (carry), 3-month realised volatility, carry ÷ volatility, REER percentil
   Yahoo contract symbols if they resolve.
 - Fund flows (ICI weekly mutual fund and ETF flows): probe from the runner; skip if there is no stable file.
 
+### WP30. Share prices inside leading indices; stock-free alternatives (owner's request)
+
+*Built 12 Nov 2026.* (a) Signals built on an OECD leading index (or the dashboard's own US leading index, which includes
+the S&P 500) are kept but graded down one tier ("tier_before" keeps the original) and marked ⓢ; the Asia lead tables
+show "Leads ⓢ" and the cards explain why. (b) Stock-free alternatives tested (engine family "Clean leads", and the Asia
+tables): **US business confidence (OECD, ISM-based), 6-month change, leads Taiwan Weighted by 3 months (0.62 against
+0.52 in the same month, stable in both halves) and KOSPI by 3 months (0.46 against 0.40)**; in the engine, its turning
+down is a tested-edge caution signal for both (not on now). Korea and US business confidence turning up, Korea exports,
+Taiwan export orders and Korea consumer confidence are context only (the market leads exports and orders); Korea chip
+exports have only 2 events in real time (Comtrade is about 10 months late). The OECD does not publish the leading
+indices' components in its CLI dataflow, so a "Korea leading index without KOSPI" could not be built. The Korea and Taiwan
+lead cards now name the best stock-free alternative.
+
 ### Suggested order
 
 WP23 → WP22 → WP24 → WP25 → WP26 → WP27 → WP28 → WP29. WP23 and WP22 answer the idea-generation request and need no new
