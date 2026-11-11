@@ -4188,7 +4188,7 @@ function buildMarkets() {
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
 function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); trendTiles(); ['tr_table', 'rs_table', 'rs_chart'].forEach(k => cards[k].render()); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); trendTiles(); ['tr_table', 'rs_table', 'rs_chart'].forEach(k => cards[k].render()); renderSeasonality(); }
 
 // ------------------------------------------------------------------ BREADTH (from the ticker universe)
 // Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
@@ -4798,6 +4798,108 @@ function buildLeadLag() {
   const r = cards.ll_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
   syncLLSeg();
 }
+// ------------------------------------------------------------------ SEASONALITY and SENSITIVITIES (WP28)
+const SEA_ASSETS = [['SPX', 'S&P 500'], ['KLCI', 'FBM KLCI'], ['STI', 'Straits Times'], ['AAXJ', 'Asia ex-Japan'], ['HSI', 'Hang Seng'], ['NKY', 'Nikkei 225'], ['KOSPI', 'KOSPI'],
+  ['TWSE', 'Taiwan Weighted'], ['SX5E', 'Euro Stoxx 50'], ['GOLD', 'Gold'], ['BRENT', 'Brent'], ['COPPER', 'Copper'], ['USDMYR', 'USD/MYR'], ['DXY', 'US dollar index'], ['BTC', 'Bitcoin']];
+state.seaAsset = 'KLCI';
+const seaCache = new Map();
+function seaStats(id, years = 20) {   // month-end returns by calendar month over the last `years` full years
+  const key = id + '|' + years; if (seaCache.has(key)) return seaCache.get(key);
+  if (!has(id)) return null;
+  const s = S[id], me = []; let last = null;
+  for (let i = 0; i < s.t.length; i++) { const d = new Date(s.t[i]), k = d.getUTCFullYear() * 12 + d.getUTCMonth(); if (last && last.k !== k) me.push(last); last = { k, v: s.v[i], t: s.t[i] }; }
+  const curK = last ? last.k : 0, from = curK - years * 12, by = Array.from({ length: 12 }, () => []);
+  for (let i = 1; i < me.length; i++) { if (me[i].k < from || me[i].k - me[i - 1].k !== 1) continue; by[me[i].k % 12].push((me[i].v / me[i - 1].v - 1) * 100); }
+  const out = by.map(r => ({ n: r.length, avg: r.length ? r.reduce((a, x) => a + x, 0) / r.length : null, med: r.length ? r.slice().sort((a, b) => a - b)[Math.floor(r.length / 2)] : null, hit: r.length ? r.filter(x => x > 0).length / r.length * 100 : null }));
+  out.me = me; seaCache.set(key, out); return out;
+}
+function renderSeaChart(c) {
+  const id = state.seaAsset, st = seaStats(id); if (!st) return setEmpty(c, 'Waiting for data.');
+  const name = (SEA_ASSETS.find(x => x[0] === id) || [, id])[1], cur = new Date(state.latest).getUTCMonth();
+  const o = baseOpt(); o.grid.top = 20; o.legend.show = false;
+  o.xAxis = { type: 'category', data: MONTHS, axisLabel: { color: tok('--ink-2') }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 1) + '%');
+  o.tooltip = { ...o.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: ps => { const i = ps[0].dataIndex, x = st[i]; return `${MONTHS[i]}: average ${pctF1(x.avg)}, median ${pctF1(x.med)}, up ${fmtNum(x.hit, 0)}% of ${x.n} years`; } };
+  o.series = [{ type: 'bar', data: st.map((x, i) => ({ value: x.avg == null ? null : +x.avg.toFixed(2), itemStyle: { color: x.avg >= 0 ? tok('--pos') : tok('--neg'), opacity: i === cur || i === (cur + 1) % 12 ? 1 : 0.55 } })),
+    label: { show: true, position: 'top', fontSize: 10, color: tok('--muted'), formatter: p => st[p.dataIndex].hit == null ? '' : fmtNum(st[p.dataIndex].hit, 0) + '%' } }];
+  inst(c).setOption(o, true);
+  const n = Math.max(...st.map(x => x.n));
+  setNote(c, `${name}: average return in each calendar month over the last ${n} years (labels = share of years it rose); this month and next are shaded darker. Seasonality is weak evidence on its own: with ${n} years per month, one big year moves the average a lot, so compare the average with the hit rate.`);
+  setSource(c, srcOf([id]) + '; calculated');
+}
+function renderSeaPath(c) {
+  const id = state.seaAsset, st = seaStats(id); if (!st) return setEmpty(c, 'Waiting for data.');
+  const name = (SEA_ASSETS.find(x => x[0] === id) || [, id])[1], yr = new Date(state.latest).getUTCFullYear();
+  const avgPath = [0]; st.forEach(x => avgPath.push((1 + avgPath[avgPath.length - 1] / 100) * (1 + (x.avg || 0) / 100) * 100 - 100));
+  const s = S[id], base = asOf(s, Date.UTC(yr - 1, 11, 31)), thisYr = [];
+  if (base) for (let m = 0; m < 12; m++) { const t = Date.UTC(yr, m + 1, 0); if (t > state.latest + 31 * DAY) break; const a = asOf(s, Math.min(t, state.latest)); if (a) thisYr.push([m + 1, (a.v / base.v - 1) * 100]); }
+  const o = baseOpt(); o.legend.show = true; o.grid.top = 34;
+  o.xAxis = { type: 'category', data: ['Start', ...MONTHS], axisLabel: { color: tok('--ink-2') }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0) + '%'); o.tooltip = { ...o.tooltip, trigger: 'axis', valueFormatter: v => v == null ? '–' : pctF1(v) };
+  o.series = [{ name: 'Average year', type: 'line', data: avgPath.map(v => +v.toFixed(2)), lineStyle: { type: 'dashed', width: 2, color: tok('--muted') }, itemStyle: { color: tok('--muted') }, showSymbol: false },
+    { name: String(yr), type: 'line', data: [0, ...Array.from({ length: 12 }, (_, m) => { const x = thisYr.find(p => p[0] === m + 1); return x ? +x[1].toFixed(2) : null; })], lineStyle: { width: 2.5, color: col(0) }, itemStyle: { color: col(0) } }];
+  inst(c).setOption(o, true);
+  setNote(c, `${name} this year against the average year (the monthly averages compounded). Month-end values; the latest month is to ${nice(state.latest)}.`);
+  setSource(c, srcOf([id]) + '; calculated');
+}
+function renderSeaTable(c) {
+  const b = htmlBody(c), m = new Date(state.latest).getUTCMonth(), m2 = (m + 1) % 12;
+  const heads = ['Asset', `${MONTHS[m]} avg`, `${MONTHS[m]} up`, `${MONTHS[m2]} avg`, `${MONTHS[m2]} up`];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  const rows = SEA_ASSETS.map(([id, n]) => ({ id, n, st: seaStats(id) })).filter(r => r.st).sort((p, q) => (q.st[m].avg ?? -99) - (p.st[m].avg ?? -99));
+  const cell = (v, f, good) => el('td', { class: 'num ' + (v == null ? '' : good(v) ? 'up' : 'dn'), text: v == null ? '–' : f(v) });
+  for (const r of rows) { const a = r.st[m], b2 = r.st[m2];
+    tb.append(el('tr', { class: 'row', style: 'cursor:pointer', title: `${a.n} years. Click to chart.`, onclick: () => { state.seaAsset = r.id; renderSeasonality(); } },
+      el('td', { text: r.n }), cell(a.avg, pctF1, v => v > 0), cell(a.hit, v => fmtNum(v, 0) + '%', v => v > 50), cell(b2.avg, pctF1, v => v > 0), cell(b2.hit, v => fmtNum(v, 0) + '%', v => v > 50)));
+    csv.push([r.n, a.avg, a.hit, b2.avg, b2.hit]); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `This month and next across assets, over the last 20 years (shorter where history is shorter: Bitcoin, Brent). Sorted by this month’s average. Click a row to chart it. USD/MYR up = ringgit weaker.`);
+  setSource(c, 'Yahoo Finance; calculated');
+}
+function renderSeasonality() { ['sea_chart', 'sea_path', 'sea_table'].forEach(k => cards[k] && cards[k].render()); }
+function buildSeasonality() {
+  const g = el('div', { class: 'grid', id: 'seaGrid' }); $('#tab-markets').append(g);
+  makeCard(g, { key: 'sea_chart', title: 'Returns by calendar month', range: false, seg: { key: 'seaAsset', select: true, label: 'Asset', options: SEA_ASSETS, onchange: () => renderSeasonality() }, render: renderSeaChart });
+  makeCard(g, { key: 'sea_path', title: 'This year vs the average year', range: false, render: renderSeaPath });
+  makeCard(g, { key: 'sea_table', title: 'This month and next', wide: true, range: false, render: renderSeaTable });
+  const r = cards.sea_table.root; r.querySelector('[title^="Focus"]').hidden = true; const d = r.querySelector('[title^="Download chart as"]'); if (d) d.hidden = true;
+}
+// sensitivities: 2-year weekly betas
+const SENS_ASSETS = ['KLCI', 'STI', 'AAXJ', 'HSI', 'CSI300', 'KOSPI', 'TWSE', 'NIFTY', 'NKY', 'SX5E', 'EEM', 'GOLD', 'COPPER', 'USDMYR', 'TLT', 'HYG'];
+const SENS_F = [['SPX', 'S&P 500 +1%', 'ret'], ['UST10Y', 'UST 10Y +10bp', 'bp'], ['DXY', 'Dollar +1%', 'ret'], ['BRENT', 'Brent +1%', 'ret']];
+function wkSeries(id, weeks) { const s = S[id], out = new Map(), end = lastFriday(state.latest); for (let k = weeks; k >= 0; k--) { const t = end - k * 7 * DAY, a = asOf(s, t); if (a && t - a.t < 6 * DAY) out.set(k, a.v); } return out; }
+function betaOf(y, x, kind, lo, hi) {   // weekly changes over weeks lo..hi ago
+  const xs = [], ys = [];
+  for (let k = hi; k > lo; k--) { const y1 = y.get(k - 1), y0 = y.get(k), x1 = x.get(k - 1), x0 = x.get(k); if ([y1, y0, x1, x0].some(v => v == null) || !y0 || !x0) continue;
+    ys.push((y1 / y0 - 1) * 100); xs.push(kind === 'bp' ? (x1 - x0) * 10 : (x1 / x0 - 1) * 100); }   // bp: per 10bp
+  if (xs.length < 30) return null; const mx = xs.reduce((a, v) => a + v, 0) / xs.length, my = ys.reduce((a, v) => a + v, 0) / ys.length;
+  let sxy = 0, sxx = 0; for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; } return sxx ? sxy / sxx : null;
+}
+function renderSens(c) {
+  const b = htmlBody(c), W = 104, heads = ['Asset', ...SENS_F.map(f => f[1])];
+  const tbl = el('table', { class: 'perf asset-table' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads], F = SENS_F.filter(([id]) => has(id)).map(f => [...f, wkSeries(f[0], W)]);
+  for (const id of SENS_ASSETS.filter(x => has(x))) { const y = wkSeries(id, W), tr = el('tr', { class: 'row' }, el('td', { text: S[id].short || S[id].label })), row = [S[id].label];
+    for (const [fid, lab, kind, x] of F) {
+      const bAll = betaOf(y, x, kind, 0, W), b1 = betaOf(y, x, kind, W / 2, W), b2 = betaOf(y, x, kind, 0, W / 2);
+      const stable = bAll != null && b1 != null && b2 != null && Math.sign(b1) === Math.sign(b2) && Math.abs(b1) > 0.05 && Math.abs(b2) > 0.05 && Math.max(Math.abs(b1), Math.abs(b2)) / Math.min(Math.abs(b1), Math.abs(b2)) < 2.5;
+      const v = bAll == null ? null : bAll;
+      tr.append(el('td', { class: 'num ' + (v == null ? '' : stable ? (v > 0 ? 'up' : 'dn') : 'muted'), title: b1 == null ? '' : `First year ${sign(b1)}${fmtNum(Math.abs(b1), 2)}%, second year ${sign(b2)}${fmtNum(Math.abs(b2), 2)}%${stable ? '' : ' (unstable)'}`,
+        text: v == null ? '–' : `${sign(v)}${fmtNum(Math.abs(v), 2)}%${stable ? '' : ' ~'}` }));
+      row.push(v);
+    }
+    tb.append(tr); csv.push(row); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  setNote(c, `How much each asset has moved, on average, for a 1% move in the S&P 500, the dollar index or Brent, or a 10bp rise in the US 10Y yield: weekly changes over the last 2 years, one factor at a time. Example: a KLCI figure of +0.30% in the S&P column means a 10% S&P fall has gone with about a 3% KLCI fall. Coloured = the same sign and similar size in both years; grey with ~ = unstable, do not lean on it. Hover for each year. Local-currency prices (USD/MYR up = ringgit weaker). Asian markets close before New York, so part of their reaction to a US move shows up the following week, which understates their link to the S&P 500.`);
+  setSource(c, 'Yahoo Finance; FRED; calculated');
+}
+function buildSens() {
+  const g = el('div', { class: 'grid', id: 'sensGrid' }); $('#tab-correlation').append(g);
+  makeCard(g, { key: 'sens_table', title: 'Sensitivities to big drivers', wide: true, range: false, render: renderSens });
+  const r = cards.sens_table.root; r.querySelector('[title^="Focus"]').hidden = true; const d = r.querySelector('[title^="Download chart as"]'); if (d) d.hidden = true;
+}
+
 function buildCorrelation() {
   const u = $('#corrUniverse');
   Object.keys(UNIVERSES).forEach(k => u.append(el('option', { value: k, text: k })));
@@ -4813,7 +4915,7 @@ function buildCorrelation() {
   p.root.querySelector('.card-head').after(el('div', { class: 'pairsel' }, p.selA, el('span', { class: 'muted', text: 'vs' }), p.selB));
   ['#corrUniverse', '#corrWindow', '#corrFreq', '#corrShow', '#corrYields'].forEach(s => $(s).addEventListener('change', renderCorrelation));
 }
-function renderCorrelation() { cards.matrix.render(); cards.pair.render(); ['ll_chart', 'll_bars', 'll_table'].forEach(k => cards[k] && cards[k].render()); }
+function renderCorrelation() { cards.matrix.render(); cards.pair.render(); ['ll_chart', 'll_bars', 'll_table', 'sens_table'].forEach(k => cards[k] && cards[k].render()); }
 
 // ------------------------------------------------------------------ COUNTRY SCORECARD (WP24)
 // One screen: direction of growth, inflation, policy, equities, currency and 10Y yields for 11 economies.
@@ -6332,7 +6434,7 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
@@ -6352,7 +6454,7 @@ const SUBTABS = {
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
   signals: [['Ideas to investigate', ['sig_ideas', 'sig_context', 'sig_divtop']], ['All signals', ['sig_table', 'sig_detail']], ['Divergences', ['sig_div', 'sig_divchart']], ['Track record', ['sig_log']], ['How it works', ['sig_how']]],
-  correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']]],
+  correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']], ['Sensitivities', ['sens_table']]],
 };
 state.sub = {};
 function subActive(node) {
@@ -6806,7 +6908,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;

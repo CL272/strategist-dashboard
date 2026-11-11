@@ -540,6 +540,8 @@ the US (carry), 3-month realised volatility, carry ÷ volatility, REER percentil
 
 ### WP28. Seasonality and sensitivities
 
+*Built 12 Nov 2026 as planned (one factor at a time; Asian markets' same-week betas to US moves are understated by the time-zone gap, noted on the card).*
+
 - Markets → new sub-tab **Seasonality**: for a chosen asset, average return and hit rate by calendar month (20 years),
   this year's path against the average year; a table of this month's and next month's record across assets.
 - Correlation → new sub-tab **Sensitivities**: 2-year weekly betas of each asset to the S&P 500, UST 10Y (per 10bp),
