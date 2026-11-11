@@ -665,6 +665,13 @@ def main() -> int:
     except Exception as e:   # headlines must never break the data refresh
         print(f"News failed: {type(e).__name__}")
 
+    try:   # signal engine: reads the files written above, so it runs last
+        import signals
+        signals.build(status)
+        _lap("signals", t0)
+    except Exception as e:
+        print(f"Signals failed: {type(e).__name__}")
+
     try:
         import health
         health.build_health(status)

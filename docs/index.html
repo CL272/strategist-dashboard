@@ -27,6 +27,7 @@
   <nav class="tabs" role="tablist" aria-orientation="vertical">
     <div class="nav-group">Overview</div>
     <button role="tab" data-tab="overview" aria-selected="true"><span class="ic">◎</span>Strategist View</button>
+    <button role="tab" data-tab="signals" aria-selected="false"><span class="ic">✧</span>Signals</button>
     <button role="tab" data-tab="weekly" aria-selected="false"><span class="ic">▣</span>Weekly brief</button>
     <button role="tab" data-tab="ideas" aria-selected="false"><span class="ic">✎</span>Idea log</button>
     <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
@@ -182,6 +183,11 @@
       <div class="table-wrap"><table class="perf asset-table" id="perfTable"></table></div>
       <p class="src perf-src">Source: Yahoo Finance (indices, ETFs, FX, commodities, crypto, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB, SingStat/MAS, Bank Negara (yields, spreads). Hover a row for its exact series.</p>
     </div>
+  </section>
+
+  <section id="tab-signals" class="tab-panel" hidden>
+    <div class="kpis" id="sigKpis"></div>
+    <div class="grid" id="sigGrid"></div>
   </section>
 
   <section id="tab-correlation" class="tab-panel" hidden>

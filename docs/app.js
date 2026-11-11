@@ -4687,6 +4687,189 @@ function buildCorrelation() {
 }
 function renderCorrelation() { cards.matrix.render(); cards.pair.render(); ['ll_chart', 'll_bars', 'll_table'].forEach(k => cards[k] && cards[k].render()); }
 
+// ------------------------------------------------------------------ SIGNALS (WP22): ideas to investigate
+// Built by pipeline/signals.py: fixed rules, each tested on history; this page only displays them.
+// What the owner does with them (watch, dismiss) stays in this browser (localStorage), never published.
+let SIG = null;
+const SIG_KEY = 'sd-signals-v1';
+function sigStore() { try { return JSON.parse(localStorage.getItem(SIG_KEY) || '{}'); } catch (e) { return state.sigMem || {}; } }
+function sigSave(o) { state.sigMem = o; try { localStorage.setItem(SIG_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+const sigById = id => SIG && SIG.signals.find(x => x.id === id);
+const isRatio = id => /^R_/.test(id);
+const TIER_CLS = { 'Tested edge': 'up', 'Thin evidence': 'warn', 'Context only': '', 'Not enough history': '' };
+function sigMove(kind, v, signed = true) { return v == null ? '–' : kind === 'ret' ? (signed ? pctF1(v) : fmtNum(Math.abs(v), 1) + '%') : (signed ? sign(v) : '') + fmtNum(Math.abs(v), 2) + ' pts'; }
+function sigHeadline(g, h) {
+  const n = g.target_name;
+  if (isRatio(g.target)) return `${n}: ${g.dir > 0 ? 'outperformance' : 'underperformance'} has tended to continue (${h} months)`;
+  if (g.kind === 'chg') return `${n}: has tended to ${g.dir > 0 ? 'rise' : 'fall'} over the next ${h} months`;
+  return `${n}: ${g.dir > 0 ? 'positive' : 'caution'} over the next ${h} months`;
+}
+function sigEvidence(x) {
+  const h = x.best_h, st = x.stats[String(h)]; if (!st) return 'No usable history yet.';
+  const yr = x.history_from ? x.history_from.slice(0, 4) : '';
+  const what = isRatio(x.target) ? 'relative move' : x.kind === 'ret' ? 'move' : 'change';
+  return `${st.n} time${st.n === 1 ? '' : 's'} since ${yr}: median ${what} ${sigMove(x.kind, st.med)} over ${h} months, up ${fmtNum(st.hit, 0)}% of the time; in all months ${sigMove(x.kind, st.base_med)}, up ${fmtNum(st.base_hit, 0)}%.`;
+}
+function sigChip(t) { return el('span', { class: 'chip tchip ' + (TIER_CLS[t] || 'none'), text: t }); }
+function renderSigIdeas(c) {
+  const b = htmlBody(c); if (!SIG) { b.append(el('div', { class: 'empty', text: 'The signal engine runs with the next full data refresh.' })); return; }
+  const st = sigStore(), dis = st.dismissed || {}, watch = st.watched || {};
+  const ideas = SIG.ideas.filter(g => g.net > 0), shown = ideas.filter(g => !dis[g.target + '|' + g.dir] || state.sigShowDis);
+  if (!ideas.length) b.append(el('div', { class: 'muted', text: 'No signal with a tested or thin edge is active right now. Context-only signals are listed below; check back after the next refresh.' }));
+  const wrap = el('div', { class: 'sig-ideas' });
+  for (const g of shown.slice(0, 8)) {
+    const key = g.target + '|' + g.dir, sigs = g.signals.map(sigById).filter(Boolean).sort((p, q) => (TIER_W[q.tier] - TIER_W[p.tier]));
+    const lead = sigs[0], h = lead.best_h, ls = lead.stats[String(h)];
+    const moved = lead.moved, typ = ls ? ls.med : null, frac = moved != null && typ ? Math.max(0, Math.min(1.5, (moved * lead.dir) / Math.abs(typ))) : null;
+    const box = el('div', { class: 'sig-idea' + (dis[key] ? ' dismissed' : '') + (watch[key] ? ' watched' : '') });
+    box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), sigChip(lead.tier)));
+    box.append(el('div', { class: 'muted small', text: `${sigs.length} signal${sigs.length === 1 ? '' : 's'} for${g.against.length ? `, ${g.against.length} against` : ', none against'} · since ${lead.since ? monthLab(dayMs(lead.since)) : '–'}` }));
+    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') }), el('div', { class: 'muted small', text: sigEvidence(x) })));
+    if (frac != null) box.append(el('div', { class: 'sig-priced' }, el('span', { class: 'muted small', text: `Since it fired: ${sigMove(lead.kind, moved)} (typical over ${h}m: ${sigMove(lead.kind, typ)})` }),
+      el('div', { class: 'rbar' }, el('div', { class: 'rbar-fill', style: `width:${Math.round(Math.min(frac, 1) * 100)}%` }))));
+    box.append(el('div', { class: 'muted small', text: `Cancels if the rule stops holding (${lead.rule}), or ${g.target_name} breaks its trend the other way.` }));
+    if (g.catalysts.length) box.append(el('div', { class: 'muted small', text: 'Next: ' + g.catalysts.map(e => `${dShort(dayMs(e.d))} ${e.region} ${e.name}`).join(' · ') }));
+    const sid = S[g.target] ? g.target : null;
+    box.append(el('div', { class: 'sig-btns' },
+      el('button', { type: 'button', class: 'ghost', text: '＋ Idea log', title: 'Open the idea log form, pre-filled', onclick: () => { setTab('ideas'); openIdeaForm(null, sid, {
+        title: sigHeadline(g, h), dir: (g.dir > 0) === (g.kind !== 'chg' || true) ? (g.dir > 0 ? 'up' : 'down') : 'up', theme: 'Signals', conv: lead.tier === 'Tested edge' ? 2 : 1,
+        horizon: iso(addMonths(sgToday(), h)), why: sigs.map(x => `${x.name}. ${sigEvidence(x)}`).join('\n') }); } }),
+      el('button', { type: 'button', class: 'ghost', text: watch[key] ? '★ Watching' : '☆ Watch', onclick: () => { const o = sigStore(); o.watched = o.watched || {}; if (o.watched[key]) delete o.watched[key]; else o.watched[key] = iso(sgToday()); sigSave(o); c.render(); } }),
+      el('button', { type: 'button', class: 'ghost', text: dis[key] ? 'Restore' : 'Dismiss', onclick: () => { const o = sigStore(); o.dismissed = o.dismissed || {}; if (o.dismissed[key]) delete o.dismissed[key]; else o.dismissed[key] = iso(sgToday()); sigSave(o); c.render(); sigTiles(); } })));
+    wrap.append(box);
+  }
+  b.append(wrap);
+  const nd = ideas.filter(g => dis[g.target + '|' + g.dir]).length;
+  if (nd) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: state.sigShowDis ? 'Hide dismissed' : `Show ${nd} dismissed`, onclick: () => { state.sigShowDis = !state.sigShowDis; c.render(); } }));
+  setNote(c, `Research prompts from fixed rules on public data, ranked by the strength of their record: not recommendations. Each card shows how the target behaved after past signals against all months, how much has already happened since this one fired, and what would cancel it. Engine run ${SIG.generated}.`);
+  setSource(c, 'Dashboard signal engine (pipeline/signals.py) on FRED, Yahoo Finance, OECD, DGBAS and DOSM data');
+}
+function renderSigContext(c) {
+  const b = htmlBody(c); if (!SIG) return;
+  const L = SIG.signals.filter(x => x.on && (x.active || x.months_on <= 12) && TIER_W[x.tier] === 0);
+  if (!L.length) { b.append(el('div', { class: 'muted', text: 'None.' })); return; }
+  const ul = el('ul', { class: 'changes sig-list' });
+  for (const x of L) ul.append(el('li', {}, el('a', { href: '#', text: x.name, onclick: e => { e.preventDefault(); state.sigSel = x.id; goSub('signals', 'All signals'); } }),
+    el('span', { class: 'muted small', text: ` · ${x.tier.toLowerCase()} · since ${x.since ? monthLab(dayMs(x.since)) : '–'}` })));
+  b.append(ul);
+  setNote(c, 'Switched on, but their history shows no reliable edge (or too little history to tell). Worth knowing, not worth acting on alone.');
+}
+const TIER_W = { 'Tested edge': 3, 'Thin evidence': 1, 'Context only': 0, 'Not enough history': 0 };
+state.sigFam = 'All'; state.sigSel = null;
+function renderSigTable(c) {
+  const b = htmlBody(c); if (!SIG) { b.append(el('div', { class: 'empty', text: 'Waiting for the signal engine.' })); return; }
+  const L = SIG.signals.filter(x => state.sigFam === 'All' || x.family === state.sigFam).sort((p, q) => (q.on - p.on) || (TIER_W[q.tier] - TIER_W[p.tier]));
+  const heads = ['Signal', 'Now', 'Tier', 'Best', 'After signal', 'All months'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [['Signal', 'Family', 'On', 'Since', 'Tier', 'Best horizon', 'Events', 'Median after', 'Hit after', 'Median all', 'Hit all']];
+  if (!state.sigSel && L.length) state.sigSel = L[0].id;
+  for (const x of L) { const st = x.best_h ? x.stats[String(x.best_h)] : null;
+    tb.append(el('tr', { class: 'row' + (x.id === state.sigSel ? ' sel' : ''), style: 'cursor:pointer', title: x.rule + (x.revised ? ' · uses revised data' : '') + ' · click for detail', onclick: () => { state.sigSel = x.id; c.render(); cards.sig_detail.render(); } },
+      el('td', { text: x.name }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
+      el('td', {}, sigChip(x.tier)), el('td', { class: 'num', text: x.best_h ? x.best_h + 'm' : '–' }),
+      el('td', { class: 'num', text: st ? `${sigMove(x.kind, st.med)} · ${fmtNum(st.hit, 0)}% up · n${st.n}` : '–' }), el('td', { class: 'num muted', text: st ? `${sigMove(x.kind, st.base_med)} · ${fmtNum(st.base_hit, 0)}% up` : '–' })));
+    csv.push([x.name, x.family, x.on, x.since || '', x.tier, x.best_h || '', st ? st.n : '', st ? st.med : '', st ? st.hit : '', st ? st.base_med : '', st ? st.base_hit : '']); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); capRows(tb, 'sig_' + state.sigFam, 14); c.csv = csv;
+  setNote(c, `${SIG.signals.length} rules. Best = the horizon (3, 6 or 12 months) where the record differs most from normal. "After signal" = median move of the target after the rule switched on, share of rises, number of times; "All months" = the same for every month in the period. Click a row for the detail.`);
+  setSource(c, 'Dashboard signal engine; calculated');
+}
+function renderSigDetail(c) {
+  const x = SIG && sigById(state.sigSel); if (!x) return setEmpty(c, 'Pick a signal in the table.');
+  c.root.querySelector('.card-head h2').textContent = x.name;
+  const t = S[x.target]; if (!t) return setEmpty(c, 'Target series not loaded.');
+  const evs = x.events.map(d => dayMs(d)).filter(d => d >= state.from && d <= state.to);
+  drawLines(c, [{ name: x.target_name, data: pts(t, state.from, state.to), extra: { markLine: { silent: true, symbol: 'none', lineStyle: { color: tok(x.dir > 0 ? '--pos' : '--neg'), type: 'dashed', width: 1 }, label: { show: false }, data: evs.map(d => ({ xAxis: d })) } } }],
+    { fmt: v => fmtNum(v, isRatio(x.target) ? 3 : 2), axisFmt: v => fmtNum(v, isRatio(x.target) ? 2 : 0), endLabels: false });
+  const rows = (SIG.horizons || [1, 3, 6, 12]).map(h => { const st = x.stats[String(h)]; return st ? `${h}m: ${sigMove(x.kind, st.med)} (middle half ${sigMove(x.kind, st.p25)} to ${sigMove(x.kind, st.p75)}), up ${fmtNum(st.hit, 0)}% vs ${fmtNum(st.base_hit, 0)}% normally; first half of history ${st.h1 == null ? '–' : sigMove(x.kind, st.h1)} vs normal, second ${st.h2 == null ? '–' : sigMove(x.kind, st.h2)}` : null; }).filter(Boolean);
+  const inputs = Object.entries(x.inputs_now || {}).map(([k, [d, v]]) => `${(S[k] && S[k].label) || k} ${fmtNum(v, 2)} (as known ${monthLab(dayMs(d))}${x.lags[k] ? `, ${x.lags[k]}-month publication delay applied` : ''})`).join('; ');
+  setNote(c, `Rule: ${x.rule}. Dashed lines = past switch-ons. ${x.tier}. ${rows.join('. ')}. Latest inputs: ${inputs}.${x.revised ? ' Uses data that is revised after the fact, so the live record may be weaker.' : ''}`);
+  setSource(c, 'Dashboard signal engine; ' + srcOf(x.inputs.filter(i => S[i])));
+}
+state.sigDiv = 0;
+function renderSigDiv(c) {
+  const b = htmlBody(c); if (!SIG || !SIG.divergences.length) { b.append(el('div', { class: 'empty', text: 'Waiting for the signal engine.' })); return; }
+  const heads = ['Pair', '3M moves', 'Gap', 'σ', 'Past gaps closed'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  SIG.divergences.forEach((d, k) => {
+    const big = Math.abs(d.z) >= 2;
+    tb.append(el('tr', { class: 'row' + (k === state.sigDiv ? ' sel' : ''), style: 'cursor:pointer', title: `${d.name_b} normally moves ${fmtNum(d.beta, 2)}× ${d.name_a} over 3 months (correlation ${fmtNum(d.corr, 2)}); implied ${pctF1(d.implied_b)}, actual ${pctF1(d.ret_b)}. Click to chart.`,
+      onclick: () => { state.sigDiv = k; c.render(); cards.sig_divchart.render(); } },
+      el('td', { text: `${d.name_b} vs ${d.name_a}` }), el('td', { class: 'num', text: `${pctF1(d.ret_b)} / ${pctF1(d.ret_a)}` }), el('td', { class: 'num ' + (d.gap > 0 ? 'up' : 'dn'), text: pctF1(d.gap) }),
+      el('td', { class: 'num', style: big ? `background:${hexA(tok('--warning'), 0.18)}` : '', text: sign(d.z) + fmtNum(Math.abs(d.z), 1) }),
+      el('td', { class: 'num muted', text: d.past ? `${d.closed} of ${d.past}` : '–' })));
+    csv.push([`${d.name_b} vs ${d.name_a}`, d.ret_b, d.ret_a, d.gap, d.z, d.closed, d.past]); });
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  const n2 = SIG.divergences.filter(d => Math.abs(d.z) >= 2).length;
+  setNote(c, `${n2 ? `${n2} pair${n2 === 1 ? ' is' : 's are'} more than 2 standard deviations apart. ` : 'No pair is beyond 2 standard deviations. '}Gap = the second market’s 3-month move minus what its usual relationship with the first implies (5-year rolling, weekly). "Past gaps closed" = times a gap first passed 2σ and halved within 13 weeks. Moves: second / first market.`);
+  setSource(c, 'Dashboard signal engine on Yahoo Finance data; weekly');
+}
+function renderSigDivChart(c) {
+  const d = SIG && SIG.divergences[state.sigDiv]; if (!d) return setEmpty(c, 'Waiting for data.');
+  c.root.querySelector('.card-head h2').textContent = `${d.name_b} vs ${d.name_a}: gap in σ`;
+  drawLines(c, [{ name: 'Gap, standard deviations', data: d.z_hist.map(([t, v]) => [dayMs(t), v]) }], { fmt: v => fmtNum(v, 2), axisFmt: v => fmtNum(v, 1), zero: true, endLabels: false,
+    hlines: [{ y: 2, label: '+2σ' }, { y: -2, label: '−2σ' }] });
+  setNote(c, `Last 3 years, weekly. Below zero = ${d.name_b} has done worse than ${d.name_a} implies; past ±2σ gaps closed within 13 weeks ${d.closed} of ${d.past} times.`);
+  setSource(c, 'Dashboard signal engine; calculated');
+}
+function renderSigLog(c) {
+  const b = htmlBody(c); if (!SIG) return;
+  const L = (SIG.log || []).slice().sort((p, q) => q.since.localeCompare(p.since));
+  if (!L.length) { b.append(el('div', { class: 'muted', text: 'No firings logged yet.' })); return; }
+  const heads = ['Fired', 'Signal', 'Tier then', 'Since', 'Status'];
+  const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
+  const tb = el('tbody'), csv = [heads];
+  let right = 0, done = 0;
+  for (const r of L) { const x = sigById(r.signal), t = S[r.target]; const a = t ? asOf(t, state.latest) : null;
+    const mv = a ? (r.kind === 'ret' ? (a.v / r.level - 1) * 100 : a.v - r.level) : null, ok = mv != null && mv * r.dir > 0;
+    const end = addMonths(dayMs(r.since), r.best_h || 6), closed = state.latest >= end; if (closed && mv != null) { done++; if (ok) right++; }
+    tb.append(el('tr', { class: 'row', title: x ? x.rule : r.signal }, el('td', { text: monthLab(dayMs(r.since)) }), el('td', { text: x ? x.name : r.signal }), el('td', {}, sigChip(r.tier)),
+      el('td', { class: 'num ' + (mv == null ? '' : ok ? 'up' : 'dn'), text: sigMove(r.kind, mv) }), el('td', { class: 'num muted', text: closed ? (ok ? 'done · right' : 'done · wrong') : `open to ${monthLab(end)}` })));
+    csv.push([r.since, r.signal, r.tier, mv, closed]); }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); capRows(tb, 'sig_log', 14); c.csv = csv;
+  setNote(c, `Every time a rule switched on, logged from ${(SIG.log[0] || {}).logged || 'the engine start'} (earlier switch-ons that were still on that day are included). ${done ? `Finished: ${right} of ${done} went the signal’s way.` : 'None has reached the end of its horizon yet; this is the live record that will show which rules to trust.'} "Since" is the target’s move since the signal; green = in the signal’s direction.`);
+  setSource(c, 'archive/signals_log.csv; calculated');
+}
+function renderSigHow(c) {
+  const b = htmlBody(c);
+  const P = t => el('p', { text: t });
+  b.append(P('What this is: a fixed list of rules applied to the dashboard’s own public data. Each rule is a condition (for example, “Korea’s OECD leading index is higher than six months ago”) and a target market. The page shows which rules are on now and how the target behaved after each past switch-on.'),
+    P('How a rule is tested: monthly data; macro data is moved forward by its publication delay, so the test only uses what was known at the time. Each switch-on (at least six months after the previous one) is an event; the target’s move 1, 3, 6 and 12 months later is compared with its move in all months over the same period.'),
+    P('Tiers: Tested edge = at least 12 events, a hit rate at least 12 points better than normal in the signal’s direction, and the edge holding in both halves of the history. Thin evidence = 6 to 11 events and at least 20 points. Context only = on, but the record is no better than normal. Not enough history = fewer than 6 events.'),
+    P('Ideas to investigate: rules that are on and still within their best horizon, grouped by market and direction; a market with rules on both sides shows the count against. Divergences: pairs that normally move together whose 3-month moves are more than 2 standard deviations apart.'),
+    P('Limits: samples are small; past patterns break; leading indicators are revised after the fact; everything here uses public data that the market also sees. The track record starts on the day the engine went live and is the real test. Research prompts for further work, not investment advice.'));
+  setSource(c, 'pipeline/signals.py');
+}
+function sigTiles() {
+  const box = $('#sigKpis'); if (!box) return; box.replaceChildren(); if (!SIG) return;
+  const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  const st = sigStore(), dis = st.dismissed || {}, ideas = SIG.ideas.filter(g => g.net > 0);
+  tile('Ideas to investigate', String(ideas.filter(g => !dis[g.target + '|' + g.dir]).length), `${ideas.length} in all${Object.keys(st.watched || {}).length ? ` · ${Object.keys(st.watched).length} watched` : ''}`, 'engine ' + SIG.generated.slice(0, 10));
+  const on = SIG.signals.filter(x => x.on);
+  tile('Tested-edge signals on', String(on.filter(x => x.tier === 'Tested edge').length), `${on.length} of ${SIG.signals.length} rules on`, 'see All signals');
+  const m0 = Date.UTC(new Date(state.latest).getUTCFullYear(), new Date(state.latest).getUTCMonth() - 1, 1);
+  tile('Switched on recently', String(on.filter(x => x.since && dayMs(x.since) >= m0).length), 'this month or last', 'month-end data');
+  const dv = SIG.divergences.filter(d => Math.abs(d.z) >= 2); tile('Unusual divergences', String(dv.length), dv.length ? dv.map(d => d.name_b).slice(0, 2).join(', ') : 'none', 'beyond 2 standard deviations');
+  tile('Live track record', String((SIG.log || []).length), 'firings logged', 'since the engine started');
+}
+function buildSignals() {
+  const g = $('#sigGrid');
+  makeCard(g, { key: 'sig_ideas', title: 'Ideas to investigate', wide: true, range: false, render: renderSigIdeas });
+  makeCard(g, { key: 'sig_context', title: 'Also on: no proven edge', range: false, render: renderSigContext });
+  makeCard(g, { key: 'sig_divtop', title: 'Widest divergences', range: false, render: c => { const b = htmlBody(c); if (!SIG) return;
+    const ul = el('ul', { class: 'changes sig-list' }); for (const d of SIG.divergences.slice(0, 4)) ul.append(el('li', {}, el('a', { href: '#', text: `${d.name_b} vs ${d.name_a}: ${sign(d.z)}${fmtNum(Math.abs(d.z), 1)}σ`, onclick: e => { e.preventDefault(); state.sigDiv = SIG.divergences.indexOf(d); goSub('signals', 'Divergences'); } }),
+      el('span', { class: 'muted small', text: ` · ${d.name_b} ${pctF1(d.ret_b)} vs implied ${pctF1(d.implied_b)} over 3 months` }))); b.append(ul);
+    setNote(c, 'Pairs that usually move together, ranked by how far apart they are now (standard deviations of the usual gap). Beyond ±2σ is unusual.'); } });
+  makeCard(g, { key: 'sig_table', title: 'All signals', wide: true, range: false, seg: { key: 'sigFam', options: [['All', 'All'], ['Tested leads', 'Leads'], ['Regime', 'Regime'], ['Extremes', 'Extremes'], ['Trend', 'Trend'], ['AI theme', 'AI']] }, render: renderSigTable });
+  makeCard(g, { key: 'sig_detail', title: 'Signal detail', wide: true, defaultRange: 'MAX', render: renderSigDetail });
+  makeCard(g, { key: 'sig_div', title: 'Divergence monitor', range: false, render: renderSigDiv });
+  makeCard(g, { key: 'sig_divchart', title: 'Gap history', range: false, render: renderSigDivChart });
+  makeCard(g, { key: 'sig_log', title: 'Live track record', wide: true, range: false, render: renderSigLog });
+  makeCard(g, { key: 'sig_how', title: 'How the signals work', wide: true, range: false, render: renderSigHow });
+  for (const k of ['sig_ideas', 'sig_context', 'sig_divtop', 'sig_table', 'sig_div', 'sig_log', 'sig_how']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; const d = r.querySelector('[title^="Download chart as"]'); if (d) d.hidden = true; }
+}
+function renderSignals() { sigTiles(); renderPanel('signals'); }
+
 // ------------------------------------------------------------------ IDEA LOG
 // Ideas are kept only in this browser (localStorage); Export/Import moves them between laptops.
 // Nothing is sent anywhere: the dashboard site is public, so ideas are never published with it.
@@ -4877,9 +5060,9 @@ function ideaCsv() {
   return [h, ...IDEAS.map(x => { const p = ideaPerf(x); return [x.date, x.title, x.sid ? S[x.sid] ? S[x.sid].label : x.sid : '', x.sid ? (ideaDirs(x.sid).find(d => d[0] === x.dir) || ['', ''])[1] : '',
     x.entry ?? '', x.target ?? '', x.stop ?? '', x.horizon || '', x.conv || '', x.theme || '', x.status, x.closeDate || '', x.closeLevel ?? '', p ? fmtPnl(p) : '', x.why || '', x.closeNote || '']; })];
 }
-function openIdeaForm(edit = null, preset = null) {
+function openIdeaForm(edit = null, preset = null, draft = null) {
   const box = $('#ideaForm'); box.replaceChildren(); box.hidden = false;
-  const x = edit || { id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: iso(sgToday()), status: 'open', conv: 2 };
+  const x = edit || { id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: iso(sgToday()), status: 'open', conv: 2, ...(draft || {}) };
   const ids = allIdsSorted().filter(id => !/_YOYc$|^MYR_IN_/.test(id)).sort((p, q) => (S[p].group === 'Tickers') - (S[q].group === 'Tickers'));
   const dl = el('datalist', { id: 'ideaSeries' }, ...ids.map(id => el('option', { value: `${S[id].label} · ${id}` })));
   const f = (lab, input, hint) => el('label', { class: 'if-field' }, el('span', { class: 'if-lab', text: lab }), input, hint ? el('span', { class: 'muted small', text: hint }) : '');
@@ -5811,6 +5994,7 @@ const SUBTABS = {
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']]],
+  signals: [['Ideas to investigate', ['sig_ideas', 'sig_context', 'sig_divtop']], ['All signals', ['sig_table', 'sig_detail']], ['Divergences', ['sig_div', 'sig_divchart']], ['Track record', ['sig_log']], ['How it works', ['sig_how']]],
   correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']]],
 };
 state.sub = {};
@@ -6157,10 +6341,10 @@ function fitTiles(tab) {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, signals: renderSignals, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
   fitTiles(state.tab);
 }
-const TAB_TITLES = { overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',
+const TAB_TITLES = { signals: 'Signals: ideas to investigate', overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',
   markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
 function setTab(t) {
   state.tab = t;
@@ -6215,7 +6399,7 @@ function wire() {
 }
 async function loadJSON(p) { const r = await fetch(p, { cache: 'no-cache' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 async function init() {
-  const [meta, y, f, d, cv, as, cb, kr, rp, gp, tw] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json', 'data/korea.json', 'data/ramp.json', 'data/gpu.json', 'data/taiwan.json'].map(loadJSON));
+  const [meta, y, f, d, cv, as, cb, kr, rp, gp, tw, sg] = await Promise.allSettled(['data/meta.json', 'data/yahoo.json', 'data/fred.json', 'data/derived.json', 'data/curves.json', 'data/asia.json', 'data/cbwatch.json', 'data/korea.json', 'data/ramp.json', 'data/gpu.json', 'data/taiwan.json', 'data/signals.json'].map(loadJSON));
   await loadNews();
   try { AI = await loadJSON('data/ai.json'); } catch (e) { AI = null; }
   try { HEALTH = await loadJSON('data/health.json'); } catch (e) { HEALTH = null; }
@@ -6229,6 +6413,7 @@ async function init() {
   META = meta.status === 'fulfilled' ? meta.value : {};
   if (SENT && SENT.series) for (const [id, x] of Object.entries(SENT.series)) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
   if (rp.status === 'fulfilled') RAMP_META = rp.value._meta || null;
+  if (sg.status === 'fulfilled') { SIG = sg.value; for (const [id, x] of Object.entries(SIG.extra || {})) { S[id] = { id, ...x, group: 'Signals · ratios', source: 'Yahoo Finance; calculated', t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; } }
   if (gp.status === 'fulfilled') GPU_META = gp.value._meta || null;
   for (const res of [y, f, d, as, cb, kr, rp, gp, tw]) if (res.status === 'fulfilled') {
     for (const [id, s] of Object.entries(res.value)) { if (id[0] === '_' || !s || !s.d) continue; S[id] = { id, ...s, t: s.d.map(x => x * DAY), v: s.v }; delete S[id].d; }
@@ -6261,7 +6446,7 @@ async function init() {
     if (!isNaN(fr) && !isNaN(to) && fr < to) { state.preset = 'custom'; state.from = fr; state.to = Math.min(to, state.latest); }
   }
   ismPrep();
-  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
+  buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSignals(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'asia'); h.set('sub', '3'); } }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
@@ -6271,6 +6456,6 @@ async function init() {
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);   // ~2 MB of ticker history: loaded after the first page is drawn
-  setTab(['overview', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'us', 'europe', 'japan', 'australia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'signals', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'us', 'europe', 'japan', 'australia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

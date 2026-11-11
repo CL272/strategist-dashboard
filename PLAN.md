@@ -364,8 +364,23 @@ indicators can go live first; Taiwan follows once its sources are proven.
 
 ## Planned, not built (owner's request, 11 Nov 2026): WP22 to WP29, signals and strategist tools
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` and run
-`node tools/design-check.js` before each push. One commit per package.
+**Status: WP23 and WP22 built on 11 Nov 2026** (owner chose the engine first and the wording "ideas to investigate";
+WP24 to WP29 wait for a later "Go").
+
+**Correction to the prototype table below:** the planning prototype counted events wrongly (a pandas type slip made it
+count months that were not new switch-ons), so its event counts and edges were overstated. The engine counts
+correctly and also applies publication delays. Corrected readings on 11 Nov 2026: Korea leading index turning up has
+9 events (not 26); its record for Taiwan Weighted and KOSPI over 6 months is still strong (all 9 positive) but rates
+"Thin evidence". **Taiwan M1B − M2 turning down is "Context only"** (11 events, up 55% of the time against 67% normally,
+and the edge flips between the two halves), so it is not shown as an idea. Tested edges in the engine: Indonesia's
+leading index turning up (Jakarta Composite, 3 months), Taiwan M1B − M2 turning up, the Goldilocks regime (S&P 500),
+VIX below 13 (caution), copper ÷ gold falling (lower US 10Y), and trend persistence in the Asia ÷ world, EM ÷ S&P 500
+and SOX ÷ S&P 500 ratios.
+
+**Departures:** divergences are computed once, in the engine, and shown on Signals → Divergences (not also under
+Correlation); the plan's "about 40 signals" is 44 rules across leads, regime, extremes, trend and the AI theme
+(policy pricing and the stress composite are not encoded yet); the top-ideas strip on Strategist View → Today was left
+out because that page is at its height limit (Signals sits right under it in the menu).
 
 **The request:** (1) what else a strategist's dashboard should have; (2) have the dashboard turn its signals into
 investment ideas for the owner to note and dig into, to get ahead of the market.
