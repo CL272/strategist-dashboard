@@ -215,6 +215,10 @@ FRED = [
     ("EM_HY_OAS",   "BAMLEMHBHYCRPIOAS", "EM high-yield corporate spread (OAS)", "Credit", "yield", "%"),
     ("AAA_10Y",     "AAA10Y",      "Moody's Aaa − 10Y Treasury",  "Credit", "yield", "%", MACRO_START),
     ("MORTGAGE30",  "MORTGAGE30US", "US 30-year mortgage rate",   "Rates · US", "yield", "%", MACRO_START),
+    # region pages (US, Europe)
+    ("HOUST",       "HOUST",       "US housing starts",           "Macro · Housing", "level", "k, SAAR", MACRO_START),
+    ("CS_HPI",      "CSUSHPINSA",  "Case-Shiller US home prices", "Macro · Housing", "level", "idx", MACRO_START),
+    ("EA_GDP",      "CLVMNACSCAB1GQEA19", "Euro area real GDP",   "Macro · Euro area", "level", "EUR mn", "1995-01-01"),
     ("IT_10Y",      "IRLTLT01ITM156N", "Italy 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
     ("ES_10Y",      "IRLTLT01ESM156N", "Spain 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
     ("FR_10Y",      "IRLTLT01FRM156N", "France 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),

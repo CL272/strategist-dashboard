@@ -35,6 +35,9 @@ ECB_SERIES = [
     ("EA_FWD_6M", "YC", "B.U2.EUR.4F.G_N_A.SV_C_YM.IF_6M", "Euro AAA instantaneous forward, 6 months ahead", "Rates · Euro area"),
     ("EA_FWD_1Y", "YC", "B.U2.EUR.4F.G_N_A.SV_C_YM.IF_1Y", "Euro AAA instantaneous forward, 1 year ahead", "Rates · Euro area"),
     ("EA_FWD_2Y", "YC", "B.U2.EUR.4F.G_N_A.SV_C_YM.IF_2Y", "Euro AAA instantaneous forward, 2 years ahead", "Rates · Euro area"),
+    # Europe page: FRED's copies of these stopped in 2023
+    ("EA_UNEMP", "LFSI", "M.I9.S.UNEHRT.TOTAL0.15_74.T", "Euro area unemployment rate", "Macro · Euro area"),
+    ("EA_M3_YOY", "BSI", "M.U2.Y.V.M30.X.I.U2.2300.Z01.A", "Euro area M3 growth YoY", "Macro · Euro area"),
 ]
 RBA_SERIES = [  # (id, table, RBA series id, label)
     ("AU_BB_1M", "f1", "FIRMMBAB30D", "Australia 1-month bank bill"),
@@ -137,7 +140,7 @@ def build(status: dict) -> None:
             s = new.combine_first(prev) if new is not None else None
         if s is None:
             s = ecb_series(flow, key)
-        keep(sid, s, dict(label=label, group=group, kind="yield", unit="%", source=f"ECB Data Portal ({flow} {key})"))
+        keep(sid, s, dict(label=label, group=group, kind="level" if group.startswith("Macro") else "yield", unit="%", source=f"ECB Data Portal ({flow} {key})"))
         time.sleep(0.2)
     write("cbwatch.json", out)
     missing = [k for k in out if status.get(k) != "ok"]
