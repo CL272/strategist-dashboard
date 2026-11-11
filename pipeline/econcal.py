@@ -108,8 +108,8 @@ EVENTS = [
     ev("Taiwan", "Exports (YoY)", ("asia", "TW_EXP_YOY", "level"), "%", ("win", 7, 10, None, "previous month"), ("TPE", "16:00"), True,
        "Number shown is the 3-month-sum YoY the dashboard charts; the headline single-month figure differs", "Ministry of Finance"),
     ev("Taiwan", "CPI (YoY)", ("asia", "TW_CPI_YOY", "level"), "%", ("win", 5, 9, None, "previous month"), ("TPE", "16:00"), src="DGBAS"),
-    ev("Taiwan", "Export orders (YoY)", None, "%", ("win", 18, 23, None, "previous month"), ("TPE", "16:00"), True,
-       "Leads exports by about a quarter; not carried by this dashboard (the ministry's site is unreachable from the data runner)", "Ministry of Economic Affairs"),
+    ev("Taiwan", "Export orders (YoY)", ("asia", "TW_ORDERS_YOY", "level"), "%", ("win", 18, 23, None, "previous month"), ("TPE", "16:00"), True,
+       "Number shown is the 3-month-sum YoY the dashboard charts (DGBAS copy of the ministry's figures)", "Ministry of Economic Affairs"),
     ev("Taiwan", "GDP advance estimate (YoY)", ("asia", "TW_GDP_YOY", "level"), "%", ("win", 28, 31, Q_NEXT, "previous quarter"), ("TPE", "16:00"), True, src="DGBAS"),
     # ---- India
     ev("India", "CPI (YoY)", ("asia", "IN_CPI_YOY", "level"), "%", ("win", 12, 14, None, "previous month"), ("IST", "16:00"), True,

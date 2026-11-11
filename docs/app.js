@@ -2833,22 +2833,35 @@ function buildAsiaMore() {
   makeCard(g, { key: 'tw_lead', title: 'Korea leading index vs Taiwan', defaultRange: '10Y',
     ...leadCard('twLeadK', ['CLI_KOR', 'chg6', 'Korea leading index, 6-month change'], ['TWSE', 'yoy', 'Taiwan Weighted, % YoY'], 5,
       'Taiwan has no OECD leading index, and its own (National Development Council) could not be reached; Korea’s, built on the same export and chip cycle, has been the best lead found.') });
-  makeCard(g, { key: 'tw_trade', title: 'Taiwan: exports and imports', defaultRange: '5Y', render: c => {
-    lines(c, ['TW_EXP_YOY', 'TW_IMP_YOY', 'KR_EXP_YOY'], pct1, a0, { zero: true, endLabels: false });
-    const m = leadStats('TWSE', 'yoy', 'TW_EXP_YOY', 'level', 4), k = leadStats('CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 9), e = asOf(S.TW_EXP || { t: [], v: [] }, state.to);
-    setNote(c, `${e ? `Exports were US$${fmtNum(e.v, 1)}bn in ${monthLab(e.t)}. ` : ''}Taiwan Weighted has led export growth by about 4 months (correlation ${cF(m && m.rk)}), so exports confirm the market rather than predict it.${k && k.ok ? ` Korea’s leading index has led Taiwan’s exports by about 9 months (${cF(k.rk)}).` : ''} Korea’s exports move with Taiwan’s in the same month.`);
-    setSource(c, 'DGBAS (A081201010, USD); OECD (KOR EX)'); } });
-  makeCard(g, { key: 'tw_ip', title: 'Taiwan: electronics output', defaultRange: '5Y', render: c => {
-    lines(c, ['TW_IP_ICT_YOY', 'TW_IP_YOY'], pct1, a0, { zero: true, endLabels: false });
-    const m = leadStats('TWSE', 'yoy', 'TW_IP_ICT_YOY', 'level', 2);
-    setNote(c, `Information and electronics output is Taiwan’s AI-hardware gauge (servers, chips, components). Taiwan Weighted has led it by about 2 months (correlation ${cF(m && m.rk)}).`);
-    setSource(c, 'DGBAS (A050104010), year-on-year calculated'); } });
+  state.twTrade = 'exp';
+  makeCard(g, { key: 'tw_trade', title: 'Taiwan: trade and orders', defaultRange: '5Y',
+    seg: { key: 'twTrade', options: [['exp', 'Exports'], ['ord', 'Export orders'], ['ict', 'Electronics output']] }, render: c => {
+    const v = state.twTrade;
+    if (v === 'ord') {
+      lines(c, ['TW_ORDERS_YOY', 'TW_ORDERS_US_YOY', 'TW_ORDERS_CN_YOY', 'TW_EXP_YOY'], pct1, a0, { zero: true, endLabels: false });
+      const m = leadStats('TWSE', 'yoy', 'TW_ORDERS_YOY', 'level', 2), x = leadStats('TW_ORDERS_YOY', 'level', 'TW_EXP_YOY', 'level', 1), my = leadStats('TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 2), o = has('TW_ORDERS') ? asOf(S.TW_ORDERS, state.to) : null;
+      setNote(c, `${o ? `Export orders were US$${fmtNum(o.v, 1)}bn in ${monthLab(o.t)}. ` : ''}Orders move with exports in the same month (correlation ${cF(x && x.r0)} on 3-month sums), so they confirm rather than forecast Taiwan’s own exports; Taiwan Weighted has led them by about 2 months (${cF(m && m.rk)}).${my && my.ok ? ` They have led Malaysia’s exports by about 2 months (${cF(my.rk)}): Taiwan’s orders pull in Malaysian components.` : ''}`);
+      setSource(c, 'DGBAS (A050105010 export orders, A081201010 exports; USD), year-on-year calculated');
+    } else if (v === 'ict') {
+      lines(c, ['TW_IP_ICT_YOY', 'TW_IP_YOY'], pct1, a0, { zero: true, endLabels: false });
+      const m = leadStats('TWSE', 'yoy', 'TW_IP_ICT_YOY', 'level', 2);
+      setNote(c, `Information and electronics output is Taiwan’s AI-hardware gauge (servers, chips, components). Taiwan Weighted has led it by about 2 months (correlation ${cF(m && m.rk)}).`);
+      setSource(c, 'DGBAS (A050104010), year-on-year calculated');
+    } else {
+      lines(c, ['TW_EXP_YOY', 'TW_IMP_YOY', 'KR_EXP_YOY'], pct1, a0, { zero: true, endLabels: false });
+      const m = leadStats('TWSE', 'yoy', 'TW_EXP_YOY', 'level', 4), k = leadStats('CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 9), e = asOf(S.TW_EXP || { t: [], v: [] }, state.to);
+      setNote(c, `${e ? `Exports were US$${fmtNum(e.v, 1)}bn in ${monthLab(e.t)}. ` : ''}Taiwan Weighted has led export growth by about 4 months (correlation ${cF(m && m.rk)}), so exports confirm the market rather than predict it.${k && k.ok ? ` Korea’s leading index has led Taiwan’s exports by about 9 months (${cF(k.rk)}).` : ''} Korea’s exports move with Taiwan’s in the same month.`);
+      setSource(c, 'DGBAS (A081201010, USD); OECD (KOR EX)');
+    } } });
+  makeCard(g, { key: 'tw_money', title: 'Taiwan: M1B − M2 vs the market', defaultRange: '10Y',
+    ...leadCard('twMoneyK', ['TW_M1B_M2', 'chg6', 'M1B minus M2 growth, 6-month change (pts)'], ['TWSE', 'yoy', 'Taiwan Weighted, % YoY'], 5,
+      'Local investors watch the gap between M1B (cash and demand deposits) and M2 growth: money moving out of time deposits into ready cash tends to find its way into shares.') });
   state.twAct = 'gdp';
   makeCard(g, { key: 'tw_growth', title: 'Taiwan: growth and jobs', defaultRange: '10Y', seg: { key: 'twAct', options: [['gdp', 'GDP'], ['jobs', 'Unemployment']] }, render: c => {
     const gd = state.twAct === 'gdp';
     segLines(c, 'twAct', { gdp: ['TW_GDP_YOY'], jobs: ['TW_UNEMP'] }, gd ? pct1 : p2, a0, gd ? { zero: true } : {});
     const a = has('TW_GDP_YOY') ? asOf(S.TW_GDP_YOY, state.to) : null;
-    setNote(c, gd ? `Real GDP, % year on year, quarterly${a ? `: ${pctF1(a.v)} in the quarter to ${monthLab(addMonths(a.t, 2))}` : ''}. Export growth (see Taiwan: exports and imports) has driven the recent surge.` : 'Unemployment rate, %, monthly.'); } });
+    setNote(c, gd ? `Real GDP, % year on year, quarterly${a ? `: ${pctF1(a.v)} in the quarter to ${monthLab(addMonths(a.t, 2))}` : ''}. Export growth (see Taiwan: trade and orders) has driven the recent surge.` : 'Unemployment rate, %, monthly.'); } });
   makeCard(g, { key: 'tw_infl', title: 'Taiwan: inflation', defaultRange: '10Y', render: c => {
     if (!has('TW_CPI_YOY')) return setEmpty(c, 'Waiting for data.');
     lines(c, ['TW_CPI_YOY'], pct1, a0, { zero: true, hlines: [{ y: 2, label: '2% (central bank comfort level)' }] });
@@ -2870,14 +2883,14 @@ function buildAsiaMore() {
 const ASIA_LL = [
   ['CLI_KOR', 'chg6', 'TWSE', 'yoy', 5], ['CLI_KOR', 'chg6', 'KOSPI', 'yoy', 4], ['CLI_IDN', 'chg6', 'JCI', 'yoy', 4], ['CLI_IND', 'chg6', 'NIFTY', 'yoy', 5],
   ['CLI_CHN', 'chg6', 'COPPER', 'yoy', 7], ['MY_LEAD_DIFF', 'level', 'KLCI', 'yoy', 4], ['BRENT', 'yoy', 'IN_10Y', 'chg', 2], ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 7],
-  ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['KR_3M', 'chg', 'KOSPI', 'yoy', 8], ['CLI_CHN', 'chg6', 'HSI', 'yoy', 5],
+  ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['KR_3M', 'chg', 'KOSPI', 'yoy', 8], ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 5],
   ['CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 9], ['BRENT', 'yoy', 'TW_CPI_YOY', 'level', 2],
-  ['UST10Y', 'chg', 'KR_10Y', 'chg', 1], ['SOX', 'yoy', 'TWSE', 'yoy', 1],
+  ['SOX', 'yoy', 'TWSE', 'yoy', 1],
 ];
 const SHORT = { CLI_KOR: 'Korea leading index', CLI_IDN: 'Indonesia leading index', CLI_IND: 'India leading index', CLI_CHN: 'China leading index', MY_LEAD_DIFF: 'Malaysia leading diffusion',
   BRENT: 'Brent oil', DXY: 'US dollar', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
   COPPER: 'Copper', KLCI: 'KLCI', IN_10Y: 'India 10Y', KR_CPI_YOY: 'Korea CPI', SG_CORE_YOY: 'Singapore core CPI', KR_EXP_YOY: 'Korea exports', HSI: 'Hang Seng', KR_10Y: 'Korea 10Y',
-  STI: 'STI', SG_NODX_YOY: 'Singapore NODX', TW_EXP_YOY: 'Taiwan exports', TW_CPI_YOY: 'Taiwan CPI', TW_IP_ICT_YOY: 'Taiwan electronics output', MY_EXPORTS_YOY: 'Malaysia exports', CN_EXP_YOY: 'China exports', MY_CPI_YOY: 'Malaysia CPI' };
+  STI: 'STI', SG_NODX_YOY: 'Singapore NODX', TW_EXP_YOY: 'Taiwan exports', TW_ORDERS_YOY: 'Taiwan export orders', TW_M1B_M2: 'Taiwan M1B − M2 gap', TW_CPI_YOY: 'Taiwan CPI', TW_IP_ICT_YOY: 'Taiwan electronics output', MY_EXPORTS_YOY: 'Malaysia exports', CN_EXP_YOY: 'China exports', MY_CPI_YOY: 'Malaysia CPI' };
 const shortOf = id => SHORT[id] || (S[id] ? S[id].label : id);
 state.asiaLLsel = 0;
 function llLatest(id, mode) { const m = llSeries(id, mode), ks = [...m.keys()].sort((a, b) => a - b); return ks.length ? { t: ks[ks.length - 1], v: m.get(ks[ks.length - 1]) } : null; }
@@ -2909,7 +2922,7 @@ function renderAsiaLLChart(c) {
   setNote(c, leadNote(st && { ...st, a: p[0] }, shortOf(p[0]), shortOf(p[2])) + ` The first series is drawn ${p[4]} month${p[4] === 1 ? '' : 's'} later than measured.`);
   setSource(c, srcOf([p[0], p[2]]));
 }
-const MKT_LEAD = [['KOSPI', 'KR_EXP_YOY', 4], ['TWSE', 'TW_EXP_YOY', 4], ['TWSE', 'TW_IP_ICT_YOY', 2], ['STI', 'SG_NODX_YOY', 3], ['KLCI', 'MY_EXPORTS_YOY', 4], ['HSI', 'CN_EXP_YOY', 3]];
+const MKT_LEAD = [['KOSPI', 'KR_EXP_YOY', 4], ['TWSE', 'TW_EXP_YOY', 4], ['TWSE', 'TW_ORDERS_YOY', 2], ['STI', 'SG_NODX_YOY', 3], ['KLCI', 'MY_EXPORTS_YOY', 4], ['HSI', 'CN_EXP_YOY', 3]];
 function renderAsiaMktLead(c) {
   const b = htmlBody(c), heads = ['Market → data', 'Lead', 'Corr.', 'Same month', 'Reverse'];
   const tbl = el('table', { class: 'perf watch llt' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map(h => el('th', { text: h })))));
@@ -4446,6 +4459,8 @@ const LL_PAIRS = [
   ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 'US dollar → Korea exports (inverse)'],
   ['CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 'Korea leading index → Taiwan exports'],
   ['TWSE', 'yoy', 'TW_EXP_YOY', 'level', 'Taiwan equities → Taiwan exports (the market leads)'],
+  ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 'Taiwan export orders → Malaysia exports'],
+  ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 'Taiwan M1B − M2 gap → Taiwan equities'],
 ];
 const llCache = new Map();
 const llMode = id => S[id].kind === 'price' ? 'yoy' : S[id].kind === 'yield' ? 'chg' : 'level';
@@ -5682,7 +5697,7 @@ const SUBTABS = {
   australia: [['Economy', ['auinfl', 'augrowth', 'autot']], ['Rates & markets', ['aurates', 'au_eq', 'au_rba', 'audiff']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Markets & rates', ['myrfx', 'myrtbl', 'myrates', 'mylend'], 'Malaysia'], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney'], 'Malaysia'],
-    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['Taiwan', ['tw_mkt', 'tw_lead', 'tw_trade', 'tw_ip', 'tw_growth', 'tw_infl'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
+    ['Singapore', ['sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth'], 'Region'], ['China', ['cn_infl', 'cn_trade', 'cn_conf', 'cn_spread'], 'Region'], ['Korea', ['kr_mkt', 'kr_lead', 'kr_trade', 'kr_infl', 'kr_rates', 'kr_act'], 'Region'], ['Taiwan', ['tw_mkt', 'tw_lead', 'tw_trade', 'tw_money', 'tw_growth', 'tw_infl'], 'Region'], ['India', ['in_mkt', 'in_oil', 'in_infl', 'in_rates', 'in_act', 'in_lead'], 'Region'],
     ['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf'], 'Compare'], ['Asian FX', ['asiafx', 'asiaidx'], 'Compare'], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil'], 'Compare']],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],

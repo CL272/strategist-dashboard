@@ -78,6 +78,14 @@ def build(status: dict) -> None:
                                       put("TW_IMP_YOY", yoy(t["0:1"], True), "Taiwan imports, YoY (3-month sum)", "%", "A081201010, USD, YoY calculated"),
                                       put("TW_EXP", t["0:0"] / 1000, "Taiwan exports", "USD bn", "A081201010")))(sdmx("A081201010", "2..1.M"))),
         ("gdp", lambda: put("TW_GDP_YOY", sdmx("A018101010", "3..1.Q", quarterly=True)["0"], "Taiwan real GDP YoY", "%", "A018101010, quarterly", "Q")),
+        ("orders", lambda: (lambda t: (put("TW_ORDERS_YOY", yoy(t["0:0"], True), "Taiwan export orders, YoY (3-month sum)", "%", "A050105010, USD, YoY calculated"),
+                                       put("TW_ORDERS_US_YOY", yoy(t["0:1"], True), "Taiwan export orders from the US, YoY (3-month sum)", "%", "A050105010, USD, YoY calculated"),
+                                       put("TW_ORDERS_CN_YOY", yoy(t["0:2"], True), "Taiwan export orders from China & HK, YoY (3-month sum)", "%", "A050105010, USD, YoY calculated"),
+                                       put("TW_ORDERS", t["0:0"] / 1000, "Taiwan export orders", "USD bn", "A050105010")))(sdmx("A050105010", "2..1.M"))),
+        ("money", lambda: (lambda t: (lambda m1b, m2: (put("TW_M1B_YOY", yoy(m1b), "Taiwan M1B growth YoY", "%", "A090501010, daily average, calculated"),
+                                                       put("TW_M2_YOY", yoy(m2), "Taiwan M2 growth YoY", "%", "A090501010, daily average, calculated"),
+                                                       put("TW_M1B_M2", (yoy(m1b) - yoy(m2)).dropna(), "Taiwan M1B minus M2 growth", "pts", "A090501010, calculated")))
+                           (t["0:0"] + t["0:1"], t["0:0"] + t["0:1"] + t["0:5"]))(sdmx("A090501010", "1..1.M"))),
     ]
     for name, fn in jobs:
         try:
