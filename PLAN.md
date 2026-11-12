@@ -596,7 +596,7 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
-## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP35, regions reorganised
+## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP36, regions reorganised
 
 **Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` and run
 `node tools/design-check.js` before each push. One commit per package.
@@ -704,6 +704,60 @@ Built from data already loaded; two helpers do most of it.
 every page and sub-tab renders with no empty card; old `#tab=asia&sub=…` links land in the right place; the Weekly
 brief, "what changed" and signal links open the right pages; `design-check` passes (it walks the sidebar buttons, so
 the six new pages are covered automatically); search finds the moved cards.
+
+### WP36. Europe by country (owner's request, 12 Nov 2026): Germany, France, Italy, Spain, UK
+
+The Europe page stays as the main page for the whole region (euro area), as now. Under it in the sidebar, the same
+kind of collapsible list as Asia:
+
+    Europe  ▾               ← click: opens the Europe page and expands the list
+        Germany
+        France
+        Italy
+        Spain
+        UK
+
+**Why these five:** Germany, France, Italy and Spain are the four largest euro-area economies (about 28%, 20%, 15%
+and 10% of euro-area GDP, nearly three-quarters together). The UK is outside the EU but is Europe's second-largest
+economy and has its own central bank, currency and bond market. The owner named UK, Italy, France and Germany; Spain
+is added as the fourth-largest euro economy (drop it if not wanted).
+
+**Data** (checked 12 Nov 2026; no new host needed):
+- OECD key indicators (`pipeline/cnjp.py`, same call as Korea and India) for DEU, FRA, ITA, ESP, GBR: industrial
+  production, exports and imports, unemployment, retail sales, 10Y yield, 3M and overnight rates, business and consumer
+  confidence, quarterly GDP; OECD leading indices for all five. All present to Q3 / Oct 2026.
+- **Inflation:** the OECD feed has CPI for Germany and the UK but not for France, Italy or Spain. Use the ECB data API
+  (already used by `pipeline/cbwatch.py`) for each euro country's HICP (dataflow ICP, annual rate); verify the series
+  keys at build time. UK CPI from the OECD.
+- Equities (Yahoo, checked): DAX, CAC 40 and FTSE 100 are loaded; add FTSE MIB (`FTSEMIB.MI`) and IBEX 35 (`^IBEX`).
+- 10Y yields for Germany, France, Italy and Spain are already loaded (FRED, monthly); UK 10Y from the OECD feed.
+- Sterling: GBP/USD and the pound's real effective rate are loaded; EUR/GBP is calculated.
+- Not available free: daily gilt yields and a market-implied Bank of England path (the BoE's files were unreachable
+  earlier); the UK page uses monthly yields and the BoE meeting dates already in the calendar, and says so.
+
+**Each country page** (new tab ids `de`, `fr`, `it`, `es`, `uk`; the standard order):
+- **Equities:** the index in local currency and in US dollars against the Euro Stoxx 50 and world equities (`eqCard`
+  from WP34); 200-day trend; the "signals for this market" strip.
+- **Rates & bonds:** 10Y yield and its spread over the German Bund (Germany: Bund against the US 10Y and the ECB
+  deposit rate); short rate. Italy and Spain: the spread with its history percentile (the stress gauge for the euro).
+  UK: gilt 10Y against Bunds and Treasuries, Bank Rate (overnight rate) against CPI, next BoE decision.
+- **Currency:** UK only (GBP/USD, EUR/GBP, real effective rate: `fxCard`). The four euro members share the euro, so
+  they have no Currency sub-tab; a "See also" link goes to Europe → Currency.
+- **Economy:** inflation against the 2% target, unemployment, GDP growth (quarterly), industrial production and
+  retail sales, exports, business and consumer confidence, leading-index momentum.
+- Tiles (≤ 5): equity index, 10Y (or spread over Bund), inflation, unemployment, GDP growth.
+
+**Europe main page** gains one sub-tab, **Countries compared**: a table of the five with GDP growth, inflation,
+unemployment, 10Y yield, spread over the Bund, equity index year to date and 3 months against the Euro Stoxx 50, and
+leading-index momentum; rows open the country pages. The existing periphery-spread card (`sp_euro`, moved here in
+WP33) sits beside it.
+
+**Also:** the Country scorecard gains the five rows (16 rows in all, the table limit); the calendar gains German,
+French, Italian, Spanish and UK CPI and GDP windows; the signal engine tests the five leading indices against their
+own equity indices (graded down one tier like the others, since they contain share prices) and the Italy spread
+against the FTSE MIB and the euro; only rules that pass are shown as ideas.
+
+**Order:** build after WP32 to WP35, reusing the sidebar tree, `eqCard`, `fxCard`, the tiles and the "See also" row.
 
 ### Risks and how the build handles them
 
