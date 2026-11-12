@@ -224,7 +224,7 @@ function buildSP() {
   makeCard(g, { key: 'sp_putwrite', title: 'Selling puts vs owning the index', defaultRange: 'MAX', earliest: Date.UTC(2007, 0, 1), render: renderSpPutwrite });
   makeCard(g, { key: 'sp_inputs', title: 'The inputs behind the terms', wide: true, defaultRange: '10Y', seg: { key: 'spInput', select: true, label: 'Input', options: SP_INPUTS.map(x => [x[0], x[1]]) }, render: renderSpInputs });
   for (const k of ['sp_matrix', 'sp_read']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  buildSPUnder(); buildSPPricer(); buildSPDci();
+  buildSPUnder(); buildSPPricer(); buildSPDci(); buildSPProt();
 }
 function renderSP() {
   if (!SPD) { loadSP().then(() => { if (state.tab === 'sp') renderTab(); }); }
@@ -647,4 +647,68 @@ function buildSPDci() {
   makeCard(g, { key: 'dci_grid', title: 'DCI strike grid', range: false, seg: { key: 'dciView', options: [['yield', 'Yield'], ['hist', 'Converted (history)']] }, render: renderDciGrid });
   makeCard(g, { key: 'dci_hist', title: 'The pair and the strike', defaultRange: '1Y', render: renderDciHist });
   for (const k of ['dci_table', 'dci_grid']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+
+// ------------------------------------------------------------------ WP42. Protection & rates
+function renderPpBudget(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const m = state.spMargin / 100, heads = ['Currency', 'Tenor', 'Zero-coupon price', 'Budget, 100% back', 'Budget, 95% back', 'S&P 500', 'Gold', 'Emerging markets'];
+  const under = ['SPX', 'GOLD', 'EEM'].map(spU), tb = el('tbody'), csv = [heads];
+  for (const ccy of ['USD', 'SGD', 'MYR', 'AUD']) for (const yrs of [1, 2, 3, 5]) {
+    const rr = rateFor(ccy, yrs), DF = Math.exp(-rr.r * yrs), b100 = 1 - m * yrs - DF, b95 = 1 - m * yrs - 0.95 * DF;
+    const part = x => { if (!x || !x.surf) return null; const v = spVol(x, yrs * 365, 1), C = SPM.bs('C', 1, 1, yrs, rr.r, (x.dy || 0) / 100, v); return b100 > 0 ? b100 / C * 100 : 0; };
+    const ps = under.map(part);
+    tb.append(el('tr', { class: 'row', title: `Rates: ${rr.src}` }, el('td', { class: 'l', text: ccy }), el('td', { class: 'l', text: yrs + (yrs > 1 ? ' years' : ' year') }),
+      el('td', { class: 'num', text: fmtNum(DF * 100, 1) }), el('td', { class: 'num strong', text: pc1(b100 * 100) }), el('td', { class: 'num', text: pc1(b95 * 100) }),
+      ...ps.map(p => el('td', { class: 'num', text: p == null ? '–' : fmtNum(Math.max(p, 0), 0) + '%' }))));
+    csv.push([ccy, yrs, DF * 100, b100 * 100, b95 * 100, ...ps]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  setNote(c, `Participation = share of the index's rise the client gets with 100% of capital back at maturity: the money left after buying the zero-coupon bond and paying a ${fmtNum(state.spMargin, 1)}% a year margin, spent on an at-the-money call. Higher rates and lower volatility buy more upside; low-rate currencies (SGD) buy little. Calls priced from listed options on SPY, GLD and EEM without currency hedging effects. Rates: FRED (USD, AUD), MAS (SGD), Bank Negara (MYR; no long MYR rates, so the 12-month rate is held flat). ${SP_LBL}`);
+  setSource(c, 'FRED, MAS, Bank Negara (rates); Cboe (option prices); model');
+}
+function renderPpMap(c) {
+  const y = has('UST3Y') ? 'UST3Y' : 'UST2Y'; if (!has(y, 'SP_VIX1Y')) return setEmpty(c, 'Waiting for data.');
+  const m = state.spMargin / 100, bud = { t: S[y].t, v: S[y].v.map(v => (1 - 3 * m - Math.exp(-v / 100 * 3)) * 100) };
+  drawPair(c, { name: `3-year USD option budget, % of notional (${y === 'UST3Y' ? '3Y' : '2Y'} Treasury)`, data: pts(bud, state.from, state.to) }, { name: '1-year S&P 500 implied vol (VIX1Y)', data: pts(S.SP_VIX1Y, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1) + '%', fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) });
+  const a = asOf(bud, state.latest), q = pctRank(bud, state.latest, 10);
+  setNote(c, `Today's budget: ${a ? pc1(a.v) : '–'} of notional for a 3-year 100%-protected note (${q ? ordF(q.p) : '–'} percentile of 10 years). Participation is best when the budget (rates) is high and volatility is low: high budget with low volatility = a good time for protected notes.`);
+  setSource(c, 'FRED (Treasury yields); Cboe (VIX1Y); calculated');
+}
+const RA_REFS = [['UST3M', 'US 3-month T-bill', 0.5], ['UST10Y', 'US 10-year Treasury', 0.5], ['USDMYR', 'USD/MYR', 3], ['MY_IB_3M', 'Malaysia 3-month interbank (KLIBOR proxy)', 0.25], ['SORA3M', 'Singapore 3M compounded SORA', 0.5]];
+state.raRef = 'UST10Y'; state.raBand = {};
+function renderRaRange(c) {
+  const ref = RA_REFS.find(r => r[0] === state.raRef) || RA_REFS[0], id = ref[0]; if (!has(id)) return setEmpty(c, 'Waiting for data.');
+  const s = S[id], now = asOf(s, state.latest).v, fx = id === 'USDMYR', w = ref[2];
+  const band = state.raBand[id] || (state.raBand[id] = fx ? [+(now * (1 - w / 100)).toFixed(3), +(now * (1 + w / 100)).toFixed(3)] : [+(now - w).toFixed(2), +(now + w).toFixed(2)]);
+  const ctl = (i) => { const inp = el('input', { type: 'number', class: 'sp-num', value: band[i], step: fx ? 0.01 : 0.05, style: 'width:80px' }); inp.addEventListener('change', () => { band[i] = +inp.value; c.render(); }); return inp; };
+  c.subEl.replaceChildren(el('span', { class: 'muted small', text: 'Range: ' }), ctl(0), el('span', { text: ' to ' }), ctl(1), el('span', { class: 'muted small', text: ` · now ${fmtNum(now, fx ? 4 : 2)}${fx ? '' : '%'}` }));
+  const inside = { t: [], v: [] }; let lo = 0, cnt = 0; const win = 365 * DAY;
+  for (let i = 0; i < s.t.length; i++) { cnt += s.v[i] >= band[0] && s.v[i] <= band[1] ? 1 : 0; while (s.t[lo] < s.t[i] - win) { cnt -= s.v[lo] >= band[0] && s.v[lo] <= band[1] ? 1 : 0; lo++; } if (s.t[i] - s.t[0] >= win) { inside.t.push(s.t[i]); inside.v.push(cnt / (i - lo + 1) * 100); } }
+  drawPair(c, { name: `${ref[1]}`, data: pts(s, state.from, state.to) }, { name: 'Share of days inside the range over the past year, %', data: pts(inside, state.from, state.to) },
+    { fmtA: v => fmtNum(v, fx ? 4 : 2), fmtB: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, fx ? 2 : 1), axisB: v => fmtNum(v, 0) + '%' });
+  const a = inside.v.length ? inside.v[inside.v.length - 1] : null, med = spMed(inside.v.slice(-2520));
+  setNote(c, `A range accrual pays its coupon only for days the reference stays inside the range. Over the last year it was inside ${a != null ? fmtNum(a, 0) + '%' : '–'} of days (median over 10 years: ${med != null ? fmtNum(med, 0) + '%' : '–'}). Set the range to the note's terms; a coupon of c a year pays c × that share.`);
+  setSource(c, srcOf([id]) + '; calculated');
+}
+function renderRaCurve(c) {
+  if (!has('UST10Y', 'UST2Y', 'UST30Y')) return setEmpty(c, 'Waiting for data.');
+  const s1 = combine(S.UST10Y, S.UST2Y, (a, b) => (a - b) * 100, { label: '2s10s' }, 5 * DAY), s2 = combine(S.UST30Y, S.UST10Y, (a, b) => (a - b) * 100, { label: '10s30s' }, 5 * DAY);
+  drawLines(c, [{ name: 'US 2s10s, bp', data: pts(s1, state.from, state.to) }, { name: 'US 10s30s, bp', data: pts(s2, state.from, state.to) }], { fmt: v => fmtNum(v, 0) + 'bp', axisFmt: v => fmtNum(v, 0), zero: true });
+  const p1 = pctRank(s1, state.latest, 10), p2 = pctRank(s2, state.latest, 10);
+  setNote(c, `2s10s ${p1 ? fmtNum(p1.v, 0) + 'bp (' + ordF(p1.p) + ' percentile)' : '–'}; 10s30s ${p2 ? fmtNum(p2.v, 0) + 'bp (' + ordF(p2.p) + ')' : '–'}. A flat curve makes steepener notes cheap to enter; a callable note is likelier to be called when long rates fall.`);
+  setSource(c, 'FRED (Treasury yields); calculated');
+}
+SUBTABS.sp.push(['Protection & rates', ['#sa_sp_rates', 'pp_budget', 'pp_map', 'ra_range', 'ra_curve']]);
+TILE_SETS.sp['Protection & rates'] = ['USD 2Y yield', 'Index volatility', 'Skew', 'Implied correlation', 'Single-stock volatility'];
+function buildSPProt() {
+  const g = $('#spGrid');
+  makeCard(g, { key: 'pp_budget', title: 'Capital protection: what it buys', wide: true, range: false, render: renderPpBudget });
+  makeCard(g, { key: 'pp_map', title: 'Protection budget vs volatility', defaultRange: '10Y', render: renderPpMap });
+  makeCard(g, { key: 'ra_range', title: 'Range accrual: days in range', defaultRange: '10Y', seg: { key: 'raRef', select: true, label: 'Reference', options: RA_REFS.map(r => [r[0], r[1]]) }, render: renderRaRange });
+  makeCard(g, { key: 'ra_curve', title: 'US curve: steepener and callables', wide: true, defaultRange: '10Y', render: renderRaCurve });
+  const r = cards.pp_budget.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+  seeAlso('sa_sp_rates', g, [['Fixed Income → Curves', 'fixed', 'Curves'], ['Central banks', 'cbwatch', 'Policy monitor'], ['Income menu', 'fixed', 'Income menu']]);
 }
