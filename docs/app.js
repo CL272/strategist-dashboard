@@ -2607,7 +2607,7 @@ const ASIA_KPI = { Malaysia: ['Malaysia: above 200-day', 'Malaysia OPR', 'USD/MY
 const ASIA_KPI_MIX = ['FBM KLCI', 'KOSPI', 'Taiwan Weighted', 'Nifty 50', 'USD/MYR', 'USD/SGD', 'USD/KRW', 'USD/TWD', 'USD/INR'];
 // Asia ex-Japan: the overview compares the region; each country has its own page (sidebar children of Asia ex-Japan)
 const ASIA_PAGES = { my: 'Malaysia', sg: 'Singapore', cn: 'China', kr: 'Korea', tw: 'Taiwan', in: 'India' };
-ASIA_KPI.China = ['China CPI YoY', 'China 10Y yield', 'China exports YoY'];
+ASIA_KPI.China = ['CSI 300', 'USD/CNY', 'China CPI YoY', 'China 10Y yield', 'China exports YoY'];
 function renderAsia() {
   regionKpis(); asiaMoreKpis(); mySectorTiles();
   const lab = SUBTABS.asia[state.sub.asia || 0][0];
@@ -2690,6 +2690,8 @@ function cnjpKpis(box) {
   const lv = (id, label, fmt, dl) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to); if (!a) return; const b = asOf(s, addMonths(a.t, -3));
     tile(label, fmt(a.v), b ? `3M ${dl(a.v - b.v)}` : '', (s.source || '').split(' (')[0] + ' · ' + monthLab(a.t)); };
   const pp = d => sign(d) + fmtNum(Math.abs(d), 1) + 'pp', bp = d => sign(d) + fmtNum(Math.abs(d) * 100, 0) + 'bp', pt = d => sign(d) + fmtNum(Math.abs(d), 0) + 'pts';
+  for (const [id, l, d] of [['CSI300', 'CSI 300', 0], ['USDCNY', 'USD/CNY', 4]]) if (has(id)) { const s2 = S[id], a = asOf(s2, state.to), b = asOf(s2, addMonths(a.t, -1));
+    tile(l, fmtNum(a.v, d), b ? `1M ${fmtChg(s2, chg(s2, b.v, a.v))}` : '', 'Yahoo Finance · ' + nice(a.t)); }
   lv('CN_CPI_YOY', 'China CPI YoY', v => fmtNum(v, 1) + '%', pp);
   lv('CN_10Y', 'China 10Y yield', v => fmtNum(v, 2) + '%', bp);
   lv('CN_EXP_YOY', 'China exports YoY', v => sign(v) + fmtNum(Math.abs(v), 1) + '%', pp);
@@ -3148,8 +3150,8 @@ function asiaMoreKpis(box = $('#asiaKpis')) {
 function buildCnJp() {
   const g = $('#asiaGrid'), p1 = v => fmtNum(v, 1) + '%', p2 = v => fmtNum(v, 2) + '%', a0 = v => fmtNum(v, 0) + '%';
   g.append(el('h3', { class: 'section', text: 'China' }));
-  makeCard(g, { key: 'cn_infl', title: 'China: inflation and rates', sub: 'CPI year-on-year, 10Y government bond yield and 3M interbank rate, %. Monthly.',
-    render: idsCard(['CN_CPI_YOY', 'CN_10Y', 'CN_3M'], p2, p1, { zero: true }) });
+  makeCard(g, { key: 'cn_infl', title: 'China: inflation', sub: 'Consumer prices, year-on-year %. Monthly. Rates are under Rates & bonds.',
+    render: idsCard(['CN_CPI_YOY'], p1, p1, { zero: true, hlines: [{ y: 3, label: '3% target' }] }) });
   makeCard(g, { key: 'cn_trade', title: 'China: trade', sub: 'Merchandise exports and imports, USD, seasonally adjusted, year-on-year %.',
     render: idsCard(['CN_EXP_YOY', 'CN_IMP_YOY'], p1, a0, { zero: true }) });
   makeCard(g, { key: 'cn_conf', title: 'China: confidence', seg: { key: 'cnConf', options: [['bci', 'Business (PMI)'], ['cci', 'Consumer']] },
@@ -6540,20 +6542,21 @@ const SUBTABS = {
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
-  us: [['Equities', ['us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['us_rates', 'us_be', 'us_fed']], ['Currency', ['us_dxy']],
+  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_dxy']],
     ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
     ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
-  europe: [['Equities', ['eu_eq']], ['Rates & bonds', ['eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']]],
-  japan: [['Equities', ['jp_eq']], ['Rates & bonds', ['jp_policy', 'jp_boj', 'jp_bojsum']], ['Economy', ['jp_infl', 'jp_tankan', 'jp_act']]],
-  australia: [['Equities', ['au_eq']], ['Rates & bonds', ['aurates', 'au_rba']], ['Currency', ['audiff', 'cm_iron']], ['Economy', ['auinfl', 'augrowth', 'autot']]],
+  europe: [['Equities', ['#sig_europe', 'eu_eq']], ['Rates & bonds', ['#sa_europe_rates', 'eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['#sa_europe_fx', 'eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']]],
+  japan: [['Equities', ['#sig_japan', 'jp_eq']], ['Rates & bonds', ['#sa_japan_rates', 'jp_policy', 'jp_boj', 'jp_bojsum']], ['Currency', ['#sa_japan_fx', 'fx_jp']], ['Economy', ['jp_infl', 'jp_tankan', 'jp_act']]],
+  australia: [['Equities', ['#sig_australia', 'au_eq']], ['Rates & bonds', ['#sa_australia_rates', 'aurates', 'au_rba']], ['Currency', ['#sa_australia_fx', 'audiff', 'cm_iron']], ['Economy', ['auinfl', 'augrowth', 'autot']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['#sa_fi_sp', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['fx_carry', 'asiafx', 'asiaidx']], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil']]],
-  my: [['Equities', ['br_hl_MY', 'br_trend_MY', 'br_table_MY']], ['Sectors', ['my_sec_table', 'my_sec_rs', 'my_sec_drv', 'cm_palm']], ['Rates & bonds', ['myrates', 'mylend']], ['Currency', ['myrfx', 'myrtbl']], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']]],
-  sg: [['Equities', ['br_hl_SG', 'br_trend_SG', 'br_table_SG']], ['Rates & bonds', ['sgrates', 'sgust', 'sghedge']], ['Currency', ['sneer']], ['Economy', ['sginfl', 'sggrowth']]],
-  cn: [['Rates & bonds', ['cn_spread']], ['Economy', ['cn_infl', 'cn_trade', 'cn_conf']]],
-  kr: [['Equities', ['kr_mkt', 'kr_lead']], ['Rates & bonds', ['kr_rates']], ['Economy', ['kr_trade', 'kr_infl', 'kr_act']]],
-  tw: [['Equities', ['tw_mkt', 'tw_lead', 'tw_money']], ['Economy', ['tw_trade', 'tw_growth', 'tw_infl']]],
-  in: [['Equities', ['in_mkt', 'in_lead']], ['Rates & bonds', ['in_rates', 'in_oil']], ['Economy', ['in_infl', 'in_act']]],
+  my: [['Equities', ['#sig_my', 'eq_my', 'br_hl_MY', 'br_trend_MY', 'br_table_MY']], ['Sectors', ['#sa_my_sec', 'my_sec_table', 'my_sec_rs', 'my_sec_drv', 'cm_palm']], ['Rates & bonds', ['#sa_my_rates', 'myrates', 'my_bnm', 'mylend', 'my_gap']],
+    ['Currency', ['#sa_my_fx', 'myrfx', 'myrtbl', 'fx_my']], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']]],
+  sg: [['Equities', ['#sig_sg', 'eq_sg', 'br_hl_SG', 'br_trend_SG', 'br_table_SG']], ['Rates & bonds', ['#sa_sg_rates', 'sgrates', 'sgust', 'sghedge']], ['Currency', ['#sa_sg_fx', 'sneer', 'fx_sg']], ['Economy', ['sginfl', 'sggrowth']]],
+  cn: [['Equities', ['#sig_cn', 'eq_cn']], ['Rates & bonds', ['#sa_cn_rates', 'cn_rates', 'cn_spread']], ['Currency', ['#sa_cn_fx', 'fx_cn']], ['Economy', ['cn_infl', 'cn_trade', 'cn_conf']]],
+  kr: [['Equities', ['#sig_kr', '#sa_kr_eq', 'kr_mkt', 'kr_lead']], ['Rates & bonds', ['#sa_kr_rates', 'kr_rates']], ['Currency', ['#sa_kr_fx', 'fx_kr']], ['Economy', ['kr_trade', 'kr_infl', 'kr_act']]],
+  tw: [['Equities', ['#sig_tw', '#sa_tw_eq', 'tw_mkt', 'tw_lead', 'tw_money']], ['Currency', ['#sa_tw_fx', 'fx_tw']], ['Economy', ['tw_trade', 'tw_growth', 'tw_infl']]],
+  in: [['Equities', ['#sig_in', 'in_mkt', 'in_lead']], ['Rates & bonds', ['#sa_in_rates', 'in_rates', 'in_oil']], ['Currency', ['#sa_in_fx', 'fx_in']], ['Economy', ['in_infl', 'in_act']]],
   ai: [['Adoption', ['ai_usage', 'ai_share', 'ai_hist']], ['Prices & cost', ['ai_frontier', 'ai_cpr']], ['Build-out', ['ai_bench', 'ai_rev', 'ai_dc', 'ai_chips']], ['AI stocks', ['ai_eq']], ['Business adoption', ['ai_ramp', 'ai_rampspend', 'ai_rampsize']], ['Token market', ['tm_share', 'ai_vendor', 'tm_premium', 'ai_tokprice', 'tm_models']], ['Compute prices', ['gpu_rent', 'gpu_table', 'gpu_vast', 'gpu_nvda', 'gpu_tok']], ['Chip cycle', ['chip_rs', 'chip_kr', 'chip_my', 'chip_korea', 'chip_mem']]],
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
@@ -6576,6 +6579,14 @@ function buildSeeAlso() {
   seeAlso('sa_mkt_br', $('#brGrid'), [['Malaysia breadth', 'my', 'Equities'], ['Singapore breadth', 'sg', 'Equities'], ['US breadth', 'us', 'Equities'], ['US sectors & styles', 'us', 'Sectors & styles']]);
   seeAlso('sa_mkt_cm', $('#cmGrid'), [['Palm oil vs Malaysian planters', 'my', 'Sectors'], ['Iron ore vs the Australian dollar', 'australia', 'Currency']]);
   seeAlso('sa_fi_sp', cards.sp_credit.root.parentElement, [['Euro periphery vs Germany', 'europe', 'Rates & bonds']]);
+  seeAlso('sa_kr_eq', $('#krGrid'), [['Chip cycle (AI)', 'ai', 'Chip cycle'], ['What leads in Asia', 'asia', 'What leads']]);
+  seeAlso('sa_tw_eq', $('#twGrid'), [['Chip cycle (AI)', 'ai', 'Chip cycle'], ['What leads in Asia', 'asia', 'What leads']]);
+  seeAlso('sa_my_sec', $('#myGrid'), [['Malaysian tech in the chip cycle (AI)', 'ai', 'Chip cycle'], ['Commodities', 'markets', 'Commodities']]);
+  for (const [t, cb] of [['my', 'BNM'], ['australia', 'RBA'], ['japan', 'BoJ'], ['europe', 'ECB'], ['us', 'Path vs dots']])
+    seeAlso(`sa_${t}_rates`, $('#' + t + 'Grid'), [[cb === 'Path vs dots' ? 'Fed on the Central banks page' : `${cb} on the Central banks page`, 'cbwatch', cb], ['Yields across markets', 'fixed', 'Yields']]);
+  for (const t of ['sg', 'cn', 'kr', 'in']) seeAlso(`sa_${t}_rates`, $('#' + t + 'Grid'), [['Policy monitor (all central banks)', 'cbwatch', 'Policy monitor'], ['10-year yields across Asia', 'asia', 'Across Asia']]);
+  for (const t of ['my', 'sg', 'cn', 'kr', 'tw', 'in', 'japan', 'australia', 'europe']) seeAlso(`sa_${t}_fx`, $('#' + t + 'Grid'), [['Asian FX: carry and value', 'asia', 'Asian FX'], ['Rate differentials vs FX', 'fixed', 'FX & hedging']]);
+  seeAlso('sa_us_fx', $('#usGrid'), [['Rate differentials vs FX', 'fixed', 'FX & hedging'], ['Asian FX: carry and value', 'asia', 'Asian FX']]);
 }
 function buildSubtabs() {
   for (const [tab, groups] of Object.entries(SUBTABS)) {
@@ -6730,6 +6741,92 @@ function buildRegions() {
     setSource(c, 'Yahoo Finance (^AXJO, AUDUSD=X)'); } });
   makeCard(au, { key: 'au_rba', title: 'Reserve Bank of Australia', range: false, render: c => renderPolicySummary(c, 'RBA') });
   for (const k of ['us_fed', 'eu_ecb', 'jp_bojsum', 'au_rba']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+// ------------------------------------------------------------------ MARKET PAGES: gap fill (WP34)
+// Every region and country page shows the same four asset classes. eqCard and fxCard build the missing Equities and
+// Currency views from data already loaded; the signals strip lists the Signals page's rules for that market.
+function eqCard(g, key, id, name, extra = []) {
+  makeCard(g, { key, title: `${name} vs Asia and the world`, defaultRange: '3Y', render: c => {
+    if (!has(id)) return setEmpty(c, 'Waiting for data.');
+    rebasedLines(c, [[S[id], `${name} (local)`], [inCcy(id, 'USD'), `${name} in US dollars`], ...extra.filter(x => has(x[0])).map(([x, n]) => [S[x], n]),
+      [S.AAXJ, 'Asia ex-Japan (AAXJ, USD)'], [S.ACWI, 'World (URTH, USD)']]);
+    const t = trendStats(id), u = inCcy(id, 'USD'), a3 = (s2, m) => { const a = asOf(s2, state.latest), b = a && asOf(s2, addMonths(a.t, -m)); return a && b ? (a.v / b.v - 1) * 100 : null; };
+    const r3 = has('AAXJ') ? a3(u, 3) - a3(S.AAXJ, 3) : null;
+    setNote(c, (t ? `${name} is ${pctF1(t.vs200)} from its 200-day average, ${t.up ? 'in an uptrend' : 'in a downtrend'} (50-day vs 200-day) since ${sinceF(t.cross)}.` : '') +
+      (r3 != null && !isNaN(r3) ? ` Over 3 months it has ${r3 >= 0 ? 'beaten' : 'lagged'} Asia ex-Japan by ${fmtNum(Math.abs(r3), 1)} points in US dollars.` : '') +
+      ' Lines are rebased to 100 at the start of the range; the US-dollar line is what a dollar-based investor earned (price only).');
+    setSource(c, `Yahoo Finance; converted at daily ${USD_PER[LOCAL_CCY[id]] ? S[USD_PER[LOCAL_CCY[id]][0]].label : 'FX'}`); } });
+}
+function fxCard(g, key, ccy, extraNote = '') {
+  const row = FXC.find(x => x[0] === ccy); if (!row) return;
+  const [, pair, dir, rate, reer] = row, hasReer = reer && has(reer);
+  const st = 'fx_' + ccy; state[st] = 'spot';
+  makeCard(g, { key, title: `${S[pair] ? S[pair].label : pair}: trend and value`, defaultRange: '3Y',
+    ...(hasReer ? { seg: { key: st, options: [['spot', 'vs USD'], ['reer', 'Real effective']] } } : {}), render: c => {
+    if (!has(pair)) return setEmpty(c, 'Waiting for data.');
+    const us = has('UST3M') ? asOf(S.UST3M, state.latest) : null, r = rate && has(rate) ? asOf(S[rate], state.latest) : null, carry = r && us ? r.v - us.v : null;
+    const q = hasReer ? pctRank(S[reer], state.latest, 20) : null, t = trendStats(pair), firm = t ? (dir > 0 ? t.up : !t.up) : null;
+    const tail = `${carry != null ? ` Carry against the dollar: ${sign(carry)}${fmtNum(Math.abs(carry), 2)}% a year (${S[rate].label.replace(/ \(.*\)$/, '')} minus the US 3-month bill).` : ' No short rate on file, so no carry figure.'}` +
+      (q ? ` Real effective rate: ${ordinal(Math.max(1, q.p))} percentile of 20 years (${q.p < 30 ? 'cheap' : q.p > 70 ? 'dear' : 'mid-range'}).` : '') + extraNote;
+    if (state[st] === 'reer' && hasReer) {
+      const med = (() => { const a = asOf(S[reer], state.latest), v = S[reer].v.filter((_, i) => S[reer].t[i] >= addMonths(a.t, -240)).slice().sort((x, y) => x - y); return v[Math.floor(v.length / 2)]; })();
+      drawLines(c, [{ name: S[reer].label, data: pts(S[reer], state.from, state.to) }], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: med, label: '20-year median' }] });
+      setNote(c, `Higher = the ${ccy} is dearer after inflation, against a basket of trading partners.` + tail);
+      return setSource(c, 'BIS via FRED (real broad effective exchange rate, monthly)');
+    }
+    const s2 = S[pair], i0 = Math.max(0, idxLE(s2, state.from) - 200), m = { t: [], v: [] };
+    for (let i = Math.max(i0, 199); i < s2.t.length; i++) { let x = 0; for (let k = i - 199; k <= i; k++) x += s2.v[k]; m.t.push(s2.t[i]); m.v.push(x / 200); }
+    drawLines(c, [{ name: s2.label, data: pts(s2, state.from, state.to) }, { name: '200-day average', data: pts(m, state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
+      { fmt: v => fmtNum(v, v > 100 ? 1 : 4), axisFmt: v => fmtNum(v, v > 100 ? 0 : 2), endLabels: false });
+    setNote(c, (firm == null ? '' : `The ${ccy} is ${firm ? 'firming' : 'weakening'} against the dollar (50-day vs 200-day average)${t && t.cross ? ' since ' + sinceF(t.cross) : ''}.`) +
+      (dir < 0 ? ` A falling line = a stronger ${ccy}.` : ` A rising line = a stronger ${ccy}.`) + tail);
+    setSource(c, `Yahoo Finance (FX)${rate ? '; ' + srcOf([rate]) : ''}`); } });
+}
+// Signals page rules whose target is this market: ideas first, then rules switched on
+const SIG_TARGETS = { us: ['SPX', 'LH_SPX', 'R_SOX_SPX', 'R_EEM_SPX', 'UST10Y', 'NVDA'], europe: ['SX5E', 'EURUSD'], japan: ['NKY', 'USDJPY'], australia: ['AS51', 'AUDUSD'],
+  my: ['KLCI', 'R_KLCI_AAXJ', 'USDMYR'], sg: ['STI', 'USDSGD'], cn: ['CSI300', 'HSI', 'MCHI', 'USDCNY'], kr: ['KOSPI', 'USDKRW'], tw: ['TWSE', 'USDTWD'], in: ['NIFTY', 'IN_10Y', 'USDINR'] };
+function sigStrip(tab) {
+  const want = SIG_TARGETS[tab], box = el('div', { class: 'sig-strip', id: 'sig_' + tab });
+  box.append(el('div', { class: 'sig-strip-h' }, el('b', { text: 'Signals for this market' }), el('a', { href: '#', text: 'Signals page →', onclick: e => { e.preventDefault(); goSub('signals', 'Ideas to investigate'); } })));
+  const ideas = SIG ? SIG.ideas.filter(x => want.includes(x.target) && x.net > 0) : [], inIdea = new Set(ideas.flatMap(x => x.signals));
+  const on = SIG ? SIG.signals.filter(x => want.includes(x.target) && x.on && !inIdea.has(x.id)).sort((a, b) => (b.active - a.active) || ((SIG.tiers || []).indexOf(a.tier) - (SIG.tiers || []).indexOf(b.tier))) : [];
+  const ul = el('ul'), dot = d => el('span', { class: 'qdot', style: `background:${tok(d > 0 ? '--pos' : '--neg')}` });
+  const open = id => e => { e.preventDefault(); state.sigSel = id; goSub('signals', 'All signals'); };
+  for (const x of ideas) ul.append(el('li', {}, dot(x.dir), el('a', { href: '#', text: `Idea to investigate: ${x.target_name} (${x.target.startsWith('R_') ? (x.dir > 0 ? 'outperformance' : 'underperformance') : x.dir > 0 ? 'positive' : 'caution'})`, onclick: e => { e.preventDefault(); goSub('signals', 'Ideas to investigate'); } }),
+    el('span', { class: 'muted', text: ` · ${x.signals.length} signal${x.signals.length > 1 ? 's' : ''} for` })));
+  const cap = Math.max(0, 4 - ideas.length);
+  for (const x of on.slice(0, cap)) ul.append(el('li', {}, dot(x.dir), el('a', { href: '#', text: x.name, onclick: open(x.id) }),
+    el('span', { class: 'muted', text: ` · ${x.tier.toLowerCase()}, on since ${x.since ? monthLab(Date.parse(x.since)) : '–'}${x.active ? ' · fresh' : ''}` })));
+  if (on.length > cap) ul.append(el('li', { class: 'muted', text: `${on.length - cap} more switched on: see the Signals page.` }));
+  if (!ideas.length && !on.length) ul.append(el('li', { class: 'muted', text: SIG ? 'No rule for this market is switched on right now.' : 'Signals arrive with the next data run.' }));
+  box.append(ul);
+  return box;
+}
+function buildGapCards() {
+  // Equities
+  eqCard($('#myGrid'), 'eq_my', 'KLCI', 'FBM KLCI');
+  eqCard($('#sgGrid'), 'eq_sg', 'STI', 'STI');
+  eqCard($('#cnGrid'), 'eq_cn', 'CSI300', 'CSI 300', [['HSI', 'Hang Seng (local)'], ['MCHI', 'MSCI China (MCHI, USD)']]);
+  // Currency
+  fxCard($('#myGrid'), 'fx_my', 'MYR'); fxCard($('#sgGrid'), 'fx_sg', 'SGD'); fxCard($('#cnGrid'), 'fx_cn', 'CNY');
+  fxCard($('#krGrid'), 'fx_kr', 'KRW'); fxCard($('#twGrid'), 'fx_tw', 'TWD', ' Taiwan: no public source for government bond yields or the policy rate is wired in, so the page has no Rates & bonds view.');
+  fxCard($('#inGrid'), 'fx_in', 'INR'); fxCard($('#japanGrid'), 'fx_jp', 'JPY');
+  // Malaysia rates: BNM summary and the US 2Y − OPR gap against the ringgit
+  makeCard($('#myGrid'), { key: 'my_bnm', title: 'Bank Negara Malaysia', range: false, render: c => renderPolicySummary(c, 'BNM') });
+  makeCard($('#myGrid'), { key: 'my_gap', title: 'US 2Y − OPR vs USD/MYR', defaultRange: '5Y', render: c => {
+    if (!has('UST2Y', 'MY_OPR', 'USDMYR')) return setEmpty(c, 'Waiting for data.');
+    const gap = combine(S.UST2Y, S.MY_OPR, (a, b) => a - b, {}, 400 * DAY);
+    drawPair(c, { name: 'US 2Y yield − OPR, pp', data: pts(gap, state.from, state.to) }, { name: 'USD/MYR', data: pts(S.USDMYR, state.from, state.to) },
+      { fmtA: v => sign(v) + fmtNum(Math.abs(v), 2) + 'pp', fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 2) });
+    const a = asOf(gap, state.to);
+    setNote(c, `The US pays ${a ? fmtNum(Math.abs(a.v), 2) + ' points' : '–'} ${a && a.v < 0 ? 'less' : 'more'} than the OPR at two years; a wider gap has tended to go with a weaker ringgit (USD/MYR up). Malaysian government bond (MGS) yields have no free public daily source, so the OPR stands in for local rates.`);
+    setSource(c, 'FRED (DGS2); Bank Negara Malaysia (OPR); Yahoo Finance (MYR=X)'); } });
+  // China rates (the inflation card keeps CPI only)
+  makeCard($('#cnGrid'), { key: 'cn_rates', title: 'China: bond yield and money rate', sub: '10Y government bond yield and 3M interbank rate, %. Monthly.',
+    render: idsCard(['CN_10Y', 'CN_3M'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%', { zero: true }) });
+  for (const k of ['my_bnm']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  // signals strip at the top of each Equities sub-tab
+  for (const t of Object.keys(SIG_TARGETS)) $('#' + t + 'Grid').prepend(sigStrip(t));
 }
 // tiles for the region pages (TILE_SETS picks five per sub-tab)
 function regionTiles(tab) {
@@ -6906,7 +7003,7 @@ const TILE_SETS = {
     '*': ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'],
   },
   sg: { 'Equities': ['STI', 'Singapore: above 200-day', 'USD/SGD', 'SGS 10Y yield', '3M compounded SORA'], '*': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'] },
-  cn: { '*': ['China CPI YoY', 'China 10Y yield', 'China exports YoY'] },
+  cn: { '*': ['CSI 300', 'USD/CNY', 'China 10Y yield', 'China CPI YoY', 'China exports YoY'] },
   kr: { '*': ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'] },
   tw: { '*': ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'] },
   in: { '*': ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'] },
@@ -7072,7 +7169,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildGapCards(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
