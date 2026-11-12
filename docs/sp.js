@@ -50,6 +50,8 @@ function rateFor(ccy, years) {
   };
   const m = map[ccy] || (ccy === 'HKD' ? map.USD : null);   // Hong Kong dollar: pegged, uses US rates
   let v = m ? m[0]() : null, src = m ? m[1] + (ccy === 'HKD' ? ' (HKD pegged to USD)' : '') : '';
+  const fb = { EUR: [() => two('EA_DFR', 'EA10Y'), 'ECB (FRED series not loaded)'], AUD: [() => two('AU_3M', 'AU_10Y'), 'RBA (FRED series not loaded)'], JPY: [() => two('JP_CALL', 'JGB10Y'), 'Bank of Japan (FRED series not loaded)'] }[ccy];
+  if (v == null && fb) { v = fb[0](); src = fb[1]; }
   if (v == null) { v = map.USD[0]() ?? 4; src = 'US rates (no local rate on file)'; }
   return { r: v / 100, src };
 }
@@ -222,7 +224,7 @@ function buildSP() {
   makeCard(g, { key: 'sp_putwrite', title: 'Selling puts vs owning the index', defaultRange: 'MAX', earliest: Date.UTC(2007, 0, 1), render: renderSpPutwrite });
   makeCard(g, { key: 'sp_inputs', title: 'The inputs behind the terms', wide: true, defaultRange: '10Y', seg: { key: 'spInput', select: true, label: 'Input', options: SP_INPUTS.map(x => [x[0], x[1]]) }, render: renderSpInputs });
   for (const k of ['sp_matrix', 'sp_read']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  buildSPUnder(); buildSPPricer();
+  buildSPUnder(); buildSPPricer(); buildSPDci();
 }
 function renderSP() {
   if (!SPD) { loadSP().then(() => { if (state.tab === 'sp') renderTab(); }); }
@@ -552,4 +554,97 @@ function buildSPPricer() {
   makeCard(g, { key: 'sp_payoff', title: 'Payoff at maturity', range: false, render: renderSpPayoff });
   makeCard(g, { key: 'sp_backtest', title: 'If issued every week since 2006', defaultRange: 'MAX', render: renderSpBacktest });
   for (const k of ['sp_form', 'sp_terms']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+
+// ------------------------------------------------------------------ WP41. FX & DCI
+// A DCI = a deposit plus an FX option the client sells: higher yield, but the money may come back in the other
+// currency at the strike. Pair X = units of the second currency per unit of the first.
+const DCI_PAIRS = [['USDMYR', 'USD', 'MYR'], ['SGDMYR', 'SGD', 'MYR'], ['USDSGD', 'USD', 'SGD'], ['AUDUSD', 'AUD', 'USD'], ['AUDSGD', 'AUD', 'SGD'],
+  ['EURUSD', 'EUR', 'USD'], ['GBPUSD', 'GBP', 'USD'], ['USDJPY', 'USD', 'JPY'], ['XAUUSD', 'XAU', 'USD']];
+const REER_OF = { MYR: 'REER_MYR', SGD: 'REER_SGD', USD: 'REER_USD', EUR: 'REER_EUR', JPY: 'REER_JPY', GBP: 'REER_GBP', AUD: 'REER_AUD' };
+const dciCache = {};
+function dciSeries(id) {
+  if (dciCache[id]) return dciCache[id];
+  let s = null;
+  if (id === 'SGDMYR' && has('USDMYR', 'USDSGD')) s = combine(S.USDMYR, S.USDSGD, (a, b) => a / b, { label: 'SGD/MYR' }, 4 * DAY);
+  else if (id === 'AUDSGD' && has('AUDUSD', 'USDSGD')) s = combine(S.AUDUSD, S.USDSGD, (a, b) => a * b, { label: 'AUD/SGD' }, 4 * DAY);
+  else if (id === 'XAUUSD' && has('GOLD')) s = { ...S.GOLD, label: 'Gold (XAU/USD)' };
+  else if (has(id)) s = S[id];
+  if (s) s.id = s.id || id;
+  return (dciCache[id] = s);
+}
+function dciVol(id, days) {   // implied where a currency ETF or gold option exists, else realised × 1.1
+  const fx = SPD.fx && SPD.fx[id], M = SPD._meta;
+  if (fx) { const i = M.tenors.findIndex(t => t >= days); return { v: fx.atm[Math.max(0, i)], est: false }; }
+  if (id === 'XAUUSD' && spU('GOLD')) return { v: spVol(spU('GOLD'), days, 1), est: false };
+  const s = dciSeries(id); if (!s) return null;
+  if (!fxRvCache['dci' + id]) { const tmp = S['__dci']; S['__dci'] = s; fxRvCache['dci' + id] = fxRv('__dci'); delete fxRvCache['__dci63']; if (tmp) S['__dci'] = tmp; else delete S['__dci']; }
+  const rv = fxRvCache['dci' + id]; return rv ? { v: rv.v / 100 * 1.1, est: true, pct: rv.pct } : null;
+}
+function dciQuote(row, holdFirst, dist, days) {
+  const [id, a, b] = row, s = dciSeries(id); if (!s) return null;
+  const X0 = asOf(s, state.latest).v, T = days / 365, vol = dciVol(id, days); if (!vol) return null;
+  const ra = a === 'XAU' ? 0 : rateFor(a, T).r, rb = rateFor(b, T).r, m = state.spMargin / 100;
+  if (holdFirst) { const K = X0 * (1 - dist / 100), prem = SPM.bs('P', X0, K, T, rb, ra, vol.v) / K; return { y: (ra + prem / T - m) * 100, base: ra * 100, K, vol, X0 }; }
+  const K = X0 * (1 + dist / 100), prem = SPM.bs('C', X0, K, T, rb, ra, vol.v) / K; return { y: (rb + prem / T - m) * 100, base: rb * 100, K, vol, X0 };
+}
+function dciHist(id, holdFirst, dist, days) {   // share of past windows (10 years) in which the client would have been converted
+  const s = dciSeries(id); if (!s) return null; const from = addMonths(state.latest, -120); let n = 0, hit = 0;
+  for (let i = 0; i < s.t.length; i++) { if (s.t[i] < from) continue; const e = asOf(s, s.t[i] + days * DAY); if (!e || e.t <= s.t[i] || e.t > state.latest) continue; n++; const r = e.v / s.v[i] - 1; if (holdFirst ? r <= -dist / 100 : r >= dist / 100) hit++; }
+  return n > 100 ? hit / n * 100 : null;
+}
+function dciTrend(s) { const n = s.v.length; if (n < 200) return null; const ma = k => s.v.slice(n - k).reduce((x, y) => x + y, 0) / k; return ma(50) > ma(200); }
+state.dciSel = 'USDMYR'; state.dciHold = 'first'; state.dciView = 'yield';
+function renderDciTable(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const heads = ['Pair', 'You hold', 'Spot', 'Rate gap', 'Vol', '2 weeks, 1% away', '1 month, 1% away', 'Converted (1M, history)', 'Other ccy value', 'Trend'];
+  const tb = el('tbody'), csv = [heads];
+  for (const row of DCI_PAIRS) for (const hf of [true, false]) {
+    const [id, a, bq] = row, s = dciSeries(id); if (!s) continue;
+    if (row[1] === 'XAU' && hf) continue;   // gold: the client holds dollars and may be converted into gold
+    const q2 = dciQuote(row, hf, 1, 14), q1 = dciQuote(row, hf, 1, 30); if (!q1) continue;
+    const hold = hf ? a : bq, other = hf ? bq : a, gap = (hf ? (a === 'XAU' ? 0 : rateFor(a, 0.1).r) - rateFor(bq, 0.1).r : rateFor(bq, 0.1).r - (a === 'XAU' ? 0 : rateFor(a, 0.1).r)) * 100;
+    const conv = dciHist(id, hf, 1, 30), reer = REER_OF[other] ? spPct(REER_OF[other]) : null, up = dciTrend(s);
+    tb.append(el('tr', { class: 'row' + (id === state.dciSel && (hf ? 'first' : 'second') === state.dciHold ? ' sel' : ''), style: 'cursor:pointer', onclick: () => { state.dciSel = id; state.dciHold = hf ? 'first' : 'second'; ['dci_table', 'dci_grid', 'dci_hist'].forEach(k => cards[k].render()); } },
+      el('td', { class: 'l', text: s.label || id }), el('td', { class: 'l', text: `${hold} → may get ${other}` }), el('td', { class: 'num', text: fmtNum(q1.X0, q1.X0 > 100 ? 1 : 4) }),
+      el('td', { class: 'num', text: sign(gap) + fmtNum(Math.abs(gap), 2) }), el('td', { class: 'num' + (q1.vol.est ? ' muted' : ''), text: pc1(q1.vol.v * 100) + (q1.vol.est ? ' est.' : '') }),
+      el('td', { class: 'num strong', text: q2 ? pc1(q2.y) : '–' }), el('td', { class: 'num strong', text: pc1(q1.y) }), el('td', { class: 'num', text: conv != null ? fmtNum(conv, 0) + '%' : '–' }),
+      el('td', { class: 'num', text: reer != null ? ordF(reer) + ' pct' : '–', title: reer != null ? `${other} real effective exchange rate, percentile of 10 years (low = cheap)` : '' }),
+      el('td', { class: 'num ' + (up == null ? '' : (up === hf) ? 'up' : 'dn'), text: up == null ? '–' : `${(up === hf) ? '▲' : '▼'} ${hold}` })));
+    csv.push([s.label || id, hold, q1.X0, gap, q1.vol.v, q2 && q2.y, q1.y, conv, reer, up]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))), tb)));
+  capRows(tb, 'dci_table', 14);
+  c.csv = csv;
+  setNote(c, `Indicative yield a year for a strike 1% away from spot, after a ${fmtNum(state.spMargin, 1)}% issuer margin: the deposit rate of the currency held plus the option premium. Converted = how often, over the last 10 years, the pair moved 1% the wrong way within a month: that is how often the client would have received the other currency. Other ccy value = that currency's real effective rate percentile (low = cheap, so conversion hurts less). Vol: implied from currency and gold options where listed, otherwise realised × 1.1 (est.). Ringgit pairs are priced onshore differently. Rates from FRED where available (MYR, SGD: Bank Negara and MAS). Click a row for the strike grid.`);
+  setSource(c, 'Yahoo Finance (FX, gold); Cboe (options on FXE, FXY, FXA, FXB, GLD); FRED, Bank Negara, MAS (rates); BIS via FRED (REER); model: Garman-Kohlhagen');
+}
+function renderDciGrid(c) {
+  const b = htmlBody(c), row = DCI_PAIRS.find(r => r[0] === state.dciSel), hf = state.dciHold === 'first'; if (!row || !SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Pick a pair.' })); return; }
+  const s = dciSeries(row[0]), hold = hf ? row[1] : row[2], other = hf ? row[2] : row[1];
+  c.titleEl.textContent = `${s ? s.label || row[0] : row[0]}: hold ${hold}`;
+  const ds = [0.5, 1, 1.5, 2, 3], tn = [[7, '1 week'], [14, '2 weeks'], [30, '1 month'], [91, '3 months']], y = state.dciView === 'yield';
+  const tb = el('tbody');
+  for (const d of ds) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: `${d}% away` }), ...tn.map(([days]) => { const v = y ? dciQuote(row, hf, d, days) : dciHist(row[0], hf, d, days); return el('td', { class: 'num', text: v == null ? '–' : y ? pc1(v.y) : fmtNum(v, 0) + '%' }); })));
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, el('th', { class: 'l', text: 'Strike' }), ...tn.map(([, l]) => el('th', { text: l })))), tb)));
+  setNote(c, y ? `Yield a year if the client holds ${hold} and accepts being converted into ${other} at a strike this far from spot (${hf ? 'if ' + hold + ' weakens' : 'if ' + other + ' weakens'}). Closer strikes and longer tenors pay more because conversion is likelier. After margin; indicative.`
+    : `How often in the last 10 years the pair moved at least this far against the ${hold} holder within the tenor: the historical chance of being converted.`);
+  setSource(c, y ? 'Model: Garman-Kohlhagen with the volatility shown in the table' : 'Yahoo Finance daily FX; calculated');
+}
+function renderDciHist(c) {
+  const row = DCI_PAIRS.find(r => r[0] === state.dciSel), hf = state.dciHold === 'first', s = row && dciSeries(row[0]); if (!s) return setEmpty(c, 'Pick a pair.');
+  const q = dciQuote(row, hf, 1, 30), m = { t: [], v: [] }; for (let i = 199; i < s.v.length; i++) { let a = 0; for (let k = i - 199; k <= i; k++) a += s.v[k]; m.t.push(s.t[i]); m.v.push(a / 200); }
+  drawLines(c, [{ name: s.label || row[0], data: pts(s, state.from, state.to) }, { name: '200-day average', data: pts(m, state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
+    { fmt: v => fmtNum(v, v > 100 ? 1 : 4), axisFmt: v => fmtNum(v, v > 100 ? 0 : 2), endLabels: false, hlines: q ? [{ y: q.K, label: '1-month strike, 1% away' }] : [] });
+  setNote(c, `The client must be content to end up with ${hf ? row[2] : row[1]} at the strike line: that is the outcome being paid for. ${dciTrend(s) == null ? '' : `The pair is ${dciTrend(s) ? 'above' : 'below'} its 200-day average.`}`);
+  setSource(c, 'Yahoo Finance');
+}
+SUBTABS.sp.push(['FX & DCI', ['dci_table', 'dci_grid', 'dci_hist']]);
+TILE_SETS.sp['FX & DCI'] = ['USD 2Y yield', 'Index volatility', 'Single-stock volatility', 'Implied correlation', 'Skew'];
+function buildSPDci() {
+  const g = $('#spGrid');
+  makeCard(g, { key: 'dci_table', title: 'Dual currency investments: yields', wide: true, range: false, render: renderDciTable });
+  makeCard(g, { key: 'dci_grid', title: 'DCI strike grid', range: false, seg: { key: 'dciView', options: [['yield', 'Yield'], ['hist', 'Converted (history)']] }, render: renderDciGrid });
+  makeCard(g, { key: 'dci_hist', title: 'The pair and the strike', defaultRange: '1Y', render: renderDciHist });
+  for (const k of ['dci_table', 'dci_grid']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
