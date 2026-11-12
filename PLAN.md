@@ -596,6 +596,135 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
+## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP35, regions reorganised
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` and run
+`node tools/design-check.js` before each push. One commit per package.
+
+**The request:** (1) move the region-specific parts of the Markets pages to their regions; (2) organise each region
+by asset class (equities, fixed income, currency, economy); (3) break Asia ex-Japan down in the sidebar (Asia ex-Japan
+→ Singapore, → China, …), each country on its own page.
+
+### The rule (add to `CLAUDE.md`)
+
+- **Region and country pages hold everything about one place, split by asset class.** Sub-tabs, always in this
+  order, leaving out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one of
+  these in two if it runs over the height budget, e.g. Malaysia "Sectors", US "Inflation").
+- **Markets-group pages (Markets, Fixed Income, Valuation, Positioning & Vol, Correlation) are cross-market tools:**
+  tables and charts that compare places or asset classes. Anything about a single place lives on that place's page.
+- **One home per card.** A card is never shown in two places. Where a reader would look for it elsewhere, put a
+  "See also" link row at the top of that sub-tab (small helper `seeAlso(tab, sub, [[label, tab, sub], …])`).
+- **Theme pages stay whole** (AI → Chip cycle keeps its Korea and Malaysia cards); country pages link to them.
+
+### WP32. Sidebar tree and country pages for Asia ex-Japan (a move, no new cards)
+
+**Sidebar** (Regions group):
+
+    Country scorecard
+    US
+    Europe
+    Asia ex-Japan  ▾        ← click: opens the Asia overview and expands the list
+        Malaysia
+        Singapore
+        China
+        Korea
+        Taiwan
+        India
+    Japan
+    Australia
+
+- Children are indented buttons, hidden when the parent is collapsed. The list opens by itself when a child page is
+  active, and the open/closed state is remembered (localStorage, with the usual try/catch). Same on phones.
+- The page header's group label reads "Regions · Asia ex-Japan" on a child page (`setTab` walks back to the parent).
+- Keyboard and search (Ctrl+K) work as before; search results name the new page.
+
+**Pages** (new tab ids `my`, `sg`, `cn`, `kr`, `tw`, `in`; each gets a panel with its own tiles box and grid, like
+`us`): cards are moved with the existing `REGION_MOVES` mechanism, before `buildSubtabs()`.
+
+| Page | Equities | Rates & bonds | Currency | Economy |
+|---|---|---|---|---|
+| Malaysia | `my_sec_table`, `my_sec_rs`, `my_sec_drv` (as a second sub-tab "Sectors") | `myrates`, `mylend` | `myrfx`, `myrtbl` | `mylead`, `mygrowth`, `mytrade`, `myprices`, `mymoney` |
+| Singapore | (WP34) | `sgrates`, `sgust`, `sghedge` | `sneer` | `sginfl`, `sggrowth` |
+| China | (WP34) | `cn_spread` | (WP34) | `cn_infl`, `cn_trade`, `cn_conf` |
+| Korea | `kr_mkt`, `kr_lead` | `kr_rates` | (WP34) | `kr_trade`, `kr_infl`, `kr_act` |
+| Taiwan | `tw_mkt`, `tw_lead`, `tw_money` | none (no public source: say so in a note) | (WP34) | `tw_trade`, `tw_growth`, `tw_infl` |
+| India | `in_mkt`, `in_lead` | `in_rates`, `in_oil` | (WP34) | `in_infl`, `in_act` |
+
+- **Asia ex-Japan (overview)** keeps the comparison sub-tabs: Across Asia · Asian FX · What leads.
+- Tiles: move the per-country lists from `ASIA_KPI` into `TILE_SETS` per page and sub-tab; extend `regionTiles` /
+  `renderRegion` to the six pages (≤ 5 tiles each).
+- Register the new ids everywhere a tab id is listed: the validation array in `init`, `TAB_TITLES`, the render map in
+  `renderTab`, `SUBTABS`, `TILE_SETS`, the late-loading re-render list in `loadTickers`.
+- Update every link into the old sub-tabs: `goSub('asia', …)` (8 places: country scorecard rows, signals, "what
+  changed", policy summaries, weekly brief), `REGION` in `pipeline/signals.py` is unaffected.
+- **Old links keep working:** in the hash parser, map `tab=asia&sub=0…10` (the old order) to the new page and
+  sub-tab, as was done for `cnjp`.
+
+### WP33. Asset-class sub-tabs for US, Europe, Japan, Australia; moves out of the Markets group
+
+| Page | Equities | Rates & bonds | Currency | Economy |
+|---|---|---|---|---|
+| US | `us_eq`; second sub-tab "Sectors & breadth": `sty_ratio`, `sty_sect`, `sty_style`, US breadth | `us_rates`, `us_be`, `us_fed` | `us_dxy` | Growth & jobs · Inflation · ISM · Housing & consumer · Recession watch (as now, grouped "Economy") |
+| Europe | `eu_eq` | `eu_yields`, `eu_spread`, `sp_euro`, `eu_hy`, `eu_ecb` | `eu_fx` | `eu_infl`, `eu_unemp`, `eu_gdp`, `eu_bci`, `eu_m3` |
+| Japan | `jp_eq` | `jp_policy`, `jp_boj`, `jp_bojsum` | (WP34) | `jp_infl`, `jp_tankan`, `jp_act` |
+| Australia | `au_eq` | `aurates`, `au_rba` | `audiff`, `cm_iron` | `auinfl`, `augrowth`, `autot` |
+
+**Moves out of the Markets group** (the source page gets a "See also" link in their place):
+- Markets → **Breadth**: one set of four cards with a Malaysia / Singapore / US toggle becomes three sets, one per
+  market (`renderBrTrend`, `renderBrTable` and the two others take the market as an argument instead of
+  `state.brMkt`): Malaysia → Malaysia Equities, Singapore → Singapore Equities, US → US "Sectors & breadth". Markets
+  keeps one small table "Breadth across markets" (three rows: share above the 200-day average, new highs and lows).
+- Markets → **Styles & sectors** (US sector ETFs and style ratios) → US "Sectors & breadth". The sub-tab leaves Markets.
+- Markets → Commodities: `cm_palm` → Malaysia Sectors; `cm_iron` → Australia Currency.
+- Fixed Income → Spreads: `sp_euro` (Italy, Spain, France against Germany) → Europe Rates & bonds.
+- Stays put (cross-market tools): Markets Performance, Trend, Seasonality, the rest of Commodities; Fixed Income
+  Curves, Yields, the credit spread cards, FX & hedging; Valuation; Positioning & Vol; Correlation.
+
+### WP34. Fill the gaps so every page has all four asset classes
+
+Built from data already loaded; two helpers do most of it.
+- `eqCard(index, benchmarks)`: the index in local currency and in US dollars against Asia ex-Japan (AAXJ) and world
+  (ACWI), rebased; note with the 200-day trend and 3-month relative performance. Used for **Malaysia** (KLCI),
+  **Singapore** (STI) and **China** (CSI 300, Hang Seng, MCHI). Korea, Taiwan and India already have theirs.
+- `fxCard(ccy)`: spot against the dollar with its 200-day average, and the real effective exchange rate percentile
+  (20 years) as a second line or a tile; note with carry from the FX table. Used for **Korea, Taiwan, India, China,
+  Singapore (next to the S$NEER card), Japan**; Malaysia adds a REER card beside the existing ringgit cards.
+- Malaysia Rates & bonds: `my_bnm` (policy summary, reusing `renderPolicySummary` with the BNM entry in `CBS`) and
+  `my_gap` (US 2Y − OPR against USD/MYR, dual axis). Note on the sub-tab: no public source for MGS yields.
+- China Rates & bonds: `cn_rates` (10Y and 3M; today they sit inside the inflation card).
+- **"Signals for this market" strip** on each Equities sub-tab: the active ideas and switched-on rules from the
+  Signals page whose target is that market (from `SIG`), one line each, linking to Signals. Empty = one muted line.
+- "See also" rows: Korea Equities → AI Chip cycle; Malaysia Sectors → AI Chip cycle (Malaysian tech) and Markets
+  Commodities; each Rates & bonds → that bank's Central banks sub-tab; each Currency → Asian FX carry table.
+- Country scorecard rows open the new country pages.
+
+### WP35. Housekeeping
+
+`CLAUDE.md` (the rule above, the sidebar tree, the four-sub-tab order), README (page list), `PLAN.md` status. Check:
+every page and sub-tab renders with no empty card; old `#tab=asia&sub=…` links land in the right place; the Weekly
+brief, "what changed" and signal links open the right pages; `design-check` passes (it walks the sidebar buttons, so
+the six new pages are covered automatically); search finds the moved cards.
+
+### Risks and how the build handles them
+
+- **Height:** Malaysia Equities with breadth and the equity card may pass 2,300 px: that is why Sectors is its own
+  sub-tab; split further if the check fails.
+- **Thin sub-tabs:** a sub-tab with one card is fine; a sub-tab with none is left out (Taiwan Rates & bonds).
+- **Sidebar length:** the Asia list is collapsed unless you are on one of its pages.
+- **Order of work:** WP32 changes only where cards live, so it can be checked against today's pages card by card
+  before anything new is added.
+
+### Decisions for the owner
+
+1. **One home per card** (recommended) or show region cards in both Markets and the region page? One home keeps
+   pages short and avoids two copies drifting apart; links cover the rest.
+2. **Malaysia's place:** first under Asia ex-Japan (recommended, matches your sketch), or its own top-level entry in
+   Regions because your clients are Malaysian?
+3. **Theme pages stay whole** (recommended): AI → Chip cycle keeps its Korea and Malaysia cards and the country
+   pages link to it. The alternative is to move those cards to Korea and Malaysia.
+
+---
+
 ## WP1. Central bank watch (highest priority)
 
 **Why:** the Fed page shows market pricing against the Fed. Clients in Malaysia, Singapore and Australia
