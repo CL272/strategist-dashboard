@@ -222,7 +222,7 @@ function buildSP() {
   makeCard(g, { key: 'sp_putwrite', title: 'Selling puts vs owning the index', defaultRange: 'MAX', earliest: Date.UTC(2007, 0, 1), render: renderSpPutwrite });
   makeCard(g, { key: 'sp_inputs', title: 'The inputs behind the terms', wide: true, defaultRange: '10Y', seg: { key: 'spInput', select: true, label: 'Input', options: SP_INPUTS.map(x => [x[0], x[1]]) }, render: renderSpInputs });
   for (const k of ['sp_matrix', 'sp_read']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  buildSPUnder();
+  buildSPUnder(); buildSPPricer();
 }
 function renderSP() {
   if (!SPD) { loadSP().then(() => { if (state.tab === 'sp') renderTab(); }); }
@@ -346,4 +346,210 @@ function buildSPUnder() {
   makeCard(g, { key: 'sp_term', title: 'Volatility by tenor and strike', range: false, render: renderSpTerm });
   makeCard(g, { key: 'sp_baskets', title: 'Worst-of baskets: the odds', wide: true, range: false, render: renderSpBaskets });
   for (const k of ['sp_screen', 'sp_grid', 'sp_term', 'sp_baskets']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+
+// ------------------------------------------------------------------ WP40. Pricer: indicative terms, payoff, back-test
+const SP_KINDS = [['eln', 'ELN (reverse convertible)'], ['fcn', 'FCN with knock-in'], ['auto1', 'Autocallable, single'], ['auto3', 'Autocallable, worst-of'],
+  ['pp', 'Capital-protected note'], ['shark', 'Sharkfin (capped)'], ['acc', 'Accumulator']];
+const SP_DEF = { kind: 'fcn', ids: ['SPX', '', ''], months: 12, strike: 100, ki: 70, kiType: 'maturity', ac: 100, freq: 1, cb: 70, memory: true, prot: 100, cap: 120, ko: 105, margin: 1.5, ccy: 'auto' };
+state.spf = { ...SP_DEF };
+const SP_PRESETS = { fcn: () => ({ kind: 'fcn', ids: [state.spSel || 'SPX', '', ''], months: 6, strike: 100, ki: 70, kiType: 'maturity' }),
+  auto1: () => ({ kind: 'auto1', ids: ['SPX', '', ''], months: 24, ac: 100, cb: 70, ki: 60, kiType: 'maturity', freq: 3, memory: true }),
+  auto3: () => ({ kind: 'auto3', ids: ['NVDA', 'AMD', 'AVGO'], months: 12, ac: 100, cb: 65, ki: 60, kiType: 'maturity', freq: 1, memory: true }),
+  pp: () => ({ kind: 'pp', ids: ['SPX', '', ''], months: 36, prot: 100 }), shark: () => ({ kind: 'shark', ids: ['SPX', '', ''], months: 12, prot: 100, cap: 115 }),
+  acc: () => ({ kind: 'acc', ids: [state.spSel && spU(state.spSel) && spU(state.spSel).kind !== 'index' ? state.spSel : 'AAPL', '', ''], months: 12, ko: 105 }) };
+let spWorker = null, spJob = 0;
+const spRes = { key: null, val: null, pending: false };
+function spIds(f = state.spf) { return (f.kind === 'auto3' ? f.ids : f.ids.slice(0, 1)).filter(id => id && spU(id)); }
+function spNoteCcy(f, ids) { if (f.ccy !== 'auto') return f.ccy; const c = [...new Set(ids.map(id => spCcyRate(spU(id).ccy)))]; return c.length === 1 ? c[0] : 'USD'; }
+function spCorr(ids) {   // 1-year correlation of weekly returns, from the weekly history (falls back to 0.5)
+  const C = ids.map(() => ids.map(() => 0.5)); ids.forEach((_, i) => { C[i][i] = 1; });
+  if (!SPH || ids.length < 2) return C;
+  const R = ids.map(id => { const h = SPH[id]; if (!h) return null; const m = new Map(); for (let i = 1; i < h.t.length; i++) if (h.t[i] >= state.latest - 380 * DAY) m.set(h.t[i], Math.log(h.v[i] / h.v[i - 1])); return m; });
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    if (!R[i] || !R[j]) continue; const a = [], b = []; for (const [t, v] of R[i]) if (R[j].has(t)) { a.push(v); b.push(R[j].get(t)); }
+    if (a.length < 30) continue; const ma = a.reduce((x, y) => x + y) / a.length, mb = b.reduce((x, y) => x + y) / b.length;
+    let sab = 0, saa = 0, sbb = 0; a.forEach((v, k) => { sab += (v - ma) * (b[k] - mb); saa += (v - ma) ** 2; sbb += (b[k] - mb) ** 2; });
+    C[i][j] = C[j][i] = Math.max(-0.2, Math.min(0.98, sab / Math.sqrt(saa * sbb)));
+  }
+  return C;
+}
+// closed-form and Monte Carlo pricing; returns what the Terms card shows
+function spPrice(f = state.spf) {
+  const ids = spIds(f); if (!ids.length) return { err: 'Pick an underlying.' };
+  if (f.kind === 'auto3' && ids.length < 2) return { err: 'Pick two or three underlyings for a worst-of note.' };
+  const T = f.months / 12, days = Math.round(T * 365), ccy = spNoteCcy(f, ids), rr = rateFor(ccy, T), r = rr.r, m = f.margin / 100, DF = Math.exp(-r * T);
+  const X = ids.map(id => spU(id)), q = X.map(x => (x.dy || 0) / 100), K = f.strike / 100, B = f.ki / 100;
+  const base = { ids, ccy, rsrc: rr.src, r, T, est: X.some(x => x.src !== 'chain') };
+  if (f.kind === 'eln') {
+    const v = spVol(X[0], days, K), P = SPM.bs('P', 1, K, T, r, q[0], v);
+    const gross = ((1 + P / K) / DF - 1) / T, net = ((1 - m * T + P / K) / DF - 1) / T;
+    return { ...base, gross, net, vol: v, be: K * (1 - net * T), what: 'coupon', note: `Sells a ${f.months}-month put at ${f.strike}% (implied vol ${pc1(v * 100)}); the coupon is the cash rate plus the put premium.` };
+  }
+  const nObs = Math.max(1, Math.round(f.months / (f.freq || 1)));
+  if (f.kind === 'fcn' && ids.length === 1) {
+    // at-maturity knock-in = put at the barrier + (strike − barrier) digitals; the digital is the slope of put prices across strikes, so skew counts
+    const vB = spVol(X[0], days, B), e = 0.01, pK = k2 => SPM.bs('P', 1, k2, T, r, q[0], spVol(X[0], days, k2));
+    const dig = Math.max(0, (pK(B + e) - pK(B - e)) / (2 * e));
+    const dip = f.kiType === 'daily' ? SPM.downInPut(1, K, B, T, r, q[0], vB, 1 / 252) : pK(B) + (K - B) * dig;
+    let A = 0; for (let i = 1; i <= f.months; i++) A += Math.exp(-r * i / 12) / 12;
+    const gross = (1 - DF + dip / K) / A, net = (1 - m * T - DF + dip / K) / A;
+    return { ...base, gross, net, vol: vB, be: K * (1 - net * T), what: 'coupon', note: `Coupon paid monthly; the knock-in put is struck at ${f.strike}% with the barrier at ${f.ki}% (${f.kiType === 'daily' ? 'watched every day' : 'checked at maturity only'}); implied vol at the barrier ${pc1(vB * 100)}.` };
+  }
+  if (f.kind === 'pp' || f.kind === 'shark') {
+    const P = f.prot / 100, v = spVol(X[0], days, 1), C1 = SPM.bs('C', 1, 1, T, r, q[0], v), budget = 1 - m * T - P * DF, budget0 = 1 - P * DF;
+    if (f.kind === 'pp') return { ...base, gross: budget0 / C1, net: budget / C1, budget, what: 'participation', vol: v, note: `Bond for ${f.prot}% protection costs ${pc1(P * DF * 100)} of notional; the rest buys an at-the-money ${f.months}-month call (${pc1(C1 * 100)} each, vol ${pc1(v * 100)}).` };
+    const cap = f.cap / 100, vc = spVol(X[0], days, cap), spread = C1 - SPM.bs('C', 1, cap, T, r, q[0], vc);
+    return { ...base, gross: budget0 / spread, net: budget / spread, budget, what: 'participation', vol: v, note: `Upside from 100% to the cap at ${f.cap}% (a call spread costing ${pc1(spread * 100)}); ${f.prot}% of capital back at maturity.` };
+  }
+  // Monte Carlo: autocallables, worst-of FCN, accumulator
+  const vols = X.map(x => spVol(x, days, f.kind === 'acc' ? 1 : Math.min(1, 1 - (1 - B) / 4)));   // between at-the-money and the barrier: the path spends most of its time near spot
+  const p = f.kind === 'acc' ? { vol: vols[0], q: q[0], r, T, ko: f.ko / 100, gear: 2, paths: 6000, seed: 11, margin: m * T * 0.5 }
+    : { vols, q, r, corr: spCorr(ids), T, nObs: f.kind === 'fcn' ? f.months : nObs, ac: f.kind === 'fcn' ? Infinity : f.ac / 100, cb: f.kind === 'fcn' ? 0 : f.cb / 100,
+      memory: !!f.memory, ki: B, kiType: f.kiType, k: f.kind === 'fcn' ? K : 1, paths: 20000, seed: 7, stepsPerYear: 52 };
+  const key = JSON.stringify([f.kind, p]);
+  if (spRes.key !== key) {
+    spRes.key = key; spRes.val = null; spRes.pending = true; const job = ++spJob;
+    const done = res => { if (job !== spJob) return; spRes.val = res; spRes.pending = false; ['sp_terms', 'sp_payoff', 'sp_backtest'].forEach(k => cards[k] && cards[k].render()); };
+    try { if (!spWorker) spWorker = new Worker('sp-worker.js'); spWorker.onmessage = e => { if (e.data.id === job) done(e.data.res || {}); }; spWorker.postMessage({ id: job, kind: f.kind === 'acc' ? 'acc' : 'mc', p }); }
+    catch (e) { setTimeout(() => done(f.kind === 'acc' ? SPM.accumulator(p) : SPM.mcNote({ ...p, paths: 8000 })), 0); }
+  }
+  if (!spRes.val) return { ...base, pending: true };
+  const R = spRes.val;
+  if (f.kind === 'acc') return { ...base, what: 'strike', strike: R.strike, koProb: R.koProb, units: R.units, weeks: R.weeks, vol: vols[0], note: `Buys one unit a week at the strike (two below it) until the price reaches ${f.ko}% of today's level. Strike solved so the contract costs nothing up front, after margin.` };
+  const gross = (1 - R.A) / R.Bc, net = (1 - m * R.life - R.A) / R.Bc;
+  return { ...base, gross, net, mc: R, vol: vols[0], vols, corr: p.corr, what: 'coupon', be: (f.kind === 'fcn' ? K : 1) * (1 - net * T), note: `Simulated on ${p.paths.toLocaleString()} paths with weekly steps (barrier adjusted for daily watching); vols at the barrier zone ${vols.map(v => pc1(v * 100)).join(', ')}${ids.length > 1 ? `; correlations from a year of weekly returns` : ''}.` };
+}
+function spField(lab, input) { return el('label', { class: 'sp-f' }, el('span', { text: lab }), input); }
+function spSelect(key, opts, onch) { const s = el('select', { class: 'mini-select' }); for (const [v, l] of opts) s.append(el('option', { value: v, text: l })); s.value = String(state.spf[key]); s.addEventListener('change', () => { state.spf[key] = isNaN(+s.value) || s.value === '' ? s.value : +s.value; onch && onch(); spRecalc(); }); return s; }
+function spNum(key, step = 5, min = 0, max = 200) { const i = el('input', { type: 'number', value: state.spf[key], step, min, max, class: 'sp-num' }); i.addEventListener('change', () => { state.spf[key] = +i.value; spRecalc(); }); return i; }
+function spUnderOpts() {
+  const groups = [['index', 'Indices'], ['us', 'US shares'], ['sg', 'Singapore'], ['my', 'Malaysia'], ['hk', 'Hong Kong'], ['asia', 'Other Asia']];
+  return Object.entries(SPD.under).sort((a, b) => groups.findIndex(g => g[0] === a[1].kind) - groups.findIndex(g => g[0] === b[1].kind) || SP_SHORT(a[0]).localeCompare(SP_SHORT(b[0]))).map(([id, x]) => [id, `${SP_SHORT(id)}${x.kind === 'index' ? '' : ' · ' + id}`]);
+}
+function spRecalc() { ['sp_form', 'sp_terms', 'sp_payoff', 'sp_backtest'].forEach(k => cards[k] && cards[k].render()); }
+function renderSpForm(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  if (state.spPreset) { Object.assign(state.spf, SP_DEF, SP_PRESETS[state.spPreset]()); state.spPreset = null; }
+  const f = state.spf, U = spUnderOpts(), k = f.kind, isAuto = k === 'auto1' || k === 'auto3';
+  const sels = (k === 'auto3' ? [0, 1, 2] : [0]).map(i => { const s = el('select', { class: 'mini-select' }); for (const [v, l] of [['', '–'], ...U]) s.append(el('option', { value: v, text: l })); s.value = f.ids[i] || ''; s.addEventListener('change', () => { f.ids[i] = s.value; spRecalc(); }); return s; });
+  const grid = el('div', { class: 'sp-form' },
+    spField('Structure', spSelect('kind', SP_KINDS, () => { if (state.spf.kind !== 'auto3') state.spf.ids = [state.spf.ids[0], '', '']; })),
+    spField(k === 'auto3' ? 'Underlyings (worst of)' : 'Underlying', el('div', { class: 'sp-und' }, ...sels)),
+    spField('Tenor', spSelect('months', [[3, '3 months'], [6, '6 months'], [9, '9 months'], [12, '1 year'], [18, '18 months'], [24, '2 years'], [36, '3 years'], [60, '5 years']])),
+    ...(k === 'eln' || k === 'fcn' ? [spField('Strike, % of spot', spNum('strike'))] : []),
+    ...(k === 'fcn' || isAuto ? [spField('Knock-in, % of spot', spNum('ki')), spField('Knock-in watched', spSelect('kiType', [['maturity', 'at maturity only'], ['daily', 'every day']]))] : []),
+    ...(isAuto ? [spField('Autocall level, %', spNum('ac')), spField('Observation', spSelect('freq', [[1, 'monthly'], [3, 'quarterly']])), spField('Coupon barrier, %', spNum('cb')),
+      spField('Memory coupon', (() => { const i = el('input', { type: 'checkbox' }); i.checked = !!f.memory; i.addEventListener('change', () => { f.memory = i.checked; spRecalc(); }); return i; })())] : []),
+    ...(k === 'pp' || k === 'shark' ? [spField('Capital protected, %', spNum('prot'))] : []), ...(k === 'shark' ? [spField('Cap, % of spot', spNum('cap'))] : []),
+    ...(k === 'acc' ? [spField('Knock-out, % of spot', spNum('ko', 1))] : []),
+    spField('Issuer margin, % a year', spNum('margin', 0.25, 0, 5)),
+    spField('Note currency', spSelect('ccy', [['auto', 'as the underlying'], ['USD', 'USD'], ['SGD', 'SGD'], ['MYR', 'MYR'], ['EUR', 'EUR'], ['AUD', 'AUD']])));
+  b.append(grid, el('div', { class: 'sp-presets' }, el('span', { class: 'muted small', text: 'Start from: ' }),
+    ...[['fcn', 'FCN on the screener pick'], ['auto1', 'Index autocall'], ['auto3', 'Chips worst-of'], ['pp', '3-year protected'], ['shark', 'Sharkfin'], ['acc', 'Accumulator']].map(([p, l]) => el('button', { type: 'button', class: 'ghost', text: l, onclick: () => { state.spPreset = p; spRecalc(); } }))));
+  if (k === 'acc') b.append(el('p', { class: 'small', style: `color:${tok('--critical')}`, text: 'High risk: an accumulator commits the client to keep buying, twice as much when the price falls below the strike, until it knocks out or matures.' }));
+  setNote(c, 'Change any term and the results update. Presets come from the matrix and screener links. ' + SP_LBL);
+}
+function renderSpTerms(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const f = state.spf, R = spPrice(f);
+  if (R.err) { b.append(el('div', { class: 'empty', text: R.err })); return; }
+  if (R.pending) { b.append(el('div', { class: 'empty', text: 'Simulating…' })); return; }
+  const big = (lab, v, sub) => el('div', { class: 'sp-big' }, el('div', { class: 'muted small', text: lab }), el('div', { class: 'sp-big-v', text: v }), sub ? el('div', { class: 'muted small', text: sub }) : '');
+  const row = el('div', { class: 'sp-bigs' });
+  if (R.what === 'coupon') row.append(big('Coupon, a year (after margin)', pc2(R.net * 100), `before margin ${pc2(R.gross * 100)}`), big('Break-even', R.be ? fmtNum(R.be * 100, 1) + '% of spot' : '–', 'worst final level where the client gets the money back'));
+  if (R.what === 'participation') row.append(big('Participation (after margin)', fmtNum(R.net * 100, 0) + '%', `before margin ${fmtNum(R.gross * 100, 0)}%`), big('Option budget', pc2(R.budget * 100), 'of notional, after margin'));
+  if (R.what === 'strike') row.append(big('Zero-cost strike', fmtNum(R.strike * 100, 1) + '% of spot', 'after margin'), big('Chance of knock-out', fmtNum(R.koProb * 100, 0) + '%', `expected units bought: ${fmtNum(R.units, 0)} of up to ${R.weeks * 2}`));
+  b.append(row);
+  if (R.mc) { const M = R.mc, firstCall = M.called.reduce((s, p) => s + p, 0);
+    b.append(el('table', { class: 'perf asset-table kv' }, el('tbody', {},
+      ...[['Called early', firstCall ? fmtNum(firstCall * 100, 0) + '% (most likely at the first date: ' + fmtNum(M.called[0] * 100, 0) + '%)' : 'never (no autocall)'], ['Knocked in', fmtNum(M.ki * 100, 0) + '%'],
+        ['Ends with a loss', fmtNum(M.loss * 100, 0) + '%' + (M.loss ? `, average loss ${fmtNum(M.avgLoss * 100, 0)}%` : '')], ['Expected life', fmtNum(M.life * 12, 1) + ' months']]
+        .map(([a, v]) => el('tr', { class: 'row' }, el('td', { text: a }), el('td', { class: 'num', text: v })))))); }
+  if (f.kind === 'eln' || (f.kind === 'fcn' && R.ids.length === 1)) {   // sensitivity: strike × knock-in (or strike × tenor for ELN)
+    const tb = el('tbody'), keep = { ...f };
+    const cols = f.kind === 'eln' ? [3, 6, 12] : [50, 60, 70, 80];
+    for (const s of [100, 95, 90, 85]) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: s + '%' }),
+      ...cols.map(cv => { const g = spPrice({ ...keep, strike: s, ...(f.kind === 'eln' ? { months: cv } : { ki: Math.min(cv, s) }) }); return el('td', { class: 'num', text: g.net != null ? pc1(g.net * 100) : '–' }); })));
+    b.append(el('p', { class: 'muted small', text: f.kind === 'eln' ? 'Coupon after margin by strike (rows) and tenor (columns)' : 'Coupon after margin by strike (rows) and knock-in (columns)' }),
+      el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, el('th', { class: 'l', text: 'Strike' }), ...cols.map(cv => el('th', { text: f.kind === 'eln' ? cv + 'M' : 'KI ' + cv + '%' })))), tb));
+  }
+  setNote(c, `${R.note} Rates: ${R.rsrc}, ${pc2(R.r * 100)} for the tenor; note currency ${R.ccy}.${R.est ? ' Uses an estimated volatility (no listed options): treat as a rough guide.' : ''} ${SP_LBL}`);
+  setSource(c, 'Model: Black-Scholes with the implied vol at the strike or barrier; Monte Carlo for autocallables and worst-of notes; ' + SPX_SRC_ALL);
+}
+// payoff at maturity against the worst underlying's final level
+function renderSpPayoff(c) {
+  const f = state.spf, R = SPD && SPD.under ? spPrice(f) : null; if (!R || R.err || R.pending) return setEmpty(c, R && R.err ? R.err : 'Waiting for the terms.');
+  const xs = []; for (let w = 0.3; w <= 1.6001; w += 0.01) xs.push(+w.toFixed(2));
+  const K = f.strike / 100, B = f.ki / 100, P = f.prot / 100, cap = f.cap / 100;
+  let pay;
+  if (f.kind === 'eln') pay = w => (w >= K ? 1 : w / K) + R.net * R.T;
+  else if (f.kind === 'fcn') pay = w => (w < B ? w / K : 1) + R.net * R.T;
+  else if (f.kind === 'auto1' || f.kind === 'auto3') pay = w => (w < B ? w : 1) + (w >= f.cb / 100 ? R.net * R.T / Math.max(1, Math.round(f.months / f.freq)) : 0);
+  else if (f.kind === 'pp') pay = w => P + R.net * Math.max(w - 1, 0);
+  else if (f.kind === 'shark') pay = w => P + R.net * Math.min(Math.max(w - 1, 0), cap - 1);
+  else return setEmpty(c, 'An accumulator has no single payoff at maturity: it depends on the whole path (see the back-test).');
+  const o = baseOpt();
+  o.series = [line('Note pays back (per 100 invested)', xs.map(w => [w * 100, pay(w) * 100]), col(0)), line(R.ids.length > 1 ? 'Holding the worst share' : 'Holding the underlying', xs.map(w => [w * 100, w * 100]), tok('--muted'), { lineStyle: { width: 1.5, type: 'dashed', color: tok('--muted') } })];
+  o.xAxis = { type: 'value', min: 30, max: 160, name: 'worst underlying at maturity, % of start', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tok('--muted'), fontSize: 11 }, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0)); o.grid.bottom = 30;
+  o.tooltip = { ...o.tooltip, valueFormatter: v => fmtNum(v, 1) };
+  if (f.kind !== 'pp' && f.kind !== 'shark') o.series[0].markLine = { silent: true, symbol: 'none', lineStyle: { color: tok('--critical'), type: 'dotted' }, label: { formatter: 'knock-in / strike', color: tok('--muted'), fontSize: 10 }, data: [{ xAxis: (f.kind === 'eln' ? K : B) * 100 }] };
+  inst(c).setOption(o, true);
+  c.csv = [['Worst final level %', 'Note pays %'], ...xs.map(w => [w * 100, (pay(w) * 100).toFixed(2)])];
+  setNote(c, f.kind === 'auto1' || f.kind === 'auto3' ? 'At final maturity only (if not called before); coupons paid along the way are not included. Above the knock-in the client gets 100 back; below it, the worst share’s level.' : 'Total paid back at maturity, including coupons, per 100 invested, against the worst underlying’s level then.');
+  setSource(c, 'Calculated from the terms above');
+}
+// back-test: the same note issued every week since the history starts
+function spBacktest(f, R) {
+  const ids = R.ids, H = ids.map(id => SPH && SPH[id]); if (H.some(h => !h)) return null;
+  const common = H[0].t.filter(t => H.every(h => h.t.includes(t))), idx = H.map(h => new Map(h.t.map((t, i) => [t, h.v[i]])));
+  const V = common.map(t => idx.map(m => m.get(t))), W = Math.round(f.months / 12 * 52); if (V.length < W + 26) return null;
+  const nObs = f.kind === 'fcn' || f.kind === 'eln' || f.kind === 'acc' ? 1 : Math.max(1, Math.round(f.months / f.freq)), obs = [...Array(nObs)].map((_, o) => Math.round((o + 1) * W / nObs));
+  const K = f.strike / 100, B = f.ki / 100, AC = f.ac / 100, CB = f.cb / 100, P = f.prot / 100, cap = f.cap / 100, c = R.net || 0, out = [];
+  for (let i = 0; i + W < V.length; i += 1) {
+    const s0 = V[i], wl = j => Math.min(...V[j].map((v, k) => v / s0[k])), hold = V[i + W].reduce((a, v, k) => a + v / s0[k], 0) / s0.length;
+    let pay = 0, life = W, called = false, hit = false, loss = false;
+    if (f.kind === 'pp' || f.kind === 'shark') { const w = wl(i + W); pay = P + c * (f.kind === 'pp' ? Math.max(w - 1, 0) : Math.min(Math.max(w - 1, 0), cap - 1)); loss = pay < 1; }
+    else if (f.kind === 'acc') {
+      const ko = f.ko / 100, k = R.strike; let units = 0, cost = 0, j;
+      for (j = i + 1; j <= i + W; j++) { const w = V[j][0] / s0[0]; if (w >= ko) break; const n = w >= k ? 1 : 2; units += n; cost += n * k; }
+      life = j - i; const end = V[Math.min(j, i + W)][0] / s0[0]; pay = 1 + (units * end - cost) / (W * 2 * k); loss = pay < 1;
+    } else {
+      let cpn = 0, memo = 0;
+      for (let j = i + 1; j <= i + W; j++) { const w = wl(j); if (f.kiType === 'daily' && w < B) hit = true;
+        const o = obs.indexOf(j - i); if (o < 0) continue;
+        if (f.kind === 'auto1' || f.kind === 'auto3') { if (w >= CB) { cpn += (memo + 1) * c * f.months / 12 / nObs; memo = 0; } else if (f.memory) memo++; if (o < nObs - 1 && w >= AC) { called = true; life = j - i; pay = 1 + cpn; break; } }
+        if (o === nObs - 1) { if (f.kiType !== 'daily' && w < B) hit = true; if (f.kind === 'eln') hit = w < K;
+          if (f.kind === 'fcn' || f.kind === 'eln') cpn = c * f.months / 12;
+          const red = hit && w < (f.kind === 'auto1' || f.kind === 'auto3' ? 1 : K) ? w / (f.kind === 'auto1' || f.kind === 'auto3' ? 1 : K) : 1; pay = red + cpn; loss = pay < 1; }
+      }
+    }
+    const yrs = life / 52;
+    out.push({ t: common[i], pay, ann: (Math.pow(Math.max(pay, 0.01), 1 / yrs) - 1) * 100, hold: (Math.pow(hold, 52 / W) - 1) * 100, called, hit, loss, life });
+  }
+  return out;
+}
+function renderSpBacktest(c) {
+  const f = state.spf, R = SPD && SPD.under ? spPrice(f) : null; if (!R || R.err || R.pending) return setEmpty(c, R && R.err ? R.err : 'Waiting for the terms.');
+  if (!SPH) { loadSPH().then(() => c.render()); return setEmpty(c, 'Loading 20 years of weekly prices…'); }
+  const bt = spBacktest(f, R); if (!bt || !bt.length) return setEmpty(c, 'Not enough common history for these underlyings.');
+  const n = bt.length, share = fn => bt.filter(fn).length / n * 100, losses = bt.filter(x => x.loss), avg = a => a.reduce((s, v) => s + v, 0) / a.length;
+  drawLines(c, [{ name: 'Note, return a year', data: bt.filter(x => x.t >= state.from).map(x => [x.t, x.ann]) }, { name: R.ids.length > 1 ? 'Holding the basket (equal weight), a year' : 'Holding the underlying, a year', data: bt.filter(x => x.t >= state.from).map(x => [x.t, x.hold]) }],
+    { fmt: v => pctF1(v), axisFmt: v => fmtNum(v, 0) + '%', zero: true, endLabels: false });
+  c.subEl.textContent = `Issued every week from ${nice(bt[0].t)} (${n} notes): called early ${fmtNum(share(x => x.called), 0)}% · knocked in ${fmtNum(share(x => x.hit), 0)}% · ended with a loss ${fmtNum(share(x => x.loss), 0)}%` +
+    (losses.length ? ` (average loss ${fmtNum((1 - avg(losses.map(x => x.pay))) * 100, 0)}%, worst ${fmtNum((1 - Math.min(...losses.map(x => x.pay))) * 100, 0)}%)` : '') + ` · average ${pctF1(avg(bt.map(x => x.ann)))} a year against ${pctF1(avg(bt.map(x => x.hold)))} for holding.`;
+  c.csv = [['Issue date', 'Paid back per 1', 'Return a year %', 'Holding a year %', 'Called', 'Knocked in', 'Loss'], ...bt.map(x => [iso(x.t), x.pay.toFixed(4), x.ann.toFixed(2), x.hold.toFixed(2), x.called, x.hit, x.loss])];
+  setNote(c, 'Losses cluster in the bad years (2008, 2020, 2022): look at when, not just how often. The coupon is today’s indicative coupon, held constant; real coupons were higher in volatile years. Weekly closes stand in for daily barrier checks, so knock-ins are slightly understated. Price returns only; dividends are not added to the holding line.');
+  setSource(c, 'Yahoo Finance weekly closes; calculated');
+}
+SUBTABS.sp.push(['Pricer', ['sp_form', 'sp_terms', 'sp_payoff', 'sp_backtest']]);
+TILE_SETS.sp.Pricer = ['Index volatility', 'Single-stock volatility', 'Implied correlation', 'Skew', 'USD 2Y yield'];
+function buildSPPricer() {
+  const g = $('#spGrid');
+  makeCard(g, { key: 'sp_form', title: 'Terms', range: false, render: renderSpForm });
+  makeCard(g, { key: 'sp_terms', title: 'Indicative result', range: false, render: renderSpTerms });
+  makeCard(g, { key: 'sp_payoff', title: 'Payoff at maturity', range: false, render: renderSpPayoff });
+  makeCard(g, { key: 'sp_backtest', title: 'If issued every week since 2006', defaultRange: 'MAX', render: renderSpBacktest });
+  for (const k of ['sp_form', 'sp_terms']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }

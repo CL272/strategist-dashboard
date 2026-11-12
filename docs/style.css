@@ -795,3 +795,12 @@ input.mp-w { width: 64px; text-align: right; }
 .sp-read { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.5; }
 .sp-read li { margin-bottom: 6px; }
 .sp-screen td.nm { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+/* Structured products pricer */
+.sp-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.sp-f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.sp-f select, .sp-f input.sp-num { font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); width: 100%; }
+.sp-und { display: flex; flex-direction: column; gap: 4px; }
+.sp-presets { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sp-presets button { font-size: 12px; padding: 3px 8px; }
+.sp-bigs { display: flex; gap: 22px; flex-wrap: wrap; margin: 2px 0 10px; }
+.sp-big-v { font-size: 26px; font-weight: 650; color: var(--ink); line-height: 1.2; }
