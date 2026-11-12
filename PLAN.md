@@ -598,7 +598,7 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP36, regions reorganised
 
-**Status: WP32 built on 12 Nov 2026** (country pages `my`, `sg`, `cn`, `kr`, `tw`, `in` under Asia ex-Japan in the sidebar; old `#tab=asia&sub=N` and `#tab=cnjp` links land on the new pages; Asia overview links carry `v=2`). WP33 to WP36 follow in order. Follow `CLAUDE.md` and run
+**Status: WP32 and WP33 built on 12 Nov 2026** (WP33: US, Europe, Japan and Australia split Equities · Rates & bonds · Currency · Economy; breadth is one set per market on Malaysia, Singapore and US → Equities, with a cross-market table left on Markets → Breadth; US style ratios and sector tables moved to US → Sectors & styles; palm oil to Malaysia → Sectors; iron ore to Australia → Currency; Fixed Income's euro periphery chart was a duplicate of Europe's and was removed; "See also" rows on Markets and Fixed Income; old links remapped). Earlier: **WP32** (country pages `my`, `sg`, `cn`, `kr`, `tw`, `in` under Asia ex-Japan in the sidebar; old `#tab=asia&sub=N` and `#tab=cnjp` links land on the new pages; Asia overview links carry `v=2`). WP33 to WP36 follow in order. Follow `CLAUDE.md` and run
 `node tools/design-check.js` before each push. One commit per package.
 
 **The request:** (1) move the region-specific parts of the Markets pages to their regions; (2) organise each region

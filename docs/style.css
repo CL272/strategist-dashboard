@@ -769,3 +769,8 @@ table.hv-table td.hv-why { white-space: normal; text-align: left; min-width: 10e
 input.mp-w { width: 64px; text-align: right; }
 .mp-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
 .mp-stat { display: flex; flex-direction: column; gap: 2px; }
+
+/* "See also" link row at the top of a sub-tab */
+.see-also { grid-column: 1 / -1; font-size: 13px; padding: 2px 2px 0; }
+.see-also a { color: var(--accent); text-decoration: none; font-weight: 550; }
+.see-also a:hover { text-decoration: underline; }

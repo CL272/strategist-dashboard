@@ -1078,7 +1078,7 @@ function whatChanged(end = state.latest) {
   if (TICK) for (const mk of Object.keys(BR_MKTS)) { const b = breadth(mk); if (!b || !b.t.length) continue;
     const at = t => { const i = upperIdx(b.t, t) - 1; return i >= 0 ? b.a200[i] : null; }, x = at(end), y = at(wk);
     if (x == null || y == null) continue;
-    for (const lv of [20, 80]) if ((y - lv) * (x - lv) < 0) add(lv === 20 && x < 20 ? 2 : 3, `${BR_MKTS[mk].name} breadth crossed ${lv}%: ${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago).`, 'markets', 'Breadth'); }
+    for (const lv of [20, 80]) if ((y - lv) * (x - lv) < 0) add(lv === 20 && x < 20 ? 2 : 3, `${BR_MKTS[mk].name} breadth crossed ${lv}%: ${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago).`, BR_PAGE[mk], 'Equities'); }
   // VIX term structure
   if (has('VIX', 'VIX3M')) { const r = t => { const a = asOf(S.VIX3M, t), b = asOf(S.VIX, t); return a && b ? a.v / b.v : null; }, x = r(end), y = r(wk);
     if (x != null && y != null && (x < 1) !== (y < 1)) add(x < 1 ? 1 : 3, x < 1 ? `VIX curve inverted: VIX3M/VIX at ${fmtNum(x, 2)}, below 1 (near-term fear above longer-term).` : `VIX curve back to normal: VIX3M/VIX at ${fmtNum(x, 2)}, above 1 again.`, 'posvol', 'Volatility'); }
@@ -2334,13 +2334,12 @@ function buildFixedIncome() {
   makeCard(g, { key: 'sp_credit', title: 'Credit spreads', wide: true, defaultRange: '3Y', seg: { key: 'spSet', options: Object.entries(SP_SETS).map(([k, v]) => [k, v.lab]) }, render: renderSpCredit });
   makeCard(g, { key: 'sp_ladder', title: 'Rating ladder', range: false, render: renderSpLadder });
   makeCard(g, { key: 'sp_table', title: 'Where spreads stand', range: false, render: renderSpTable });
-  makeCard(g, { key: 'sp_euro', title: 'Euro periphery vs Germany', defaultRange: '10Y', render: renderSpEuro });
   makeCard(g, { key: 'sp_eq', title: 'High-yield spreads vs stocks', defaultRange: '3Y', render: renderSpEq });
   for (const k of ['sp_ladder', 'sp_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard(g, { key: 'hedged', title: 'FX-hedged 10Y yields', wide: true, source: 'US Treasury, MOF Japan, ECB',
     seg: { key: 'fiHedge', options: [['usd', 'For a USD investor'], ['home', 'UST for JPY / EUR investors']] }, render: renderHedged });
 }
-function renderFixedIncome() { spKpis(); ['curve', 'xcurve', 'teny', 'slopes', 'real', 'diff', 'hedged', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq'].forEach(k => cards[k].render()); }
+function renderFixedIncome() { spKpis(); ['curve', 'xcurve', 'teny', 'slopes', 'real', 'diff', 'hedged', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_eq'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ ASIA & SINGAPORE
 // S$NEER proxy: approximate trade weights (dashboard estimate - MAS does not publish the basket)
@@ -2601,7 +2600,7 @@ function buildAsia() {
 }
 const ASIA_CARDS = ['myrfx', 'myrtbl', 'myrates', 'mylend', 'mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney', 'sgrates', 'sgust', 'sghedge', 'sneer', 'sginfl', 'sggrowth',
   'aurates', 'auinfl', 'audiff', 'augrowth', 'autot', 'ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf', 'asiafx', 'asiaidx'];
-const ASIA_KPI = { Malaysia: ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index', 'Best sector (3M)', 'Worst sector (3M)', 'Sectors beating KLCI (3M)'], Singapore: ['3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
+const ASIA_KPI = { Malaysia: ['Malaysia: above 200-day', 'Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index', 'Best sector (3M)', 'Worst sector (3M)', 'Sectors beating KLCI (3M)'], Singapore: ['STI', 'Singapore: above 200-day', '3M compounded SORA', 'SGS 10Y yield', 'UST − SGS 10Y', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'],
   Australia: ['RBA cash rate', 'Australia 10Y yield'], Korea: ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'],
   Taiwan: ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'],
   India: ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'], 'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'] };
@@ -2619,6 +2618,7 @@ function renderCountry(tab) {
   const box = $('#' + tab + 'Kpis'), want = ASIA_KPI[ASIA_PAGES[tab]] || [];
   box.replaceChildren();
   if (tab === 'cn') cnjpKpis(box); else { regionKpis(box); asiaMoreKpis(box); if (tab === 'my') mySectorTiles(box); }
+  if (tab === 'my' || tab === 'sg') brTile(box, tab.toUpperCase());
   box.querySelectorAll('.kpi').forEach(k => { k.hidden = !want.includes(k.querySelector('.k-label').textContent); });
   renderPanel(tab);
 }
@@ -3135,7 +3135,7 @@ function asiaMoreKpis(box = $('#asiaKpis')) {
   const yl = (id, l) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to), b = asOf(s, addMonths(a.t, -3)); tile(l, fmtNum(a.v, 2) + '%', b ? `3M ${fmtChg(s, chg(s, b.v, a.v))}` : '', 'OECD · ' + monthLab(a.t)); };
   const lv2 = (id, l, foot) => { if (!has(id)) return; const a = asOf(S[id], state.to); tile(l, pctF1(a.v), foot, 'DGBAS · ' + (S[id].freq === 'Q' ? 'quarter to ' + monthLab(addMonths(a.t, 2)) : monthLab(a.t))); };
   const lv = (id, l, foot) => { if (!has(id)) return; const a = asOf(S[id], state.to); tile(l, pctF1(a.v), foot, 'OECD · ' + (S[id].freq === 'Q' ? 'quarter to ' : '') + monthLab(a.t)); };
-  eq('KOSPI', 'KOSPI'); fx('USDKRW', 'USD/KRW'); yl('KR_10Y', 'Korea 10Y yield'); lv('KR_CPI_YOY', 'Korea CPI', 'year-on-year'); lv('KR_EXP_YOY', 'Korea exports', 'year-on-year, USD');
+  eq('STI', 'STI'); eq('KOSPI', 'KOSPI'); fx('USDKRW', 'USD/KRW'); yl('KR_10Y', 'Korea 10Y yield'); lv('KR_CPI_YOY', 'Korea CPI', 'year-on-year'); lv('KR_EXP_YOY', 'Korea exports', 'year-on-year, USD');
   eq('TWSE', 'Taiwan Weighted'); fx('USDTWD', 'USD/TWD'); lv2('TW_EXP_YOY', 'Taiwan exports', 'year-on-year, 3-month sum'); lv2('TW_CPI_YOY', 'Taiwan CPI', 'year-on-year'); lv2('TW_GDP_YOY', 'Taiwan GDP', 'real, year-on-year');
   eq('NIFTY', 'Nifty 50'); fx('USDINR', 'USD/INR'); yl('IN_10Y', 'India 10Y yield'); lv('IN_CPI_YOY', 'India CPI', 'RBI target 4%'); lv('IN_GDP_YOY', 'India GDP', 'real, year-on-year');
   const rows = NOW_CLI.map(([id, mode]) => nowCli(id, mode)).filter(Boolean);
@@ -4255,8 +4255,8 @@ function buildMarkets() {
   makeCard(g, { key: 'yields', title: 'Selected rates & spreads', wide: true, range: false, sub: 'Levels, %.', source: 'FRED', render: renderMktCharts });
 }
 function syncMktCcy() { if (cards.rebased.segSel) cards.rebased.segSel.value = state.mktCcy; const p = $('#perfCcy'); if (p) p.value = state.mktCcy; }
-function renderBreadth() { brKpis(); ['br_trend', 'br_hl', 'br_ew', 'br_table'].forEach(k => cards[k].render()); }
-function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderStyles(); renderCommod(); trendTiles(); ['tr_table', 'rs_table', 'rs_chart'].forEach(k => cards[k].render()); renderSeasonality(); }
+function renderBreadth() { brKpis(); ['br_cross', 'br_ew'].forEach(k => cards[k].render()); }
+function renderMarkets() { state.mktSel.forEach(assignSlot); renderMktCharts(); if (subActive($('#perfCard'))) renderPerfTable(); renderBreadth(); renderCommod(); trendTiles(); ['tr_table', 'rs_table', 'rs_chart'].forEach(k => cards[k].render()); renderSeasonality(); }
 
 // ------------------------------------------------------------------ BREADTH (from the ticker universe)
 // Malaysia = the Bursa names in the ticker list, Singapore = the SGX names, US = the US large caps.
@@ -4305,26 +4305,51 @@ function breadth(mk) {
   return (brCache[mk] = out);
 }
 const brSer = (b, k, label) => ({ t: b.t.filter((_, i) => b[k][i] != null), v: b[k].filter(v => v != null), label, kind: 'level', unit: '%' });
-state.brMkt = 'MY';
+const BR_PAGE = { MY: 'my', SG: 'sg', US: 'us' };
+function brTile(box, mk) {   // "Malaysia: above 200-day" tile, used on Markets and on each market's page
+  const b = TICK && breadth(mk); if (!b || !b.t.length) return;
+  const a = brSer(b, 'a200'), x = asOf(a, state.to); if (!x) return;
+  const p = asOf(a, addMonths(x.t, -1)), tkn = x.v >= 70 ? '--good' : x.v >= 40 ? '--warning' : '--critical';
+  box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: `${BR_MKTS[mk].name}: above 200-day` }),
+    el('div', { class: 'k-value' }, el('span', { class: 'qdot', style: `background:${tok(tkn)}` }), fmtNum(x.v, 0) + '%'),
+    el('div', { class: 'k-delta', text: p ? `1M ${sign(x.v - p.v)}${fmtNum(Math.abs(x.v - p.v), 0)} pts · ${x.v >= 70 ? 'broad uptrend' : x.v >= 40 ? 'mixed' : 'narrow / weak'}` : '' }),
+    el('div', { class: 'k-asof', text: `${b.members.length} ${BR_MKTS[mk].who} · ${nice(x.t)}` })));
+}
 function brKpis() {
   const box = $('#brKpis'); box.replaceChildren();
-  const tile = (label, val, delta, foot, tk) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }),
-    el('div', { class: 'k-value' }, tk ? el('span', { class: 'qdot', style: `background:${tok(tk)}` }) : '', val), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
+  const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }), el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
   if (!TICK) { box.append(el('div', { class: 'muted small', text: 'Loading ticker prices…' })); return; }
-  for (const mk of ['MY', 'SG', 'US']) {
-    const b = breadth(mk); if (!b || !b.t.length) continue;
-    const a = brSer(b, 'a200'), x = asOf(a, state.to); if (!x) continue;
-    const p = asOf(a, addMonths(x.t, -1)), tkn = x.v >= 70 ? '--good' : x.v >= 40 ? '--warning' : '--critical';
-    tile(`${BR_MKTS[mk].name}: above 200-day`, fmtNum(x.v, 0) + '%', p ? `1M ${sign(x.v - p.v)}${fmtNum(Math.abs(x.v - p.v), 0)} pts · ${x.v >= 70 ? 'broad uptrend' : x.v >= 40 ? 'mixed' : 'narrow / weak'}` : '', `${b.members.length} ${BR_MKTS[mk].who} · ${nice(x.t)}`, tkn);
-  }
+  for (const mk of ['MY', 'SG', 'US']) brTile(box, mk);
   if (has('SPXEW', 'SPX')) { const r = combine(S.SPXEW, S.SPX, (a, b) => a / b, {}, 4 * DAY), a = asOf(r, state.to), b = asOf(r, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31));
     if (a && b) tile('US equal vs cap weight, YTD', `${sign(a.v / b.v - 1)}${fmtNum(Math.abs(a.v / b.v - 1) * 100, 1)}%`, a.v < b.v ? 'the average stock is lagging the index' : 'the average stock is keeping up', 'S&P 500 equal weight ÷ S&P 500'); }
 }
-function renderBrTrend(c) {
+// Markets → Breadth: the three markets side by side; each market's full breadth set is on its own page
+function renderBrCross(c) {
+  const b0 = htmlBody(c);
+  if (!TICK) { b0.append(el('div', { class: 'empty', text: 'Loading ticker prices…' })); return; }
+  const pc0 = v => v == null ? '–' : fmtNum(v, 0) + '%', heads = ['Market', '> 200d', '1M', '> 50d', 'Highs − lows', 'Read'];
+  const tb = el('tbody'), rows = [];
+  for (const mk of ['MY', 'SG', 'US']) {
+    const b = breadth(mk); if (!b || !b.t.length) continue;
+    const a = asOf(brSer(b, 'a200'), state.to), p = a && asOf(brSer(b, 'a200'), addMonths(a.t, -1)), f = asOf(brSer(b, 'a50'), state.to), h = asOf(brSer(b, 'hl'), state.to);
+    if (!a) continue;
+    const read = a.v >= 70 ? 'broad uptrend' : a.v >= 40 ? 'mixed' : 'narrow / weak';
+    rows.push([BR_MKTS[mk].name, a.v, p ? a.v - p.v : null, f ? f.v : null, h ? h.v : null, read]);
+    tb.append(el('tr', { class: 'row', style: 'cursor:pointer', title: `Open ${BR_MKTS[mk].name} → Equities`, onclick: () => goSub(BR_PAGE[mk], 'Equities') },
+      el('td', { class: 'l', text: BR_MKTS[mk].name, title: `${b.members.length} ${BR_MKTS[mk].who}` }), el('td', { class: 'num', text: pc0(a.v) }),
+      el('td', { class: 'num', text: p ? `${sign(a.v - p.v)}${fmtNum(Math.abs(a.v - p.v), 0)} pts` : '–' }), el('td', { class: 'num', text: pc0(f && f.v) }),
+      el('td', { class: 'num', text: h ? `${sign(h.v)}${fmtNum(Math.abs(h.v), 0)}%` : '–' }), el('td', { class: 'l muted', text: read })));
+  }
+  if (!rows.length) { b0.append(el('div', { class: 'empty', text: 'Not enough data yet.' })); return; }
+  b0.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((x, i) => el('th', { text: x, class: i === 0 || i === 5 ? 'l' : '' })))), tb)));
+  c.csv = [heads, ...rows];
+  setNote(c, 'Share of each market’s large caps above their 200- and 50-day averages (1M = change in the 200-day share over a month), and the share at 52-week highs minus lows. Click a market for its full breadth charts and the leaders and laggards.');
+  setSource(c, 'Yahoo Finance daily closes; calculated');
+}
+function renderBrTrend(c, mk) {
   if (!TICK) return setEmpty(c, 'Loading ticker prices…');
-  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk);
+  const M = BR_MKTS[mk], b = breadth(mk);
   if (!b || !b.t.length) return setEmpty(c, 'Not enough data yet.');
-  c.titleEl.textContent = `${M.name}: index vs share of stocks in an uptrend`;
   drawLines(c, [{ name: '% above 200-day average', data: pts(brSer(b, 'a200'), state.from, state.to) }, { name: '% above 50-day average', data: pts(brSer(b, 'a50'), state.from, state.to), extra: { lineStyle: { width: 1.5, type: 'dashed', color: col(1) } } }],
     { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, endLabels: false,
       hlines: [{ y: 80, label: '80: broad (often stretched)' }, { y: 50, label: '50' }, { y: 20, label: '20: washed out' }] });
@@ -4337,11 +4362,10 @@ function renderBrTrend(c) {
   setNote(c, `${b.members.length} ${M.who} from the dashboard’s ticker list (current members, so older readings carry survivorship bias). Rising index with falling breadth = narrow leadership, a classic late-rally warning; breadth below 20% has often marked washed-out lows.${x ? ` Latest: ${fmtNum(x.v, 0)}% above the 200-day.` : ''}`);
   setSource(c, `Yahoo Finance daily closes (${b.members.length} stocks; ${M.index === 'SPX' ? '^GSPC' : M.index === 'KLCI' ? '^KLSE' : '^STI'}); breadth calculated`);
 }
-function renderBrHL(c) {
+function renderBrHL(c, mk) {
   if (!TICK) return setEmpty(c, 'Loading ticker prices…');
-  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk);
+  const b = breadth(mk);
   if (!b || !b.t.length) return setEmpty(c, 'Not enough data yet.');
-  c.titleEl.textContent = `${M.name}: new 52-week highs minus lows`;
   const s = brSer(b, 'hl'), p = pts(s, state.from, state.to);
   const o = baseOpt(); o.legend.show = false; o.grid.top = 14;
   o.xAxis = timeAxis(); o.yAxis = valAxis(v => v + '%');
@@ -4367,11 +4391,10 @@ function renderBrEW(c) {
   setNote(c, `Equal-weight basket of each market’s stocks ÷ its index (KLCI, STI, S&P 500), 100 at the start of the range. Falling = the big names are doing the work (narrow market); rising = broad participation. Price returns.`);
   setSource(c, 'Yahoo Finance daily closes (^SPXEW, ^GSPC, ^KLSE, ^STI and the stocks); ratios calculated');
 }
-function renderBrTable(c) {
+function renderBrTable(c, mk) {
   const b0 = htmlBody(c);
   if (!TICK) { b0.append(el('div', { class: 'empty', text: 'Loading ticker prices…' })); return; }
-  const mk = state.brMkt, M = BR_MKTS[mk], b = breadth(mk); if (!b) { b0.append(el('div', { class: 'empty', text: 'Not enough data.' })); return; }
-  c.titleEl.textContent = `${M.name}: who is leading and lagging`;
+  const b = breadth(mk); if (!b) { b0.append(el('div', { class: 'empty', text: 'Not enough data.' })); return; }
   const rows = b.members.map(id => {
     const s = S[id], a = asOf(s, state.to); if (!a || a.i < 200) return null;
     const ma = k => s.v.slice(a.i - k + 1, a.i + 1).reduce((x, y) => x + y, 0) / k;
@@ -4383,15 +4406,15 @@ function renderBrTable(c) {
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))));
   const tb = el('tbody'), pc = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
   const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
-  const N = 6, cut = !state.brAll && rows.length > 2 * N + 2;
+  const N = 6, cut = !state['brAll' + mk] && rows.length > 2 * N + 2;
   const shown = cut ? [...rows.slice(0, N), null, ...rows.slice(-N)] : rows;
-  for (const r of shown) if (!r) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length} (${rows.length - 2 * N} more in the middle)`, onclick: () => { state.brAll = true; c.render(); } })))); else tb.append(el('tr', { class: 'row', onclick: () => { state.sub.ideas = 1; state.watchSel = r.id; setTab('ideas'); } },
+  for (const r of shown) if (!r) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length} (${rows.length - 2 * N} more in the middle)`, onclick: () => { state['brAll' + mk] = true; c.render(); } })))); else tb.append(el('tr', { class: 'row', onclick: () => { state.sub.ideas = 1; state.watchSel = r.id; setTab('ideas'); } },
     el('td', { class: 'l', text: r.s.sym }), el('td', { class: 'l nm', text: r.s.short }), el('td', { text: fmtNum(r.v, autoDec(r.v)) }),
     el('td', { class: 'heat', style: heat(r.d200, 20), text: pc(r.d200) }), el('td', { class: 'heat', style: heat(r.d50, 10), text: pc(r.d50) }),
     el('td', { class: 'heat', style: heat(r.off, 30), text: pc(r.off) }), el('td', { class: 'heat', style: heat(r.r3, 20), text: pc(r.r3) })));
   tbl.append(tb); b0.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = [heads, ...rows.map(r => [r.s.sym, r.s.short, r.v, r.d200.toFixed(2), r.d50.toFixed(2), r.off.toFixed(2), r.r3 == null ? '' : r.r3.toFixed(2)])];
-  setNote(c, `Sorted by distance from the 200-day average: ${cut ? `top ${N} leaders and bottom ${N} laggards` : 'leaders at the top, laggards at the bottom'}. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.` + (state.brAll ? '' : ''));
+  setNote(c, `Sorted by distance from the 200-day average: ${cut ? `top ${N} leaders and bottom ${N} laggards` : 'leaders at the top, laggards at the bottom'}. ${rows.filter(r => r.d200 > 0).length} of ${rows.length} above their 200-day. Tap a row to open it in the Watchlist.`);
   setSource(c, 'Yahoo Finance daily closes; calculated');
 }
 // ------------------------------------------------------------------ COMMODITIES (Markets → Commodities)
@@ -4469,13 +4492,13 @@ function buildCommod() {
   const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'cmGrid' }); panel.append(g);
   const seg = { key: 'cmCcy', select: true, label: 'Currency', options: CCY_CHOICES.filter(x => x[0] !== 'local'), onchange: () => renderCommod() };
   makeCard(g, { key: 'cm_rebased', title: 'Energy, metals and shipping, rebased', wide: true, defaultRange: '1Y', seg, render: renderCmRebased });
-  makeCard(g, { key: 'cm_palm', title: 'Palm oil vs Malaysian planters', defaultRange: '3Y', render: renderCmPalm });
-  makeCard(g, { key: 'cm_iron', title: 'Iron ore vs the Australian dollar', defaultRange: '3Y', render: renderCmIron });
-  makeCard(g, { key: 'cm_curve', title: 'Oil futures curve', defaultRange: '1Y', render: renderOilCurve });
+  makeCard($('#myGrid'), { key: 'cm_palm', title: 'Palm oil vs Malaysian planters', defaultRange: '3Y', render: renderCmPalm });
+  makeCard($('#australiaGrid'), { key: 'cm_iron', title: 'Iron ore vs the Australian dollar', defaultRange: '3Y', render: renderCmIron });
+  makeCard(g, { key: 'cm_curve', title: 'Oil futures curve', wide: true, defaultRange: '1Y', render: renderOilCurve });
   makeCard(g, { key: 'cm_table', title: 'Commodity scorecard', wide: true, range: false, render: renderCmTable });
   const r = cards.cm_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
-function renderCommod() { ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_curve', 'cm_table'].forEach(k => cards[k].render()); }
+function renderCommod() { ['cm_rebased', 'cm_curve', 'cm_table'].forEach(k => cards[k].render()); }
 
 // ------------------------------------------------------------------ STYLES & SECTORS (Markets → Styles & sectors)
 const STY_PAIRS = [   // [numerator, denominator, label, short]
@@ -4527,28 +4550,27 @@ function renderStyStyle(c) {
   styTable(c, rows, 'Style', 'Relative return of the first over the second, %, sorted by 3 months. Positive = the first is winning.', 'Yahoo Finance (iShares style ETFs, ^RUT, ^SPXEW, ^GSPC); calculated');
 }
 function buildStyles() {
-  const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'styGrid' }); panel.append(g);
+  const g = $('#usGrid');   // US → Sectors & styles
   makeCard(g, { key: 'sty_ratio', title: 'US style leadership', wide: true, defaultRange: '1Y', render: renderStyRatio });
   makeCard(g, { key: 'sty_sect', title: 'Sectors vs the S&P 500', range: false, render: renderStySect });
   makeCard(g, { key: 'sty_style', title: 'Styles: who is winning', range: false, render: renderStyStyle });
   for (const k of ['sty_sect', 'sty_style']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-function renderStyles() { ['sty_ratio', 'sty_sect', 'sty_style'].forEach(k => cards[k].render()); }
 
 function buildBreadth() {
   const panel = $('#tab-markets'), g = el('div', { class: 'grid', id: 'brGrid' });
   const k = el('div', { class: 'kpis', id: 'brKpis' });
   panel.append(k, g);
-  const seg = { key: 'brMkt', options: [['MY', 'Malaysia'], ['SG', 'Singapore'], ['US', 'US']], onchange: null };
-  makeCard(g, { key: 'br_trend', title: 'Breadth', wide: true, defaultRange: '1Y', seg, render: renderBrTrend });
-  makeCard(g, { key: 'br_hl', title: 'New highs minus lows', defaultRange: '1Y', seg, render: renderBrHL });
+  makeCard(g, { key: 'br_cross', range: false, title: 'Breadth across markets', render: renderBrCross });
   makeCard(g, { key: 'br_ew', title: 'Equal weight vs the index', defaultRange: 'YTD', render: renderBrEW });
-  makeCard(g, { key: 'br_table', range: false, title: 'Leaders and laggards', wide: true, seg, render: renderBrTable });
-  const r = cards.br_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
-  // the three market switches stay in step
-  for (const key of ['br_trend', 'br_hl', 'br_table']) cards[key].root.querySelectorAll('.card-tools .seg button').forEach(btn => btn.addEventListener('click', () => {
-    for (const k2 of ['br_trend', 'br_hl', 'br_table']) if (k2 !== key) { cards[k2].root.querySelectorAll('.card-tools .seg button').forEach(x => x.classList.toggle('on', x.textContent === btn.textContent)); cards[k2].render(); }
-  }));
+  // one full set per market, on that market's Equities sub-tab
+  for (const mk of ['MY', 'SG', 'US']) {
+    const pg = $('#' + BR_PAGE[mk] + 'Grid');
+    makeCard(pg, { key: 'br_hl_' + mk, title: 'New 52-week highs minus lows', defaultRange: '1Y', render: c => renderBrHL(c, mk) });
+    makeCard(pg, { key: 'br_trend_' + mk, title: `${{ MY: 'KLCI', SG: 'STI', US: 'S&P 500' }[mk]} vs stocks in an uptrend`, wide: true, defaultRange: '1Y', render: c => renderBrTrend(c, mk) });
+    makeCard(pg, { key: 'br_table_' + mk, range: false, title: 'Leaders and laggards', wide: true, render: c => renderBrTable(c, mk) });
+  }
+  for (const key of ['br_cross', 'br_table_MY', 'br_table_SG', 'br_table_US']) { const r = cards[key].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 
 // ------------------------------------------------------------------ CORRELATION
@@ -5315,7 +5337,7 @@ async function loadTickers() {
     TICK_SYM[sym.toUpperCase()] = id;
   }
   addBasket('MY_PLANT', CM_PLANT, 'Malaysia plantation basket', 'MYR'); addBasket('MY_TECH', CHIP_MY, 'Malaysia tech basket', 'MYR'); buildMySectorBaskets();
-  if (['overview', 'ideas', 'weekly', 'correlation', 'markets', 'ai', 'asia', 'my'].includes(state.tab)) renderTab();
+  if (['overview', 'ideas', 'weekly', 'correlation', 'markets', 'ai', 'asia', 'my', 'sg', 'us'].includes(state.tab)) renderTab();
 }
 function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "Maybank" -> S id or null
   let t = (txt || '').trim().toUpperCase().replace(/^\$/, '');
@@ -6512,21 +6534,22 @@ function renderCalNext(c) {
 const SUBTABS = {
   overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', 'br_trend', 'br_hl', 'br_ew', 'br_table']], ['Styles & sectors', ['sty_ratio', 'sty_sect', 'sty_style']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['cm_rebased', 'cm_palm', 'cm_iron', 'cm_curve', 'cm_table']]],
+  markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
-  us: [['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl', 'us_be'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
-    ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Risk'], ['Rates & markets', ['us_rates', 'us_eq', 'us_dxy', 'us_fed'], 'Markets']],
-  europe: [['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci']], ['Rates & spreads', ['eu_yields', 'eu_spread', 'eu_hy', 'eu_m3']], ['Markets & ECB', ['eu_eq', 'eu_fx', 'eu_ecb']]],
-  japan: [['Economy', ['jp_infl', 'jp_tankan', 'jp_act']], ['Rates & markets', ['jp_eq', 'jp_policy', 'jp_boj', 'jp_bojsum']]],
-  australia: [['Economy', ['auinfl', 'augrowth', 'autot']], ['Rates & markets', ['aurates', 'au_eq', 'au_rba', 'audiff']]],
-  fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['sp_credit', 'sp_ladder', 'sp_table', 'sp_euro', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
+  us: [['Equities', ['us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['us_rates', 'us_be', 'us_fed']], ['Currency', ['us_dxy']],
+    ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
+    ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
+  europe: [['Equities', ['eu_eq']], ['Rates & bonds', ['eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']]],
+  japan: [['Equities', ['jp_eq']], ['Rates & bonds', ['jp_policy', 'jp_boj', 'jp_bojsum']], ['Economy', ['jp_infl', 'jp_tankan', 'jp_act']]],
+  australia: [['Equities', ['au_eq']], ['Rates & bonds', ['aurates', 'au_rba']], ['Currency', ['audiff', 'cm_iron']], ['Economy', ['auinfl', 'augrowth', 'autot']]],
+  fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['#sa_fi_sp', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['fx_carry', 'asiafx', 'asiaidx']], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil']]],
-  my: [['Sectors', ['my_sec_table', 'my_sec_rs', 'my_sec_drv'], 'Equities'], ['Rates & bonds', ['myrates', 'mylend']], ['Currency', ['myrfx', 'myrtbl']], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']]],
-  sg: [['Rates & bonds', ['sgrates', 'sgust', 'sghedge']], ['Currency', ['sneer']], ['Economy', ['sginfl', 'sggrowth']]],
+  my: [['Equities', ['br_hl_MY', 'br_trend_MY', 'br_table_MY']], ['Sectors', ['my_sec_table', 'my_sec_rs', 'my_sec_drv', 'cm_palm']], ['Rates & bonds', ['myrates', 'mylend']], ['Currency', ['myrfx', 'myrtbl']], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']]],
+  sg: [['Equities', ['br_hl_SG', 'br_trend_SG', 'br_table_SG']], ['Rates & bonds', ['sgrates', 'sgust', 'sghedge']], ['Currency', ['sneer']], ['Economy', ['sginfl', 'sggrowth']]],
   cn: [['Rates & bonds', ['cn_spread']], ['Economy', ['cn_infl', 'cn_trade', 'cn_conf']]],
   kr: [['Equities', ['kr_mkt', 'kr_lead']], ['Rates & bonds', ['kr_rates']], ['Economy', ['kr_trade', 'kr_infl', 'kr_act']]],
   tw: [['Equities', ['tw_mkt', 'tw_lead', 'tw_money']], ['Economy', ['tw_trade', 'tw_growth', 'tw_infl']]],
@@ -6542,6 +6565,17 @@ state.sub = {};
 function subActive(node) {
   const g = node.dataset && node.dataset.sub; if (g == null) return true;
   return (state.sub[node.dataset.subtab] || 0) === +g;
+}
+// "See also" link row at the top of a sub-tab: where a reader would look for something that lives elsewhere
+function seeAlso(id, grid, links) {
+  const d = el('div', { class: 'see-also', id }, el('span', { class: 'muted', text: 'See also: ' }));
+  links.forEach(([lab, tab, sub], i) => { if (i) d.append(' · '); d.append(el('a', { href: '#', text: lab, onclick: e => { e.preventDefault(); goSub(tab, sub); scrollTo({ top: 0 }); } })); });
+  grid.prepend(d); return d;
+}
+function buildSeeAlso() {
+  seeAlso('sa_mkt_br', $('#brGrid'), [['Malaysia breadth', 'my', 'Equities'], ['Singapore breadth', 'sg', 'Equities'], ['US breadth', 'us', 'Equities'], ['US sectors & styles', 'us', 'Sectors & styles']]);
+  seeAlso('sa_mkt_cm', $('#cmGrid'), [['Palm oil vs Malaysian planters', 'my', 'Sectors'], ['Iron ore vs the Australian dollar', 'australia', 'Currency']]);
+  seeAlso('sa_fi_sp', cards.sp_credit.root.parentElement, [['Euro periphery vs Germany', 'europe', 'Rates & bonds']]);
 }
 function buildSubtabs() {
   for (const [tab, groups] of Object.entries(SUBTABS)) {
@@ -6715,6 +6749,7 @@ function regionTiles(tab) {
     lvl('SAHM', 'Sahm rule', v => fmtNum(v, 2) + 'pp', 1, pp); lvl('REC_PROB_NYF', 'Recession odds, 12m', v => fmtNum(v, 0) + '%', 1, pp);
     lvl('UST10Y', 'UST 10Y', v => fmtNum(v, 2) + '%', 1); lvl('UST2Y', 'UST 2Y', v => fmtNum(v, 2) + '%', 1); lvl('DXY', 'US dollar (DXY)', v => fmtNum(v, 1), 1);
     if (has('SPX')) { const s = S.SPX, a = asOf(s, state.to), b = asOf(s, Date.UTC(new Date(a.t).getUTCFullYear() - 1, 11, 31)); tile('S&P 500', fmtNum(a.v, 0), b ? `YTD ${fmtChg(s, chg(s, b.v, a.v))}` : '', nice(a.t)); }
+    brTile(box, 'US');
   } else if (tab === 'europe') {
     cbPrep(); const st = cbStats('ECB'); if (st && st.p) tile('ECB deposit rate', fmtNum(st.p.v, 2) + '%', st.read, nice(st.p.t));
     lvl('EA_HICP_YOY', 'Euro HICP inflation', v => fmtNum(v, 1) + '%', 3, pp); lvl('EA_UNEMP', 'Euro unemployment', v => fmtNum(v, 1) + '%', 3, pp);
@@ -6816,9 +6851,17 @@ function syncFilterUI() {
     cb.textContent = on ? `${sh(state.from)} – ${sh(state.to)} ▾` : 'Custom ▾'; cb.classList.toggle('on', on); }
   $('#fromDate').max = $('#toDate').max = iso(state.latest);
   $('#fromDate').min = $('#toDate').min = iso(state.earliest);
-  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], ...(state.tab === 'asia' ? { v: 2 } : {}) } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
+  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], ...(OLD_SUBS[state.tab] ? { v: 2 } : {}) } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
   history.replaceState(null, '', '#' + h.toString());
 }
+// sub-tab order before 12 Nov 2026 (WP32/33), so old bookmarks land in the right place: index -> [page, sub-tab label]
+const OLD_SUBS = {
+  asia: [['my', 'Rates & bonds'], ['my', 'Economy'], ['my', 'Sectors'], ['sg'], ['cn'], ['kr'], ['tw'], ['in'], ['asia', 'Across Asia'], ['asia', 'Asian FX'], ['asia', 'What leads']],
+  us: [['us', 'Growth & jobs'], ['us', 'Inflation'], ['us', 'ISM'], ['us', 'Housing & consumer'], ['us', 'Recession watch'], ['us', 'Rates & bonds']],
+  europe: [['europe', 'Economy'], ['europe', 'Rates & bonds'], ['europe', 'Equities']],
+  japan: [['japan', 'Economy'], ['japan', 'Rates & bonds']], australia: [['australia', 'Economy'], ['australia', 'Rates & bonds']],
+  markets: [['markets', 'Performance'], ['markets', 'Breadth'], ['us', 'Sectors & styles'], ['markets', 'Trend'], ['markets', 'Seasonality'], ['markets', 'Commodities']],
+};
 // ---- tiles: at most 5 per sub-tab, chosen for that sub-tab (label prefixes, in order); no set = the first 5
 const TILE_MAX = 5;
 const TILE_SETS = {
@@ -6839,26 +6882,30 @@ const TILE_SETS = {
     'Credit, money & rates': ['US HY spread', 'Financial conditions', 'Fed net liquidity'],
   },
   us: {
+    'Equities': ['S&P 500', 'US: above 200-day', 'UST 10Y', 'US dollar', 'GDPNow'],
+    'Sectors & styles': ['S&P 500', 'US: above 200-day', 'UST 10Y', 'US dollar', 'GDPNow'],
+    'Rates & bonds': ['UST 2Y', 'UST 10Y', '10Y breakeven', 'Core PCE', 'US dollar'],
+    'Currency': ['US dollar', 'UST 2Y', 'UST 10Y', 'S&P 500'],
     'Growth & jobs': ['Unemployment rate', 'Payrolls', 'GDPNow', 'Initial claims', 'S&P 500'],
     'Inflation': ['CPI', 'Core PCE', '10Y breakeven', 'UMich 1Y expectations'],
     'ISM': ['ISM manufacturing', 'Manufacturing output', 'Services payrolls'],
     'Housing & consumer': ['Housing starts', 'Home prices', 'Mortgage rate', 'Consumer sentiment'],
     'Recession watch': ['Sahm rule', 'Recession odds', 'GDPNow', 'Unemployment rate', 'Initial claims'],
-    'Rates & markets': ['UST 2Y', 'UST 10Y', 'US dollar', 'S&P 500', 'Core PCE'],
   },
-  europe: { '*': ['ECB deposit rate', 'Euro HICP', 'Euro unemployment', 'Italy − Germany', 'EUR/USD'] },
-  japan: { '*': ['BoJ call rate', 'Japan core CPI', 'Tankan', 'JGB 10Y', 'USD/JPY'] },
-  australia: { '*': ['RBA cash rate', 'Trimmed-mean CPI', 'Unemployment rate', 'Australia 10Y', 'AUD/USD'] },
+  europe: { 'Equities': ['Euro Stoxx 50', 'EUR/USD', 'ECB deposit rate', 'Italy − Germany', 'Euro HICP'], '*': ['ECB deposit rate', 'Euro HICP', 'Euro unemployment', 'Italy − Germany', 'EUR/USD'] },
+  japan: { 'Equities': ['Nikkei 225', 'USD/JPY', 'JGB 10Y', 'BoJ call rate', 'Japan core CPI'], '*': ['BoJ call rate', 'Japan core CPI', 'Tankan', 'JGB 10Y', 'USD/JPY'] },
+  australia: { 'Equities': ['ASX 200', 'AUD/USD', 'RBA cash rate', 'Australia 10Y', 'Trimmed-mean CPI'], '*': ['RBA cash rate', 'Trimmed-mean CPI', 'Unemployment rate', 'Australia 10Y', 'AUD/USD'] },
   asia: {
     'Across Asia': ['FBM KLCI', 'KOSPI', 'Taiwan Weighted', 'Nifty 50', 'USD/MYR'],
     'Asian FX': ['USD/MYR', 'USD/SGD', 'USD/KRW', 'USD/TWD', 'USD/INR'],
     'What leads': ['Leading indices rising', 'Korea leading index', 'Brent, YoY', 'US dollar (DXY), YoY', 'KOSPI'],
   },
   my: {
+    'Equities': ['FBM KLCI', 'Malaysia: above 200-day', 'Best sector (3M)', 'USD/MYR', 'Malaysia OPR'],
     'Sectors': ['FBM KLCI', 'Best sector (3M)', 'Worst sector (3M)', 'Sectors beating KLCI (3M)', 'USD/MYR'],
     '*': ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'],
   },
-  sg: { '*': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'] },
+  sg: { 'Equities': ['STI', 'Singapore: above 200-day', 'USD/SGD', 'SGS 10Y yield', '3M compounded SORA'], '*': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'] },
   cn: { '*': ['China CPI YoY', 'China 10Y yield', 'China exports YoY'] },
   kr: { '*': ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'] },
   tw: { '*': ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'] },
@@ -7018,14 +7065,14 @@ async function init() {
   ismPrep();
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildUncertainty(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'cn'); h.set('sub', String(SUBTABS.cn.findIndex(x => x[0] === 'Economy'))); } }
-  if (h.get('tab') === 'asia' && +h.get('sub') > 0 && !h.has('v')) {   // links made before the country pages (Asia had 11 sub-tabs)
-    const [t, lab] = [['my', 'Rates & bonds'], ['my', 'Economy'], ['my', 'Sectors'], ['sg'], ['cn'], ['kr'], ['tw'], ['in'], ['asia', 'Across Asia'], ['asia', 'Asian FX'], ['asia', 'What leads']][+h.get('sub')] || ['asia'];
+  if (OLD_SUBS[h.get('tab')] && +h.get('sub') > 0 && !h.has('v')) {   // links made before the pages were split by asset class
+    const [t, lab] = OLD_SUBS[h.get('tab')][+h.get('sub')] || [h.get('tab')];
     h.set('tab', t); h.set('sub', String(Math.max(0, (SUBTABS[t] || []).findIndex(x => x[0] === lab))));
   }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); moveRegionCards();
+  buildRegions(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
