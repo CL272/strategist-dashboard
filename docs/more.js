@@ -275,10 +275,42 @@ function renderGoldVol(c) {
   setSource(c, 'Cboe (GVZ, GLD options)');
 }
 
+// ------------------------------------------------------------------ WP50. Country ETFs: yields and money flows (Asia ex-Japan → Across Asia)
+let ETFS = null, etfLoading = null;
+function loadEtfs() {
+  if (!etfLoading) etfLoading = loadJSON('data/etfs.json').then(d => { ETFS = d;
+    for (const [id, x] of Object.entries(d)) if (id.startsWith('ETF_') && x && x.d) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; } return d; }).catch(() => { ETFS = { funds: {} }; return ETFS; });
+  return etfLoading;
+}
+function etfFlow(t, days) {   // USD flowing in (+) or out (−) over the last `days`: change in shares × NAV each day
+  const sh = S['ETF_SH_' + t], nav = S['ETF_NAV_' + t]; if (!sh || sh.t.length < 2) return null;
+  const end = sh.t[sh.t.length - 1], from = end - days * DAY; if (sh.t[0] > from + 2 * DAY) return null;
+  let f = 0; for (let i = 1; i < sh.t.length; i++) if (sh.t[i] > from) { const n = asOf(nav, sh.t[i]); f += (sh.v[i] - sh.v[i - 1]) * (n ? n.v : 0); }
+  return f;
+}
+function renderEtfFlows(c) {
+  const b = htmlBody(c); if (!ETFS) { loadEtfs().then(() => c.render()); b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const F = ETFS.funds || {}; if (!Object.keys(F).length) { b.append(el('div', { class: 'empty', text: 'Fund data arrives with the next data run.' })); return; }
+  const heads = ['Fund', 'Market', 'NAV', '12M yield', 'Net assets', 'Flow 1W', 'Flow 1M', 'Flow 3M'], tb = el('tbody'), csv = [heads];
+  const fm = (v, a) => v == null ? '–' : `${sign(v)}$${fmtNum(Math.abs(v) / 1e6, 0)}m (${sign(v)}${fmtNum(Math.abs(v) / a * 100, 1)}%)`;
+  for (const [t, x] of Object.entries(F)) {
+    const fl = [7, 31, 92].map(d => etfFlow(t, d));
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: t }), el('td', { class: 'l', text: x.name }), el('td', { class: 'num', text: fmtNum(x.nav, 2) }),
+      el('td', { class: 'num', text: x.yield != null ? fmtNum(x.yield, 2) + '%' : '–', title: x.yield_date ? 'as of ' + x.yield_date : '' }), el('td', { class: 'num', text: '$' + fmtNum(x.assets / 1e9, 2) + 'bn' }),
+      ...fl.map(v => el('td', { class: 'num ' + (v == null ? 'muted' : v > 0 ? 'up' : v < 0 ? 'dn' : ''), text: fm(v, x.assets) }))));
+    csv.push([t, x.name, x.nav, x.yield, x.assets, ...fl]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  setNote(c, `Money moving into or out of the main US-listed country funds (shares created or redeemed × NAV): a partial stand-in for foreign flows into each market. The dashboard started recording on ${ETFS._meta && ETFS._meta.since ? ETFS._meta.since : '12 Nov 2026'}, so flows fill in over the coming weeks; – = not enough days yet. 12M yield = trailing distribution yield.`);
+  setSource(c, 'iShares fund pages (NAV, yield, net assets, shares outstanding); calculated');
+}
+
 // ------------------------------------------------------------------ build and wiring
 const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'], stress: ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit'], markets: ['gold_real', 'gold_dxy', 'gold_ccy', 'gold_ratio', 'gold_vol'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
 SUBTABS.regime.push(['Playbook', ['pb_chart', 'pb_table', 'pb_events'], 'Leading']);
+SUBTABS.asia[0][1].push('etf_flows');   // Asia ex-Japan → Across Asia
 SUBTABS.stress.push(['Credit cycle', ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit']]);
 SUBTABS.markets.push(['Gold', ['gold_ccy', 'gold_real', 'gold_dxy', 'gold_ratio', 'gold_vol']]);
 function buildMore() {
@@ -297,6 +329,8 @@ function buildMore() {
   makeCard(sg, { key: 'cc_delinq', title: 'Loan delinquencies', defaultRange: 'MAX', render: renderCcDelinq });
   makeCard(sg, { key: 'cc_ccc', title: 'Weakest vs best junk bonds', defaultRange: '10Y', render: renderCcCcc });
   makeCard(sg, { key: 'cc_credit', title: 'Bank credit growth', wide: true, defaultRange: '10Y', render: renderCcCredit });
+  makeCard($('#asiaGrid'), { key: 'etf_flows', title: 'Country funds: yields and flows', wide: true, range: false, render: renderEtfFlows });
+  { const x = cards.etf_flows.root; x.querySelector('[title^="Focus"]').hidden = true; x.querySelector('[title^="Download chart as"]').hidden = true; }
   const mg = el('div', { class: 'grid', id: 'goldGrid' }); $('#tab-markets').append(mg);
   makeCard(mg, { key: 'gold_ccy', title: 'Gold in USD, ringgit and SGD', wide: true, defaultRange: '3Y', render: renderGoldCcy });
   makeCard(mg, { key: 'gold_real', title: 'Gold vs the real yield', defaultRange: '10Y', render: renderGoldReal });

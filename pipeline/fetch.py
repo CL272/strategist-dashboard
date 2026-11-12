@@ -646,7 +646,7 @@ def main() -> int:
         _lap("korea", t0)
     except Exception as e:   # Korea chip exports must never break the data refresh
         print(f"Korea failed: {type(e).__name__}")
-    for mod in ("ramp", "gpu", "taiwan", "oilcurve", "gpr", "structured"):   # scraped AI data: isolated, never breaks the refresh
+    for mod in ("ramp", "gpu", "taiwan", "oilcurve", "gpr", "structured", "etfs"):   # scraped AI data: isolated, never breaks the refresh
         try:
             __import__(mod).build(status)
             _lap(mod, t0)
