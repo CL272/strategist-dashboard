@@ -596,7 +596,254 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
-## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP36, regions reorganised
+## Planned, not built (owner's request, 12 Nov 2026): WP37 to WP50, structured products and completeness
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go" and names the packages.** Follow
+`CLAUDE.md` (sub-tabs, 2,300 px, ≤ 5 tiles, ≤ 16 rows, one home per card) and run `node tools/design-check.js` before
+each push. One commit per package.
+
+**The request:** (1) what else would make the dashboard more comprehensive; (2) the owner's new role includes
+structured products: what to monitor, and how to find ideas to discuss with clients across the many structure types.
+
+**The idea in one paragraph.** Every structured product is a bond plus options the client buys or sells. Its terms
+are set by five market inputs: volatility, skew, correlation, interest rates and dividends. So the dashboard should
+(a) show those five inputs live with their history, (b) translate them into "which structure families have rich terms
+now, and is the backdrop safe for them", (c) rank underlyings by premium earned per unit of barrier risk, (d) price an
+indicative coupon and show how the same note would have done if issued every week since 2005, and (e) track live
+notes against their barriers. Rich terms always mean the market sees more risk; the page must say so every time.
+
+### Data (all tested 12 Nov 2026 from this environment)
+
+| Source | What it gives | Result |
+|---|---|---|
+| Cboe index history files (`cdn.cboe.com/api/global/us_indices/daily_prices/<X>_History.csv`, redirects to `cdn-api.cboe.com`) | Daily history: VIX1Y (2007), VXN, RVX, VXD (2009), VXEEM, VXFXI, VXEWZ, VXEFA, VXAPL, VXAZN, VXGOG, VXGS (2011), GVZ, OVX, VXTLT, VXSLV, implied correlation COR1M and COR3M (2006), dispersion DSPX (2014), SKEW (1990), put-selling index PUT (1991) and buy-write BXM | Works. EVZ (euro vol) is denied. |
+| Cboe delayed option chains (`…/delayed_quotes/options/<SYM>.json`; index = `_SPX`) | Every listed option with bid, ask, implied vol, delta, open interest, plus `iv30` | Works for US stocks, ADRs (BABA, TSM), country ETFs (EWY, EWT, FXI, KWEB, INDA, EWJ, EEM), GLD, FXE, FXY. EWM and EWS chains are too thin to use (2 to 3 expiries, 5-cent bids). Files are large (SPY 6 MB, `_SPX` 14 MB). |
+| Yahoo chart with `events=div` | Dividends paid: trailing 12-month yield for any stock (Maybank 6.5%, DBS 4.5%) | Works (host already allowed). |
+| Yahoo chart `range=20y&interval=1wk` | 20 years of weekly closes for barrier back-tests (the ticker file holds only 3 years) | Works. |
+| Nasdaq calendar (`api.nasdaq.com/api/calendar/earnings?date=…`, `/api/analyst/<SYM>/earnings-date`) | US earnings dates and EPS forecasts | Works with a browser User-Agent. |
+| FRED | Effective yields (US IG, HY, EM, Asia credit: 3 years only, so archive), bank lending standards, delinquencies | Works. |
+| iShares fund pages | 12-month yield, net assets and NAV are in the page; P/E, P/B and the history download load through a script | Partly: yields and net assets readable; P/E and P/B need the page's data API (not located; bounded effort in WP50). |
+| Bursa Malaysia (foreign flows) | – | Blocked (Cloudflare 403). Not planned. |
+
+Not available free: implied volatility for Malaysian, Singapore and Hong Kong shares and for USD/MYR and SGD pairs
+(use realised volatility with a stated mark-up); VSTOXX, VHSI and Nikkei VI (use options on FEZ, FXI, EWJ); issuer
+quotes (never shown).
+
+**Reading today (12 Nov 2026), to show what the page would say:** index volatility is ordinary (VIX 17.5, 53rd
+percentile of 10 years) but single-stock and EM volatility is high (Nvidia 55%, Korea ETF 52%, EM 91st percentile,
+gold 89th); implied correlation is at its 5th percentile and dispersion at its 95th; skew is at its 84th; the US 2Y
+and 10Y yields are at their 88th and 98th percentiles. In plain terms: capital-protected notes on indices get good
+terms (high rates, ordinary index volatility); single-stock and worst-of coupons look very rich but for a reason (the
+dashboard's own signals are negative on chips); deep barriers are relatively well paid (steep skew). A 3-month put
+10% below spot pays about 13.7% a year on Nvidia against 3.5% on the S&P 500.
+
+### New page: Structured products (`sp`, sidebar group Markets, after Positioning & Vol)
+
+Sub-tabs: **What suits now · Underlyings · Pricer · FX & DCI · Protection & rates · My notes**.
+
+Rules for the whole page:
+- Generic structure names only (ELN, FCN, autocallable, DCI, …). No issuer or product brand names; the site is public.
+- Every number is labelled "indicative, from public option prices and a simple model, before issuer margin; not a
+  quote". The pricer has an "issuer margin" input (default 1.5% a year) and shows the coupon before and after it.
+- Every structure carries one plain sentence each for "fits a client who…", "main risk" and "not for".
+- Wording: "structures to discuss", never "recommended" or "to sell".
+- Publish derived figures only (never the option chains), with the credit "Cboe (delayed)".
+
+### WP37. Data layer (`pipeline/structured.py` → `structured.json`, `structured_hist.json`)
+
+1. **Universe** (`SP_UNIVERSE` in `pipeline/config.py`): indices already in `yahoo.json` (SPX, NDX, RTY, SX5E, NKY,
+   HSI, CSI300, KOSPI, TWSE, NIFTY, STI, KLCI, AS51, GOLD) and every equity in `tickers.py` (US 50, Malaysia 48,
+   Singapore 30, Hong Kong 14, others 19). Option proxies: SPX→`_SPX`, NDX→QQQ, RTY→IWM, SX5E→FEZ, NKY→EWJ, HSI→FXI,
+   CSI300→FXI, KOSPI→EWY, TWSE→EWT, NIFTY→INDA, GOLD→GLD; US stocks and ADRs use their own chain.
+2. **Option-implied block** (about 70 chain downloads per full run, 0.3 s apart, full runs only; keep the previous
+   values when a download fails). Per underlying: spot; at-the-money implied vol at 1, 3, 6 and 12 months
+   (interpolate total variance between listed expiries); implied vol at 90% and 80% of spot (3M and 12M: the skew);
+   put premium as % of strike, bid and mid, on a grid of strikes 100/95/90/85/80/70% × 1/3/6/12 months; call premium
+   at 100/105/110% × 12/24 months where listed; a liquidity flag (hide rows with open interest under 100 or a
+   bid-ask spread over 25% of mid); `iv30`; timestamp. Parse the OCC symbol (`ROOT[W]YYMMDD[C|P]STRIKE×1000`).
+3. **Archive** `archive/structured_iv.csv`: date, underlying, 3M ATM vol, 3M 90% vol, `iv30` (three numbers a day per
+   name), so percentiles build from the first day; until a name has 250 days, show its realised-vol percentile
+   instead and say so.
+4. **Cboe index histories** listed above → series `SP_<NAME>` in `structured.json` (monthly before 2015, daily after,
+   to keep the file small).
+5. **Realised block** for the whole universe, from 20 years of weekly closes and 3 years of daily closes: realised
+   vol 1M, 3M, 1Y and its 10-year percentile; trailing 12-month dividend yield; **barrier tables**: for every weekly
+   start date since 2005 (or listing), the share of cases where the weekly close fell below B% of the start within T
+   months (B = 50, 60, 65, 70, 75, 80, 90; T = 3, 6, 12, 18, 24), the share ending below K% at T (K = 80, 90, 100), the
+   median and worst result at T, and the same shares for start dates when 3M realised vol was in its top third.
+   Weekly observation understates daily barrier touches slightly: say so in the note.
+6. **`structured_hist.json`**: the weekly closes themselves (about 200 series × 1,040 points, rounded to 4
+   significant figures, roughly 1.3 MB), loaded only when the Pricer or My notes sub-tab opens.
+7. **Earnings dates** for the US names (Nasdaq calendar, next 60 days) with the option-implied move over the date
+   (front at-the-money straddle ÷ spot).
+8. Wire-up: `fetch.py` module loop, the carry-over list in `update.yml`, `health.py` (`FILES`; allow 5 days), README.
+   Estimated extra run time: 3 to 4 minutes per full run.
+
+### WP38. Sub-tab "What suits now": the structure matrix
+
+- **Tiles (5):** index volatility (VIX, percentile), single-stock volatility (median 3M ATM vol of the US names,
+  percentile), implied correlation (COR3M, percentile), skew (SKEW, percentile), USD 2Y yield (percentile).
+- **Card `sp_matrix` (wide table, 12 rows, no chart):** one row per structure family with five columns:
+  **Terms now** (Rich / Fair / Thin, with the inputs that drive it), **Backdrop** (Supportive / Mixed / Hostile),
+  **Fits a client who…**, **Main risk**, and a link to the Pricer pre-filled. Terms measure how much the market is
+  paying; Backdrop measures whether conditions suit holding it. Show both, because rich terms with a hostile backdrop
+  is the classic trap.
+
+| Structure | Terms are rich when | Backdrop is supportive when |
+|---|---|---|
+| ELN / FCN on a single share | that share's 3M vol percentile ≥ 60 and implied > realised | share above its 200-day average, no negative Signals idea on it or its sector, no earnings inside the tenor |
+| FCN / autocallable on an index | index vol percentile ≥ 60, or skew percentile ≥ 70 (deep barriers pay) | stress composite not rising, regime not Slowdown, breadth above 40% |
+| Worst-of autocallable (basket) | implied correlation percentile ≤ 30 and single-stock vol ≥ 60 | dispersion (DSPX) percentile < 80 and breadth above 50%; otherwise "rich but fragile: one name can break it" |
+| Capital-protected participation note | rate percentile ≥ 60 and 1Y index vol percentile ≤ 50 | any; the cost is opportunity, not capital (issuer credit risk aside) |
+| Sharkfin / capped participation | rate percentile ≥ 60 and vol percentile ≥ 50 (the cap is worth more) | client expects a moderate rise, not a surge |
+| Dual currency investment (DCI) | pair's vol percentile ≥ 60 and a rate gap in the client's favour | the conversion currency is cheap (REER percentile < 40) and the client has a real use for it |
+| Gold-linked ELN / DCI | gold vol (GVZ) percentile ≥ 60 | gold above its 200-day average; real yields not rising |
+| Accumulator / decumulator | single-stock vol percentile ≥ 60 (bigger discount) | share in a steady uptrend with low volatility of volatility; always flagged **high risk: leveraged, open-ended commitment** |
+| Range accrual (rates or FX) | rates vol (MOVE) percentile ≥ 60 | central bank read is "on hold" on the Central banks page; reference inside the range for ≥ 80% of the last 2 years |
+| Callable fixed-rate / step-up note | rate percentile ≥ 60 and MOVE percentile ≥ 60 | client accepts being called when rates fall |
+| Curve steepener note | 2s10s percentile ≤ 30 (flat or inverted curve) | Fed pricing shows cuts ahead |
+| Credit-linked note | HY and IG spread percentile ≥ 60 | spreads not widening for 3 months; stress composite credit block calm |
+
+- **Card `sp_inputs` (wide chart, toggle between five inputs):** the chosen input against its 10-year median with the
+  current percentile; note leads with what a high reading means for terms.
+- **Card `sp_putwrite` (half):** Cboe PUT index (sell 1-month S&P puts, fully collateralised) against the S&P 500:
+  since 2007 about 7.3% a year with a 37% worst fall, against 8.8% (price only) and 57%. This is the long-run record
+  of the "yield for downside risk" trade that ELNs and FCNs are built on.
+- **Card `sp_read` (half):** three or four rule-based sentences ("Today: …") built from the matrix, as in the
+  reading above. Also one line in the Weekly brief (screen only).
+
+### WP39. Sub-tab "Underlyings": the screener and coupon matrix
+
+- **Card `sp_screen` (wide table, view chips: Indices & ETFs · US shares · Singapore · Malaysia · Hong Kong & Asia;
+  16 rows at rest with "Show all"):** 3M implied vol (or "est." from realised × the median implied ÷ realised ratio
+  of names that have options), vol percentile, implied − realised, skew (90% vol − ATM vol), **3M 90% put yield a
+  year** (market bid where a chain exists, model otherwise), dividend yield, trend (above or below 200-day), distance
+  from 52-week high, **breach history** (share of past 6-month windows ending below 80%; share of 12-month windows
+  touching 70%), next earnings date (flag if inside 3 months), and a **score = premium per unit of risk** (put yield
+  ÷ max(breach share, 2%)), sortable. Estimated rows are marked "est." and never rank above a market-priced row with
+  the same score.
+- **Card `sp_grid` (half), for the selected row: the coupon matrix.** Strike (100 to 70%) × tenor (1 to 12 months):
+  put premium as a yield a year; a toggle shows the breach history for the same cells, so premium and risk are read
+  from the same grid.
+- **Card `sp_term` (half):** the selected name's implied vol by tenor and its skew, against the index.
+- **Card `sp_baskets` (wide table):** candidate worst-of baskets (the ten most-used pairs and triples in each region,
+  plus any the owner adds): average pairwise 1-year correlation, weakest member's trend, share of past 12-month
+  windows where the worst member touched 60% and 70%, and how much more often that is than the best single member.
+  Note leads with: lower correlation raises the coupon because it raises the odds that one member falls.
+- Region pages: the "Signals for this market" strip gains one line "Structures: terms Rich/Fair/Thin" linking here.
+
+### WP40. Sub-tab "Pricer": indicative terms and the back-test
+
+- **Inputs (one card, `sp_form`):** structure (ELN · FCN with knock-in · autocallable, single or worst-of up to 3 ·
+  capital-protected note · sharkfin · accumulator), underlying(s), tenor, strike, knock-in level and type (at
+  maturity or any day), autocall level and frequency, coupon barrier and memory, issuer margin. Pre-filled from the
+  matrix and screener links.
+- **Model (`docs/sp-model.js`, plain functions with a test file `tools/sp-check.js`):** Black-Scholes with the vol
+  read at the strike or barrier from the chain grid where there is one (so skew is respected), dividend yield from
+  WP37, rates from the existing curves (USD Treasury, SGS; MYR uses the 12-month deposit rate; say so). ELN = cash
+  rate + put premium. FCN with at-maturity knock-in = put at the barrier plus a digital for the gap to the strike;
+  any-day knock-in = closed-form down-and-in put with the standard discrete-monitoring adjustment. Autocallables and
+  worst-of: Monte Carlo (20,000 correlated paths, fixed seed, in a Web Worker), solving for the coupon that prices
+  the note at 100 minus margin. Capital-protected: zero-coupon bond + call; participation = budget ÷ call premium.
+  `sp-check.js` must show the model reproduces listed put prices within 15% for SPY, QQQ and three shares, and known
+  textbook values for the barrier formulas, or the build fails.
+- **Card `sp_terms`:** indicative coupon (before and after margin), break-even level, and a small sensitivity grid
+  (strike × knock-in).
+- **Card `sp_backtest` (wide): "If this note had been issued every week since 2005".** Using the weekly closes:
+  share called early (and when), share paid in full at maturity, share knocked in, share ending in a loss, average
+  and worst loss, average annualised return, and the same for simply holding the underlying. Chart: outcome by issue
+  date, so the clusters of losses (2007–08, 2020, 2022) are visible. The coupon is the one typed or priced above,
+  held constant: note that real coupons would have been higher in volatile periods.
+- **Card `sp_payoff` (half):** payoff at maturity against the worst underlying's final level, with today's level and
+  the barriers marked.
+
+### WP41. Sub-tab "FX & DCI"
+
+- **Card `dci_table` (wide):** pairs USD/MYR, SGD/MYR, USD/SGD, AUD/USD, AUD/SGD, EUR/USD, GBP/USD, USD/JPY, XAU/USD:
+  spot, deposit-rate gap, volatility (implied from FXE, FXY, GLD chains where they exist; otherwise 3M realised ×
+  1.1, marked "est."), **indicative yield a year for a strike 1% away at 2 weeks and 1 month**, how often spot has
+  actually moved that far in that time (history), the conversion currency's REER percentile, trend.
+- **Card `dci_grid` (half):** for the selected pair and direction, strike distance (0.5, 1, 1.5, 2, 3%) × tenor
+  (1W, 2W, 1M, 3M): indicative yield, with a toggle to the historical conversion frequency.
+- **Card `dci_hist` (half):** the pair with its 200-day average and the chosen strike drawn; note says which outcome
+  the client must be content with (being converted at the strike).
+- Model: Garman-Kohlhagen. Note for ringgit pairs: onshore pricing differs from this estimate.
+
+### WP42. Sub-tab "Protection & rates"
+
+- **Card `pp_budget` (wide table):** currency (USD, SGD, MYR, AUD) × tenor (1, 2, 3, 5 years): zero-coupon price,
+  option budget for 100% and 95% protection after margin, and indicative participation in the S&P 500, gold and
+  Asia ex-Japan (call premiums from the `_SPX`, GLD and EEM chains; model for others).
+- **Card `pp_map` (half):** history of the USD 3-year option budget against 1-year index volatility, today marked:
+  participation is best when rates are high and volatility is low.
+- **Card `ra_range` (half):** range accrual helper: for a chosen reference (3M T-bill, UST 10Y, USD/MYR, 3M KLIBOR,
+  SORA) and range, the share of days inside it over each past 1-year window, and where it sits now.
+- **Card `ra_curve` (half):** 2s10s and 10s30s with percentiles (moved view of existing series, not a copy of a
+  card), for steepener and callable-note conversations. "See also" to Fixed Income → Curves and Central banks.
+
+### WP43. Sub-tab "My notes": private book of live notes
+
+- Stored in the browser only (`localStorage` key `sd-notes-v1`), included in the Idea log export (bump to version
+  3). The form warns: "This site is public code; notes stay on this device. Do not enter client names."
+- Fields: label, structure, underlyings (from the universe, or any watchlist ticker), trade date, maturity, initial
+  levels (auto-filled from the trade date), strike, knock-in and type, autocall level and dates, coupon and barrier.
+- **Table `nb_table`:** worst performer and its level against initial, distance to knock-in, strike and autocall,
+  next observation date, status (Likely to call · On track · Coupon at risk · Near knock-in · Knocked in), and value
+  if it matured today. Sorted by distance to knock-in.
+- **Card `nb_chart`:** the selected note's underlyings rebased to the trade date with the barriers drawn.
+- Alerts: "What changed" on the Strategist View gains lines when a note's worst underlying comes within 10% of its
+  knock-in, crosses it, or stands above the autocall level a week before an observation. Never in the printed brief.
+
+### Completeness (the first half of the request)
+
+| Package | What | Where | Size |
+|---|---|---|---|
+| **WP44. Income menu** | "What pays what" table: cash and deposits (USD, SGD, MYR, AUD), government 2Y and 10Y, US IG, HY, EM and Asia USD credit (FRED effective yields, archived), dividend yields (KLCI, STI and S&P baskets, Malaysian and Singapore REIT baskets from Yahoo dividends), and the S&P 3M 90% put yield from WP37. Columns: yield, 1-year change, percentile, yield hedged to MYR and to SGD (existing hedging-cost logic), yield after inflation, worst 12-month loss. | Fixed Income → new sub-tab "Income menu" | Medium |
+| **WP45. Playbook** | Event studies: pick an event set (first Fed cut, last Fed hike, recession start, VIX above 40, oil up 40% in a year, dollar peak, curve un-inversion, each regime switch) and see the median path of any asset 12 months before and after, with hit rates at 1, 3, 6 and 12 months for twelve assets and a marker for where we are now relative to the latest event. Monthly Shiller data extends the S&P 500 before 2005. | Regime & Leading → new sub-tab "Playbook" | Medium |
+| **WP46. Earnings dates** | US earnings dates for the names in the ticker list (Nasdaq), with the option-implied move, on the Calendar (new filter chip "Earnings") and in the Weekly brief's week ahead (top 5 by size). Reuses WP37. | Calendar | Small |
+| **WP47. Model portfolio stress** | For the Idea log's model portfolio: return in six past episodes (2008, 2013 taper, 2015 China, late 2018, Covid, 2022) for the portfolio and each holding, and contribution to risk. Check what `mpStats` already shows first; add only what is missing. | Idea log → Model portfolio | Small |
+| **WP48. Credit cycle** | Bank lending standards (already loaded) against HY spreads, delinquency rates, CCC − BB spread, bank credit growth. | Stress & Signposts → new sub-tab "Credit cycle" | Small |
+| **WP49. Gold** | Gold against the US real yield and the dollar, gold in MYR and SGD, gold ÷ silver, gold volatility (GVZ) and the GLD implied-vol term structure. Central-bank buying has no free feed. | Markets → new sub-tab "Gold" (cards move out of Commodities only if they are gold-only) | Small |
+| **WP50. Country ETF flows and yields** | iShares country funds (EWM, EWS, MCHI, EWY, EWT, INDA, EWJ, EEM): 12-month yield for the Valuation scorecard, and net assets ÷ NAV archived daily to show money moving in or out (a partial stand-in for foreign-flow data, which Bursa blocks). Spend at most 30 minutes locating the page's data API for P/E, P/B and history; if not found, ship yields and flows only. | Valuation; Asia ex-Japan → Across Asia | Small, uncertain |
+
+Considered and left out: Bursa foreign flows and ICI fund flows (blocked), forward earnings estimates by market (no
+free feed), Treasury auction results (low value for this audience; can be added later from the Treasury's public API),
+more ASEAN country pages (thin free data beyond Indonesia).
+
+### Suggested order
+
+1. **Run 1: WP37 + WP38 + WP39.** Answers the question directly: the inputs, the matrix, the screener and coupon
+   grid. Largest run (WP37 is the heavy one).
+2. **Run 2: WP40 + WP43.** Pricer, back-test and the private notes book (they share `sp-model.js` and the history file).
+3. **Run 3: WP41 + WP42 + WP46.** FX and DCI, protection and rates, earnings dates.
+4. **Run 4: WP44, WP45, then WP47 to WP50 as wanted.**
+
+### Risks and how the build handles them
+
+- **A public site showing coupons.** Everything is generic, model-based and labelled; no issuer names; margin shown
+  explicitly. If the owner's compliance team objects to any part, each sub-tab can be switched off with one flag
+  (`SP_SHOW` in `docs/app.js`); the notes book never leaves the browser.
+- **Cboe terms.** The delayed data is public but not licensed for redistribution: publish derived figures only, with
+  credit, and archive three numbers per name per day. If Cboe blocks the runner, the page falls back to realised
+  volatility and says so; nothing else on the dashboard depends on it.
+- **False precision.** Asian shares have no listed-option data: their rows say "est." and the note gives the mark-up
+  used. The model must pass `sp-check.js` against listed prices before any coupon is shown.
+- **Run time and size.** About 150 MB of chain downloads per full run; if the run passes 20 minutes, cut the US
+  share list to the 30 largest. `structured_hist.json` is lazy-loaded.
+- **Height.** Six sub-tabs, at most four cards each; the matrix is 12 rows.
+
+### Decisions for the owner
+
+1. **Which packages, in which order?** Recommended: Run 1 first (WP37 to WP39), then decide.
+2. **Which structures does your desk offer?** The matrix has twelve families; say which to drop or add.
+3. **Underlyings.** Default is the current ticker list plus the index and country ETFs. Name any shares clients ask
+   for most (they can also be added through the watchlist).
+4. **Issuer margin shown by default:** 1.5% a year (recommended), or another figure.
+5. **The private notes book (WP43):** include it (recommended) or leave it out?
+
+---
+
+## Built (owner's request, 12 Nov 2026): WP32 to WP36, regions reorganised
 
 **Status: WP32 to WP36 all built on 12 Nov 2026** (WP36: see its own status line below). Earlier: **WP32 to WP35 built on 12 Nov 2026** (WP35: the rule, sidebar tree and four-sub-tab order are in `CLAUDE.md`; checks passed: every card listed in a sub-tab exists once and sits on its own page, every scorecard row, See-also link and signals-strip link opens a real page, "what changed" links resolve, search finds the moved cards, old links land correctly, design check passes). Earlier: **WP32, WP33 and WP34** (WP34: equity cards for Malaysia, Singapore and China against Asia ex-Japan and the world in local currency and US dollars; a currency card for every Asian page and Japan with the 200-day average, carry and a real-effective-rate toggle; Malaysia Rates & bonds adds the BNM summary and US 2Y − OPR vs USD/MYR; China Rates & bonds adds its own rates card and the inflation card keeps CPI only; a "Signals for this market" strip on each Equities sub-tab; See-also rows to Central banks, Asian FX, Chip cycle and Commodities. Taiwan has no Rates & bonds sub-tab: no public bond-yield or policy-rate source is wired in, stated on its currency card). Earlier: **WP32 and WP33** (WP33: US, Europe, Japan and Australia split Equities · Rates & bonds · Currency · Economy; breadth is one set per market on Malaysia, Singapore and US → Equities, with a cross-market table left on Markets → Breadth; US style ratios and sector tables moved to US → Sectors & styles; palm oil to Malaysia → Sectors; iron ore to Australia → Currency; Fixed Income's euro periphery chart was a duplicate of Europe's and was removed; "See also" rows on Markets and Fixed Income; old links remapped). Earlier: **WP32** (country pages `my`, `sg`, `cn`, `kr`, `tw`, `in` under Asia ex-Japan in the sidebar; old `#tab=asia&sub=N` and `#tab=cnjp` links land on the new pages; Asia overview links carry `v=2`). WP33 to WP36 follow in order. Follow `CLAUDE.md` and run
 `node tools/design-check.js` before each push. One commit per package.
