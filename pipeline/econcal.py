@@ -63,6 +63,19 @@ EVENTS = [
     ev("US", "Housing starts", ("fred", "HOUST", "level"), "k", ("fred", "HOUST"), ("ET", "08:30"), False, "Annualised"),
     # ---- Euro area
     ev("Euro area", "HICP inflation (YoY)", ("fred", "CP0000EZ19M086NEST", "yoy"), "%", ("fred", "CP0000EZ19M086NEST"), ("CET", "11:00"), True),
+    # ---- euro-area countries and the UK (WP36): flash CPI near the end of the month it covers, GDP flash a month after the quarter
+    ev("Euro area", "Germany CPI flash (HICP, YoY)", ("fred", "CP0000DEM086NEST", "yoy"), "%", ("win", 27, 31, None, "current month"), ("CET", "14:00"), True,
+       "Number shown is the final HICP for the month", "Destatis"),
+    ev("Euro area", "France CPI flash (HICP, YoY)", ("fred", "CP0000FRM086NEST", "yoy"), "%", ("win", 28, 31, None, "current month"), ("CET", "08:45"), src="INSEE"),
+    ev("Euro area", "Italy CPI flash (HICP, YoY)", ("fred", "CP0000ITM086NEST", "yoy"), "%", ("win", 28, 31, None, "current month"), ("CET", "11:00"), src="Istat"),
+    ev("Euro area", "Spain CPI flash (HICP, YoY)", ("fred", "CP0000ESM086NEST", "yoy"), "%", ("win", 27, 31, None, "current month"), ("CET", "09:00"), src="INE"),
+    ev("Euro area", "Germany GDP flash (YoY)", ("asia", "DE_GDP_YOY", "level"), "%", ("win", 28, 31, Q_NEXT, "previous quarter"), ("CET", "10:00"), True, src="Destatis"),
+    ev("Euro area", "France GDP flash (YoY)", ("asia", "FR_GDP_YOY", "level"), "%", ("win", 28, 31, Q_NEXT, "previous quarter"), ("CET", "07:30"), src="INSEE"),
+    ev("Euro area", "Italy GDP flash (YoY)", ("asia", "IT_GDP_YOY", "level"), "%", ("win", 28, 31, Q_NEXT, "previous quarter"), ("CET", "10:00"), src="Istat"),
+    ev("Euro area", "Spain GDP flash (YoY)", ("asia", "ES_GDP_YOY", "level"), "%", ("win", 27, 31, Q_NEXT, "previous quarter"), ("CET", "09:00"), src="INE"),
+    ev("UK", "CPI (YoY)", ("asia", "UK_CPI_YOY", "level"), "%", ("win", 15, 22, None, "previous month"), ("UK", "07:00"), True, "Number shown is the OECD series", "ONS"),
+    ev("UK", "GDP first estimate (YoY)", ("asia", "UK_GDP_YOY", "level"), "%", ("win", 10, 15, Q_MID, "previous quarter"), ("UK", "07:00"), True, src="ONS"),
+    ev("UK", "Labour market: unemployment", ("asia", "UK_UNEMP", "level"), "%", ("win", 11, 18, None, "two months back"), ("UK", "07:00"), src="ONS"),
     # ---- Malaysia (DOSM: no forward calendar in machine-readable form, so windows)
     ev("Malaysia", "CPI (YoY)", ("asia", "MY_CPI", "yoy"), "%", ("win", 20, 26, None, "previous month"), ("MYT", "12:00"), True, src="DOSM"),
     ev("Malaysia", "Exports (YoY)", ("asia", "MY_EXPORTS", "yoy"), "%", ("win", 17, 22, None, "previous month"), ("MYT", "12:00"), True, src="DOSM"),

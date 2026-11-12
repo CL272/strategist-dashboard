@@ -34,11 +34,13 @@ NAMES = {"TWSE": "Taiwan Weighted", "KOSPI": "KOSPI", "JCI": "Jakarta Composite"
          "AAXJ": "Asia ex-Japan (AAXJ)", "LH_SPX": "S&P 500", "SPX": "S&P 500", "UST10Y": "US 10Y yield", "GOLD": "Gold", "KLCI": "FBM KLCI",
          "R_AAXJ_ACWI": "Asia ex-Japan vs world", "R_EEM_SPX": "Emerging markets vs S&P 500", "R_SOX_SPX": "Chip stocks vs S&P 500",
          "R_KLCI_AAXJ": "KLCI (USD) vs Asia ex-Japan", "NVDA": "Nvidia", "KR_CPI_YOY": "Korea CPI", "TLT": "Long Treasuries (TLT)",
-         "USDMYR": "USD/MYR", "AUDUSD": "Australian dollar (AUD/USD)", "EURUSD": "Euro (EUR/USD)"}
+         "USDMYR": "USD/MYR", "AUDUSD": "Australian dollar (AUD/USD)", "EURUSD": "Euro (EUR/USD)",
+         "DAX": "DAX", "CAC": "CAC 40", "FTSEMIB": "FTSE MIB", "IBEX": "IBEX 35", "UKX": "FTSE 100"}
 REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY": ["India"], "IN_10Y": ["India"], "COPPER": ["China"], "AAXJ": ["China", "US"],
           "LH_SPX": ["US"], "SPX": ["US"], "UST10Y": ["US"], "GOLD": ["US"], "KLCI": ["Malaysia"], "R_KLCI_AAXJ": ["Malaysia"], "R_AAXJ_ACWI": ["China", "US"],
           "R_EEM_SPX": ["US", "China"], "R_SOX_SPX": ["Korea", "Taiwan", "US"], "NVDA": ["US"], "TLT": ["US"],
-          "USDMYR": ["Malaysia", "US"], "AUDUSD": ["Australia"], "EURUSD": ["Euro area"]}
+          "USDMYR": ["Malaysia", "US"], "AUDUSD": ["Australia"], "EURUSD": ["Euro area"],
+          "DAX": ["Euro area"], "CAC": ["Euro area"], "FTSEMIB": ["Euro area"], "IBEX": ["Euro area"], "UKX": ["UK"]}
 
 
 def lag_of(sid: str) -> int:
@@ -103,7 +105,10 @@ def rules():
     def add(sid, fam, name, text, inputs, cond, target, d, kind="ret", gap=6):
         R.append(dict(id=sid, family=fam, name=name, rule=text, inputs=inputs, cond=cond, target=target, dir=d, kind=kind, gap=gap))
 
-    for area, lab, tgts in [("KOR", "Korea", [("TWSE", 5), ("KOSPI", 4)]), ("IDN", "Indonesia", [("JCI", 4)]), ("IND", "India", [("NIFTY", 5)]), ("CHN", "China", [("COPPER", 7)])]:
+    for area, lab, tgts in [("KOR", "Korea", [("TWSE", 5), ("KOSPI", 4)]), ("IDN", "Indonesia", [("JCI", 4)]), ("IND", "India", [("NIFTY", 5)]), ("CHN", "China", [("COPPER", 7)]),
+                           # Europe by country (WP36): each leading index against its own equity index (all contain share prices: graded down)
+                           ("DEU", "Germany", [("DAX", 4)]), ("FRA", "France", [("CAC", 4)]), ("ITA", "Italy", [("FTSEMIB", 4)]), ("ESP", "Spain", [("IBEX", 4)]),
+                           ("GBR", "UK", [("UKX", 4)])]:
         cid = f"CLI_{area}"
         for tgt, _ in tgts:
             add(f"cli_{area.lower()}_up_{tgt.lower()}", "Tested leads", f"{lab} leading index turns up → {NAMES[tgt]}", f"OECD {lab} leading index higher than 6 months earlier",
@@ -118,6 +123,14 @@ def rules():
         ["BRENT"], lambda M: yoy(M["BRENT"]) > 40, "IN_10Y", 1, "chg")
     add("oil_cold_in10y", "Tested leads", "Oil slump → India 10Y yield down", "Brent more than 30% lower than a year earlier",
         ["BRENT"], lambda M: yoy(M["BRENT"]) < -30, "IN_10Y", -1, "chg")
+    # Italy's spread over Bunds: the euro area's stress gauge (WP36)
+    spr = lambda M: M["IT_10Y"] - M["DE_10Y"]
+    add("it_spread_wide_mib", "Stress", "Italy spread widens → FTSE MIB", "Italy − Germany 10Y spread more than 0.5 points wider than 6 months earlier",
+        ["IT_10Y", "DE_10Y"], lambda M: chg(spr(M), 6) > 0.5, "FTSEMIB", -1)
+    add("it_spread_tight_mib", "Stress", "Italy spread narrows → FTSE MIB", "Italy − Germany 10Y spread more than 0.5 points narrower than 6 months earlier",
+        ["IT_10Y", "DE_10Y"], lambda M: chg(spr(M), 6) < -0.5, "FTSEMIB", 1)
+    add("it_spread_wide_eur", "Stress", "Italy spread widens → euro", "Italy − Germany 10Y spread more than 0.5 points wider than 6 months earlier",
+        ["IT_10Y", "DE_10Y"], lambda M: chg(spr(M), 6) > 0.5, "EURUSD", -1)
     add("usd_strong_asia", "Tested leads", "Strong dollar → Asia ex-Japan", "US dollar index more than 8% higher than a year earlier",
         ["DXY"], lambda M: yoy(M["DXY"]) > 8, "AAXJ", -1)
     add("usd_weak_asia", "Tested leads", "Weak dollar → Asia ex-Japan", "US dollar index more than 8% lower than a year earlier",

@@ -25,6 +25,7 @@ SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD"
 SLOW["ID_IP_YOY"] = 200
 SLOW["EPU_GLOBAL"] = 200   # global policy uncertainty is published about four months late
 SLOW["MMF_RETAIL"] = 50
+SLOW["UK_UNEMP"] = 170   # ONS labour data reach the OECD feed about four months after the month
 # UN Comtrade publishes Korea's monthly trade about 10 months late; Ramp's token table is weekly but posted with a lag
 SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data

@@ -64,6 +64,41 @@ KEI = [
     ("ID_CALL",     "IDN", "IRSTCI", "PA", None,  None, "Indonesia overnight call rate",    "%",   "Rates · Indonesia"),
     ("AU_EXP_YOY",  "AUS", "EX",     "GR", "_T",  "GY", "Australia exports YoY (USD, SA)",  "%",   "Macro · Australia"),
     ("AU_CCI",      "AUS", "CCICP",  "PB", None,  None, "Australia consumer confidence",    "idx", "Macro · Australia"),
+    # Europe by country (WP36): Germany, France, Italy, Spain, UK. Euro members' inflation is the HICP via FRED;
+    # the OECD feed stops their CPI at Dec 2025. Germany's total industry (BTE) stops in 2023, so all use manufacturing (C).
+    ("DE_EXP_YOY",  "DEU", "EX",     "GR", "_T",  "GY", "Germany exports YoY (USD, SA)",       "%",   "Macro · Germany"),
+    ("DE_MFG_YOY",  "DEU", "PRVM",   "GR", "C",   "GY", "Germany manufacturing output YoY",    "%",   "Macro · Germany"),
+    ("DE_RETAIL_YOY","DEU", "TOVM",  "GR", "G47", "GY", "Germany retail sales volume YoY",     "%",   "Macro · Germany"),
+    ("DE_UNEMP",    "DEU", "UNEMP",  "PT_LF", "_T", None, "Germany unemployment rate",         "%",   "Macro · Germany"),
+    ("DE_BCI",      "DEU", "BCICP",  "PB", "C",   None, "Germany business confidence",         "idx", "Macro · Germany"),
+    ("DE_CCI",      "DEU", "CCICP",  "PB", None,  None, "Germany consumer confidence",         "idx", "Macro · Germany"),
+    ("FR_EXP_YOY",  "FRA", "EX",     "GR", "_T",  "GY", "France exports YoY (USD, SA)",       "%",   "Macro · France"),
+    ("FR_MFG_YOY",  "FRA", "PRVM",   "GR", "C",   "GY", "France manufacturing output YoY",    "%",   "Macro · France"),
+    ("FR_RETAIL_YOY","FRA", "TOVM",  "GR", "G47", "GY", "France retail sales volume YoY",     "%",   "Macro · France"),
+    ("FR_UNEMP",    "FRA", "UNEMP",  "PT_LF", "_T", None, "France unemployment rate",         "%",   "Macro · France"),
+    ("FR_BCI",      "FRA", "BCICP",  "PB", "C",   None, "France business confidence",         "idx", "Macro · France"),
+    ("FR_CCI",      "FRA", "CCICP",  "PB", None,  None, "France consumer confidence",         "idx", "Macro · France"),
+    ("IT_EXP_YOY",  "ITA", "EX",     "GR", "_T",  "GY", "Italy exports YoY (USD, SA)",       "%",   "Macro · Italy"),
+    ("IT_MFG_YOY",  "ITA", "PRVM",   "GR", "C",   "GY", "Italy manufacturing output YoY",    "%",   "Macro · Italy"),
+    ("IT_RETAIL_YOY","ITA", "TOVM",  "GR", "G47", "GY", "Italy retail sales volume YoY",     "%",   "Macro · Italy"),
+    ("IT_UNEMP",    "ITA", "UNEMP",  "PT_LF", "_T", None, "Italy unemployment rate",         "%",   "Macro · Italy"),
+    ("IT_BCI",      "ITA", "BCICP",  "PB", "C",   None, "Italy business confidence",         "idx", "Macro · Italy"),
+    ("IT_CCI",      "ITA", "CCICP",  "PB", None,  None, "Italy consumer confidence",         "idx", "Macro · Italy"),
+    ("ES_EXP_YOY",  "ESP", "EX",     "GR", "_T",  "GY", "Spain exports YoY (USD, SA)",       "%",   "Macro · Spain"),
+    ("ES_MFG_YOY",  "ESP", "PRVM",   "GR", "C",   "GY", "Spain manufacturing output YoY",    "%",   "Macro · Spain"),
+    ("ES_RETAIL_YOY","ESP", "TOVM",  "GR", "G47", "GY", "Spain retail sales volume YoY",     "%",   "Macro · Spain"),
+    ("ES_UNEMP",    "ESP", "UNEMP",  "PT_LF", "_T", None, "Spain unemployment rate",         "%",   "Macro · Spain"),
+    ("ES_BCI",      "ESP", "BCICP",  "PB", "C",   None, "Spain business confidence",         "idx", "Macro · Spain"),
+    ("ES_CCI",      "ESP", "CCICP",  "PB", None,  None, "Spain consumer confidence",         "idx", "Macro · Spain"),
+    ("UK_EXP_YOY",  "GBR", "EX",     "GR", "_T",  "GY", "UK exports YoY (USD, SA)",       "%",   "Macro · UK"),
+    ("UK_MFG_YOY",  "GBR", "PRVM",   "GR", "C",   "GY", "UK manufacturing output YoY",    "%",   "Macro · UK"),
+    ("UK_RETAIL_YOY","GBR", "TOVM",  "GR", "G47", "GY", "UK retail sales volume YoY",     "%",   "Macro · UK"),
+    ("UK_UNEMP",    "GBR", "UNEMP",  "PT_LF", "_T", None, "UK unemployment rate",         "%",   "Macro · UK"),
+    ("UK_BCI",      "GBR", "BCICP",  "PB", "C",   None, "UK business confidence",         "idx", "Macro · UK"),
+    ("UK_CCI",      "GBR", "CCICP",  "PB", None,  None, "UK consumer confidence",         "idx", "Macro · UK"),
+    ("UK_CPI_YOY",   "GBR", "CP",     "GR", None,  "GY", "UK CPI YoY",                       "%",   "Macro · UK"),
+    ("UK_10Y",       "GBR", "IRLT",   "PA", None,  None, "UK 10Y government bond yield (gilt)", "%", "Rates · UK"),
+    ("UK_CALL",      "GBR", "IRSTCI", "PA", None,  None, "UK overnight rate (SONIA)",        "%",   "Rates · UK"),
 ]
 # quarterly key indicators: real GDP growth and the current account
 KEI_Q = [
@@ -72,9 +107,14 @@ KEI_Q = [
     # current account: Korea's 2026 surge (16-21% of GDP) was cross-checked against its goods trade surplus (WP21)
     ("KR_CA_GDP",   "KOR", "CA_GDP", "PT_B1GQ", None, None, "Korea current account, % of GDP", "%", "Macro · Korea"),
     ("IN_CA_GDP",   "IND", "CA_GDP", "PT_B1GQ", None, None, "India current account, % of GDP", "%", "Macro · India"),
+    ("DE_GDP_YOY",  "DEU", "B1GQ_Q", "GR",      "_T", "GY", "Germany real GDP YoY",              "%", "Macro · Germany"),
+    ("FR_GDP_YOY",  "FRA", "B1GQ_Q", "GR",      "_T", "GY", "France real GDP YoY",              "%", "Macro · France"),
+    ("IT_GDP_YOY",  "ITA", "B1GQ_Q", "GR",      "_T", "GY", "Italy real GDP YoY",              "%", "Macro · Italy"),
+    ("ES_GDP_YOY",  "ESP", "B1GQ_Q", "GR",      "_T", "GY", "Spain real GDP YoY",              "%", "Macro · Spain"),
+    ("UK_GDP_YOY",  "GBR", "B1GQ_Q", "GR",      "_T", "GY", "UK real GDP YoY",              "%", "Macro · UK"),
 ]
 CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
-             "AUS": "Australia", "IDN": "Indonesia"}
+             "AUS": "Australia", "IDN": "Indonesia", "FRA": "France", "ITA": "Italy", "ESP": "Spain", "GBR": "UK"}
 
 # OECD business confidence (manufacturing, amplitude adjusted, 100 = long-run average). The US series is built from
 # the ISM manufacturing survey, so BCI_USA is the free long-history stand-in for the ISM PMI (100 ~ ISM 50).
