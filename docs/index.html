@@ -60,6 +60,7 @@
     <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
     <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
     <button role="tab" data-tab="posvol" aria-selected="false"><span class="ic">⇅</span>Positioning &amp; Vol</button>
+    <button role="tab" data-tab="sp" aria-selected="false"><span class="ic">◇</span>Structured products</button>
     <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
     <div class="nav-group">Themes</div>
     <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
@@ -228,6 +229,11 @@
     <div class="grid" id="pvGrid"></div>
   </section>
 
+  <section id="tab-sp" class="tab-panel" hidden>
+    <div class="kpis" id="spKpis"></div>
+    <div class="grid" id="spGrid"></div>
+  </section>
+
   <section id="tab-valuation" class="tab-panel" hidden>
     <div class="grid" id="valGrid"></div>
   </section>
@@ -297,6 +303,8 @@
 </div><!-- /app -->
 
 <script src="vendor/echarts.min.js"></script>
+<script src="sp-model.js"></script>
 <script src="app.js"></script>
+<script src="sp.js"></script>
 </body>
 </html>

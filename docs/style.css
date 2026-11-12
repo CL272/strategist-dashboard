@@ -783,3 +783,14 @@ input.mp-w { width: 64px; text-align: right; }
 .sig-strip ul { list-style: none; margin: 0; padding: 0; }
 .sig-strip li { padding: 2px 0; }
 .sig-strip .qdot { margin-right: 7px; }
+
+/* Structured products: matrix table (text columns wrap) and the read list */
+.sp-matrix { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.sp-matrix th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.sp-matrix td { text-align: left; vertical-align: top; white-space: normal; padding: 5px 8px; border-bottom: 1px solid var(--border); line-height: 1.35; }
+.sp-matrix th:nth-child(1) { width: 19%; } .sp-matrix th:nth-child(2), .sp-matrix th:nth-child(3) { width: 21%; }
+.sp-matrix th:nth-child(4) { width: 17%; } .sp-matrix th:nth-child(5) { width: 15%; } .sp-matrix th:nth-child(6) { width: 7%; }
+.sp-matrix .qdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.sp-matrix button { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.sp-read { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.5; }
+.sp-read li { margin-bottom: 6px; }
