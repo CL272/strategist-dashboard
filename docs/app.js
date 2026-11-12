@@ -7174,6 +7174,7 @@ function fitTiles(tab) {
 function renderTab() {
   syncFilterUI();
   ({ overview: renderOverview, signals: renderSignals, scorecard: renderScorecardPage, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, my: () => renderCountry('my'), sg: () => renderCountry('sg'), cn: () => renderCountry('cn'), kr: () => renderCountry('kr'), tw: () => renderCountry('tw'), in: () => renderCountry('in'), de: () => renderEuroCountry('de'), fr: () => renderEuroCountry('fr'), it: () => renderEuroCountry('it'), es: () => renderEuroCountry('es'), uk: () => renderEuroCountry('uk'), us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, sp: () => renderSP(), stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  if (typeof EXTRA_RENDER !== 'undefined') (EXTRA_RENDER[state.tab] || []).forEach(k => cards[k] && cards[k].render());   // cards added by more.js
   fitTiles(state.tab);
 }
 const TAB_TITLES = { scorecard: 'Country scorecard', signals: 'Signals: ideas to investigate', overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', my: 'Malaysia', sg: 'Singapore', cn: 'China', kr: 'Korea', tw: 'Taiwan', in: 'India', de: 'Germany', fr: 'France', it: 'Italy', es: 'Spain', uk: 'United Kingdom', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',
@@ -7313,7 +7314,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

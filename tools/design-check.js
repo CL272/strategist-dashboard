@@ -15,6 +15,7 @@ const ALLOW = [
   ['weekly', '*', 'rows'],                       // the printable one-page brief
   ['health', '*', 'rows'],                       // a diagnostics page
   ['ideas', 'Watchlist', 'rows'],                // 20 rows: ten risers plus ten fallers
+  ['fixed', 'Income menu', 'rows'],              // grouped by asset class (cash, government, credit, equity income, options)
 ];
 const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*' || b === sub) && r === rule);
 
