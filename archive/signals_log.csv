@@ -1,5 +1,6 @@
 since,signal,target,dir,kind,tier,best_h,level,logged
 2024-02-29,cli_ind_up_nifty,NIFTY,1,ret,Not enough history,3,21982.8,2026-11-11
+2025-02-28,cli_fra_up_cac,CAC,1,ret,Context only,3,8111.63,2026-11-12
 2025-07-31,cli_kor_up_kospi,KOSPI,1,ret,Thin evidence,6,3245.44,2026-11-11
 2025-07-31,cli_kor_up_twse,TWSE,1,ret,Thin evidence,6,23542.5,2026-11-11
 2025-07-31,kr_lixsp_up_kospi,KOSPI,1,ret,Tested edge,12,3245.44,2026-11-12
@@ -14,8 +15,12 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2026-04-30,cu_au_up,UST10Y,1,chg,Context only,6,4.4,2026-11-11
 2026-04-30,r_klci_aaxj_dn,R_KLCI_AAXJ,-1,ret,Context only,6,3.981853014160123,2026-11-11
 2026-05-31,cli_idn_dn_jci,JCI,-1,ret,Context only,12,6127.38,2026-11-11
+2026-05-31,cli_ita_dn_ftsemib,FTSEMIB,-1,ret,Context only,3,50037.0,2026-11-12
 2026-05-31,gpu_rent_up,NVDA,1,ret,Not enough history,3,210.658,2026-11-11
+2026-06-30,cli_esp_dn_ibex,IBEX,-1,ret,Context only,3,19471.9,2026-11-12
 2026-06-30,fed_hikes_priced,SPX,-1,ret,Thin evidence,12,7499.36,2026-11-11
+2026-08-31,cli_deu_up_dax,DAX,1,ret,Context only,12,26258.1,2026-11-12
+2026-08-31,cli_gbr_up_ukx,UKX,1,ret,Context only,3,10824.3,2026-11-12
 2026-08-31,my_lead_klci,KLCI,1,ret,Context only,3,1725.88,2026-11-11
 2026-08-31,oil_up_myr,USDMYR,-1,ret,Context only,12,4.0233,2026-11-11
 2026-09-30,baa_tight,LH_SPX,-1,ret,Context only,12,7651.54,2026-11-11
