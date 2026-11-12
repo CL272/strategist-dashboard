@@ -794,3 +794,4 @@ input.mp-w { width: 64px; text-align: right; }
 .sp-matrix button { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
 .sp-read { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.5; }
 .sp-read li { margin-bottom: 6px; }
+.sp-screen td.nm { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }

@@ -222,8 +222,128 @@ function buildSP() {
   makeCard(g, { key: 'sp_putwrite', title: 'Selling puts vs owning the index', defaultRange: 'MAX', earliest: Date.UTC(2007, 0, 1), render: renderSpPutwrite });
   makeCard(g, { key: 'sp_inputs', title: 'The inputs behind the terms', wide: true, defaultRange: '10Y', seg: { key: 'spInput', select: true, label: 'Input', options: SP_INPUTS.map(x => [x[0], x[1]]) }, render: renderSpInputs });
   for (const k of ['sp_matrix', 'sp_read']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  buildSPUnder();
 }
 function renderSP() {
   if (!SPD) { loadSP().then(() => { if (state.tab === 'sp') renderTab(); }); }
   spTiles(); renderPanel('sp');
+}
+
+// ------------------------------------------------------------------ WP39. Underlyings: screener, coupon grid, term structure, baskets
+state.spView = 'index'; state.spSel = 'SPX'; state.spGrid = 'prem';
+const SP_VIEWS = [['index', 'Indices & ETFs'], ['us', 'US shares'], ['sg', 'Singapore'], ['my', 'Malaysia'], ['hk', 'Hong Kong & Asia']];
+const SP_TINY = id => { const x = spU(id); return x && x.kind === 'us' ? id : SP_SHORT(id).replace(/ (Manuf.*|Chinese Banking|Overseas Bank)$/, '').slice(0, 16); };
+const SP_SHORT = id => { const x = spU(id); return x ? (x.kind === 'index' ? x.name : (x.name || id).replace(/,? (Inc\.?|Incorporated|Corporation|Corp\.?|Holdings?|Berhad|Bhd\.?|Limited|Ltd\.?|plc|Co\.?|Group)\b.*$/i, '').slice(0, 26)) : id; };
+function spPutYield(x, m = 0.9, days = 91) {   // indicative put premium as % of strike, annualised; market bid where a liquid listed put exists
+  if (!x || !x.surf) return null;
+  if (m === 0.9 && days === 91 && x.put90 && x.put90.liquid && x.src === 'chain') return { y: x.put90.bid * 365 / x.put90.days, mkt: true };
+  const r = rateFor(spCcyRate(x.ccy), days / 365).r, v = spVol(x, days, m);
+  return { y: SPM.bs('P', 1, m, days / 365, r, (x.dy || 0) / 100, v) / m * 365 / days * 100, mkt: false };
+}
+function spRows(view) {
+  const U = SPD.under, out = [];
+  for (const [id, x] of Object.entries(U)) {
+    const k = x.kind === 'asia' ? 'hk' : x.kind; if (k !== view) continue;
+    const atm = x.surf ? x.surf[1][SPD._meta.mny.indexOf(1)] * 100 : null, v90 = x.surf ? x.surf[1][SPD._meta.mny.indexOf(0.9)] * 100 : null;
+    const py = spPutYield(x), bar = x.bar || {}, b12 = bar.touch && bar.touch[12] ? bar.touch[12][SPD._meta.barriers.indexOf(70)] : null;
+    const e6 = bar.end && bar.end[6] ? bar.end[6][0] : null, er = SPD.earnings && SPD.earnings[id];
+    const erIn = er && (Date.parse(er.d) - Date.now()) / DAY <= 91 ? er : null;
+    out.push({ id, x, atm, est: x.src !== 'chain', pct: x.iv_pct ?? x.rv_pct, pctRealised: x.iv_pct == null, ivrv: atm && x.rv3m ? atm - x.rv3m : null, skew: atm && v90 ? v90 - atm : null,
+      py, dy: x.dy, up: x.above200, hi: x.from_hi, e6, b12, er: erIn, score: py && b12 != null ? py.y / Math.max(b12, 2) : null });
+  }
+  return out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.est - b.est));
+}
+function renderSpScreen(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const chips = el('div', { class: 'presets view-chips' }, ...SP_VIEWS.map(([k, l]) => el('button', { type: 'button', text: l, class: state.spView === k ? 'on' : '', onclick: () => { state.spView = k; capOpen.delete('sp_screen'); c.render(); } })));
+  const rows = spRows(state.spView), heads = ['Underlying', '3M vol', 'Pct', 'I − R', 'Skew', '90% put/yr', 'Div', 'Trend', 'Off high', '6M <80%', '12M ≤70%', 'Earn.', 'Score'];
+  const tb = el('tbody'), csv = [heads];
+  const cell = (t, cls = '', title = '') => el('td', { class: 'num ' + cls, text: t, title });
+  for (const r of rows) {
+    const tr = el('tr', { class: 'row' + (r.id === state.spSel ? ' sel' : ''), style: 'cursor:pointer', title: `Show ${SP_SHORT(r.id)} in the coupon grid`, onclick: () => { state.spSel = r.id; ['sp_screen', 'sp_grid', 'sp_term'].forEach(k => cards[k].render()); } },
+      el('td', { class: 'l nm', text: SP_SHORT(r.id) + (r.x.proxy && r.x.kind === 'index' && !SP_SHORT(r.id).includes(r.x.proxy) ? ` (${r.x.proxy})` : ''), title: r.id + (r.x.proxy ? ` · options on ${r.x.proxy}` : '') }),
+      cell(r.atm ? fmtNum(r.atm, 0) + '%' + (r.est ? ' est.' : '') : '–', r.est ? 'muted' : ''), cell(r.pct != null ? ordF(r.pct) + (r.pctRealised ? '*' : '') : '–', '', r.pctRealised ? 'percentile of realised volatility (implied history builds from Nov 2026)' : 'percentile of 3-month implied volatility'),
+      cell(r.ivrv != null ? sign(r.ivrv) + fmtNum(Math.abs(r.ivrv), 0) : '–'), cell(r.skew != null ? sign(r.skew) + fmtNum(Math.abs(r.skew), 1) : '–'),
+      cell(r.py ? pc1(r.py.y) + (r.py.mkt ? '' : ' m') : '–', r.py && r.py.mkt ? '' : 'muted', r.py ? (r.py.mkt ? 'listed put, bid, about 3 months' : 'model price from the surface') : ''),
+      cell(r.dy ? pc1(r.dy) : '–'), cell(r.up == null ? '–' : r.up ? '▲' : '▼', r.up ? 'up' : 'dn'), cell(r.hi != null ? pctF1(r.hi) : '–'),
+      cell(r.e6 != null ? fmtNum(r.e6, 0) + '%' : '–'), cell(r.b12 != null ? fmtNum(r.b12, 0) + '%' : '–'),
+      cell(r.er ? dShort(Date.parse(r.er.d)) : '', r.er ? 'dn' : '', r.er ? `earnings ${r.er.d} ${r.er.when}${r.er.move ? '; options imply ±' + fmtNum(r.er.move, 1) + '%' : ''}` : ''),
+      cell(r.score != null ? fmtNum(r.score, 1) : '–', 'strong'));
+    tb.append(tr);
+    csv.push([r.id, r.atm, r.pct, r.ivrv, r.skew, r.py && r.py.y, r.dy, r.up, r.hi, r.e6, r.b12, r.er ? r.er.d : '', r.score]);
+  }
+  b.append(chips, el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table sp-screen' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  capRows(tb, 'sp_screen', 14);
+  c.csv = csv;
+  setNote(c, `Ranked by premium per unit of risk (Score): the 3-month put 10% below spot as a yield a year (90% put/yr), divided by how often the price has touched 70% of a start level within 12 months (12M ≤70%). Pct = volatility percentile of 10 years; I − R = implied minus realised vol, points; Skew = 90%-strike vol minus at-the-money; 6M <80% = share of 6-month periods ending below 80%; Earn. = US earnings date inside 3 months (history since ${state.spView === 'index' ? '2006' : 'listing or 2006'}). est. = no listed options: implied vol estimated as realised × ${fmtNum(SPD._meta.ratio || 1.2, 2)} (the median ratio of names that have options), with the index skew shape. m = model price. * = realised-volatility percentile until a year of implied history has built up. Weekly closes understate daily barrier touches slightly. Click a row for its coupon grid. ` + SP_LBL);
+  setSource(c, SPX_SRC_ALL + '; Nasdaq (earnings dates)');
+}
+function renderSpGrid(c) {
+  const b = htmlBody(c), x = spU(state.spSel); if (!x) { b.append(el('div', { class: 'empty', text: 'Pick a row in the screener.' })); return; }
+  c.titleEl.textContent = `Coupon grid: ${SP_SHORT(state.spSel)}`;
+  const lv = [100, 90, 80, 75, 70, 60], tn = [3, 6, 12], M = SPD._meta, prem = state.spGrid === 'prem';
+  const tb = el('tbody');
+  for (const l of lv) {
+    const tds = tn.map(t => {
+      if (prem) { const p = spPutYield(x, l / 100, Math.round(t * 30.4)); return p ? pc1(p.y) : '–'; }
+      const bar = x.bar || {}; if (l === 100) { const e = bar.end && bar.end[t]; return e ? fmtNum(e[2], 0) + '% end below' : '–'; }
+      const i = M.barriers.indexOf(l), tt = bar.touch && bar.touch[t]; return tt && i >= 0 ? fmtNum(tt[i], 0) + '%' : '–';
+    });
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: `${l}% of spot` }), ...tds.map(t => el('td', { class: 'num', text: t }))));
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, el('th', { class: 'l', text: 'Strike / barrier' }), ...tn.map(t => el('th', { text: t + ' months' })))), tb)));
+  const rr = rateFor(spCcyRate(x.ccy), 0.5);
+  setNote(c, prem ? `Put premium at each strike as a yield a year: roughly what an ELN struck there pays above cash before the issuer's margin. ${x.src === 'chain' ? 'From listed option prices' : 'Estimated from realised volatility (no listed options)'}; rates: ${rr.src}; dividend yield ${pc1(x.dy || 0)}. Switch to Breach history to see how often the price got there.`
+    : `How often, since ${(x.bar || {}).from || '–'}, the weekly close fell below each level at some point within the tenor (top row: share of periods ending below the start). Read it against the premium: a high yield with a high breach rate is not cheap.`);
+  setSource(c, prem ? 'Cboe option prices; Yahoo Finance; model' : 'Yahoo Finance weekly closes; calculated');
+}
+function renderSpTerm(c) {
+  const b = htmlBody(c), x = spU(state.spSel), ix = spU(x && x.kind === 'index' ? 'SPX' : (x && ['my', 'sg', 'hk', 'asia'].includes(x.kind) ? ({ my: 'KLCI', sg: 'STI', hk: 'HSI', asia: 'HSI' })[x.kind] : 'SPX'));
+  if (!x || !x.surf) { b.append(el('div', { class: 'empty', text: 'No volatility data.' })); return; }
+  const M = SPD._meta, i1 = M.mny.indexOf(1), i9 = M.mny.indexOf(0.9), i8 = M.mny.indexOf(0.8), lab = ['1 month', '3 months', '6 months', '1 year'];
+  const tb = el('tbody');
+  M.tenors.forEach((t, ti) => tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: lab[ti] }), el('td', { class: 'num', text: pc1(x.surf[ti][i1] * 100) }),
+    el('td', { class: 'num', text: pc1(x.surf[ti][i9] * 100) }), el('td', { class: 'num', text: pc1(x.surf[ti][i8] * 100) }),
+    el('td', { class: 'num', text: '+' + fmtNum((x.surf[ti][i8] - x.surf[ti][i1]) * 100, 1) }), el('td', { class: 'num muted', text: ix && ix.surf ? pc1(ix.surf[ti][i1] * 100) : '–' }))));
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...['Tenor', 'ATM', '90%', '80%', 'Skew', ix ? 'Index ATM' : ''].map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  setNote(c, `Implied volatility by tenor and strike for ${SP_SHORT(state.spSel)}${x.src === 'chain' ? '' : ' (estimated: no listed options)'}. Steeper skew = protection below the market costs more, so barrier notes pay more for deep barriers. Realised volatility over 3 months: ${pc1(x.rv3m)}; over a year: ${pc1(x.rv1y)}.`);
+  setSource(c, x.src === 'chain' ? `Cboe delayed option prices (${x.asof || ''})` : 'Estimated from Yahoo Finance prices');
+}
+function renderSpBaskets(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.baskets) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const heads = ['Basket', 'Members', 'Corr.', 'Worst ≤60%', 'Worst ≤70%', 'Best single ≤70%', '× more', 'Weakest'];
+  const tb = el('tbody'), csv = [heads];
+  for (const k of SPD.baskets) {
+    const ratio = k.best70 ? k.t70 / k.best70 : null;
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: k.name }), el('td', { class: 'l small', style: 'text-align:left', text: k.mem.map(SP_TINY).join(', '), title: k.mem.map(SP_SHORT).join(', ') }),
+      el('td', { class: 'num', text: fmtNum(k.corr, 2) }), el('td', { class: 'num', text: fmtNum(k.t60, 0) + '%' }), el('td', { class: 'num', text: fmtNum(k.t70, 0) + '%' }),
+      el('td', { class: 'num muted', text: fmtNum(k.best70, 0) + '%' }), el('td', { class: 'num strong', text: ratio ? fmtNum(ratio, 1) + '×' : '–' }), el('td', { class: 'l small', style: 'text-align:left', text: SP_TINY(k.weak) })));
+    csv.push([k.name, k.mem.join(' '), k.corr, k.t60, k.t70, k.best70, ratio, k.weak]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  setNote(c, 'Lower correlation raises a worst-of coupon because it raises the odds that one member falls: these are the odds. Corr. = average pairwise correlation of weekly returns over a year. Share of past 12-month periods (weekly closes, common history) in which the weakest member touched 60% or 70% of its start, against the safest single member alone. Weakest now = furthest from its 52-week high.');
+  setSource(c, 'Yahoo Finance weekly closes; calculated');
+}
+// region pages: one line in the "Signals for this market" strip
+const SP_PAGE_IDX = { us: 'SPX', europe: 'SX5E', japan: 'NKY', australia: 'AS51', my: 'KLCI', sg: 'STI', cn: 'HSI', kr: 'KOSPI', tw: 'TWSE', in: 'NIFTY' };
+function spStripLines() {
+  if (!SPD || !SPD.under) return;
+  for (const [t, id] of Object.entries(SP_PAGE_IDX)) {
+    const ul = document.querySelector(`#sig_${t} ul`), x = spU(id); if (!ul || !x || ul.querySelector('.sp-line')) continue;
+    const py = spPutYield(x), pct = x.iv_pct ?? x.rv_pct;
+    ul.append(el('li', { class: 'sp-line' }, el('span', { class: 'qdot', style: `background:${tok('--muted')}` }),
+      el('a', { href: '#', text: `Structures on ${x.name}`, onclick: e => { e.preventDefault(); state.spSel = id; state.spView = 'index'; goSub('sp', 'Underlyings'); } }),
+      el('span', { class: 'muted', text: ` · 3-month vol ${x.surf ? fmtNum(x.surf[1][SPD._meta.mny.indexOf(1)] * 100, 0) + '%' : '–'}${x.src === 'chain' ? '' : ' (est.)'}, ${ordF(pct)} pct; a 90% put pays about ${py ? pc1(py.y) : '–'} a year` })));
+  }
+}
+SUBTABS.sp.push(['Underlyings', ['sp_screen', 'sp_grid', 'sp_term', 'sp_baskets']]);
+TILE_SETS.sp.Underlyings = ['Single-stock volatility', 'Index volatility', 'Implied correlation', 'Skew', 'USD 2Y yield'];
+function buildSPUnder() {
+  const g = $('#spGrid');
+  makeCard(g, { key: 'sp_screen', title: 'Underlyings: premium per unit of risk', wide: true, range: false, render: renderSpScreen });
+  makeCard(g, { key: 'sp_grid', title: 'Coupon grid', range: false, seg: { key: 'spGrid', options: [['prem', 'Premium'], ['breach', 'Breach history']] }, render: renderSpGrid });
+  makeCard(g, { key: 'sp_term', title: 'Volatility by tenor and strike', range: false, render: renderSpTerm });
+  makeCard(g, { key: 'sp_baskets', title: 'Worst-of baskets: the odds', wide: true, range: false, render: renderSpBaskets });
+  for (const k of ['sp_screen', 'sp_grid', 'sp_term', 'sp_baskets']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }

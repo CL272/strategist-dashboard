@@ -7316,7 +7316,7 @@ async function init() {
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);
-  setTimeout(() => loadSP().then(() => { if (['sp', 'calendar', 'weekly'].includes(state.tab)) renderTab(); }), 400);   // structured products data (WP37)   // ~2 MB of ticker history: loaded after the first page is drawn
+  setTimeout(() => loadSP().then(() => { spStripLines(); if (['sp', 'calendar', 'weekly'].includes(state.tab)) renderTab(); }), 400);   // structured products data (WP37)   // ~2 MB of ticker history: loaded after the first page is drawn
   setTab(['overview', 'signals', 'scorecard', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'my', 'sg', 'cn', 'kr', 'tw', 'in', 'de', 'fr', 'it', 'es', 'uk', 'us', 'europe', 'japan', 'australia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'sp', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();
