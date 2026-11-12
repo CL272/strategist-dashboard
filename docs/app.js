@@ -1095,6 +1095,7 @@ function whatChanged(end = state.latest) {
     if (h && h.t > wk && h.t <= end) add(1, `Idea “${x.title}” hit its ${h.what} on ${dShort(h.t)}.`, 'ideas', null); }
   // stale data
   if (HEALTH && HEALTH.n_bad) add(4, `${HEALTH.n_bad} data series stale or missing (Data health page).`, 'health', null);
+  if (typeof spNoteAlerts === 'function') for (const [p, t] of spNoteAlerts()) add(p, t, 'sp', 'My notes');   // the owner's structured notes (browser only)
   return out.sort((a, b) => a.pri - b.pri);
 }
 function renderChanges(c) {
@@ -5432,7 +5433,7 @@ function buildIdeas() {
   const panel = $('#tab-ideas');
   const newBtn = el('button', { type: 'button', class: 'primary', text: '＋ New idea', onclick: () => openIdeaForm() });
   const exp = el('button', { type: 'button', class: 'ghost', text: 'Export', title: 'Download all ideas as a file (back-up, or to move to another laptop)', onclick: () => {
-    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 2, exported: new Date().toISOString(), ideas: IDEAS, views: hvLoad(), model: mpLoad() }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 3, exported: new Date().toISOString(), ideas: IDEAS, views: hvLoad(), model: mpLoad(), notes: typeof nbLoad === 'function' ? nbLoad() : [] }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); download(url, `idea-log_${iso(Date.now())}.json`); setTimeout(() => URL.revokeObjectURL(url), 2000); } });
   const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
   file.addEventListener('change', async () => {
@@ -5441,6 +5442,7 @@ function buildIdeas() {
       const j = JSON.parse(await f.text()), list = Array.isArray(j) ? j : j.ideas;
       if (!Array.isArray(j) && j.views && Array.isArray(j.views.hist) && (!hvLoad().hist.length || window.confirm('Replace your house views with the ones in this file?'))) hvSave(j.views);
       if (!Array.isArray(j) && j.model && Array.isArray(j.model.rows) && window.confirm('Replace your model portfolio with the one in this file?')) mpSave(j.model);
+      if (!Array.isArray(j) && Array.isArray(j.notes) && j.notes.length && typeof nbSave === 'function' && (!nbLoad().length || window.confirm('Replace your structured notes with the ones in this file?'))) nbSave(j.notes);
       if (!Array.isArray(list)) throw new Error('no ideas in file');
       const have = new Set(IDEAS.map(x => x.id)); let n = 0;
       for (const x of list) if (x && x.id && x.title && !have.has(x.id)) { IDEAS.push(x); n++; }
@@ -5836,7 +5838,7 @@ function wkTakeaways(end) {
   const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3);
   state.to = keep;
   if (mv.length) out.push(`Unusual moves (≥2σ vs 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
-  { const wc = whatChanged(end).filter(x => x.pri <= 2 && x.tab !== 'markets' && x.tab !== 'cbwatch').slice(0, 3); if (wc.length) out.push('What changed: ' + wc.map(x => x.text.replace(/\.$/, '')).join('; ') + '.'); }
+  { const wc = whatChanged(end).filter(x => x.pri <= 2 && x.tab !== 'markets' && x.tab !== 'cbwatch' && x.tab !== 'sp').slice(0, 3); if (wc.length) out.push('What changed: ' + wc.map(x => x.text.replace(/\.$/, '')).join('; ') + '.'); }
   if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); let t = `Macro regime: ${QUADS[q.v].name} (${monthLab(q.t)} data)`;
     if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${Math.round(a.v)}th percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
     out.push(t + '.'); }

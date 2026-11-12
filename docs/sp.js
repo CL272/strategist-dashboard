@@ -224,7 +224,7 @@ function buildSP() {
   makeCard(g, { key: 'sp_putwrite', title: 'Selling puts vs owning the index', defaultRange: 'MAX', earliest: Date.UTC(2007, 0, 1), render: renderSpPutwrite });
   makeCard(g, { key: 'sp_inputs', title: 'The inputs behind the terms', wide: true, defaultRange: '10Y', seg: { key: 'spInput', select: true, label: 'Input', options: SP_INPUTS.map(x => [x[0], x[1]]) }, render: renderSpInputs });
   for (const k of ['sp_matrix', 'sp_read']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  buildSPUnder(); buildSPPricer(); buildSPDci(); buildSPProt();
+  buildSPUnder(); buildSPPricer(); buildSPDci(); buildSPProt(); buildSPNotes();
 }
 function renderSP() {
   if (!SPD) { loadSP().then(() => { if (state.tab === 'sp') renderTab(); }); }
@@ -711,4 +711,120 @@ function buildSPProt() {
   makeCard(g, { key: 'ra_curve', title: 'US curve: steepener and callables', wide: true, defaultRange: '10Y', render: renderRaCurve });
   const r = cards.pp_budget.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
   seeAlso('sa_sp_rates', g, [['Fixed Income → Curves', 'fixed', 'Curves'], ['Central banks', 'cbwatch', 'Policy monitor'], ['Income menu', 'fixed', 'Income menu']]);
+}
+
+// ------------------------------------------------------------------ WP43. My notes: the owner's live notes, in this browser only
+const NOTES_KEY = 'sd-notes-v1';
+function nbLoad() { try { const j = JSON.parse(localStorage.getItem(NOTES_KEY) || '[]'); return Array.isArray(j) ? j : []; } catch (e) { return []; } }
+function nbSave(L) { try { localStorage.setItem(NOTES_KEY, JSON.stringify(L)); } catch (e) {} }
+function nbSeries(id) {   // daily where the dashboard has it (indices, ticker list), weekly history otherwise
+  if (has(id)) return S[id];
+  const t = typeof tickId === 'function' ? tickId(id) : null; if (t && has(t)) return S[t];
+  return SPH && SPH[id] ? SPH[id] : null;
+}
+function nbObsDates(n) {   // observation dates from the trade date (monthly or quarterly) to maturity
+  const out = [], t0 = Date.parse(n.trade), t1 = Date.parse(n.maturity), step = +n.freq || 1;
+  for (let k = step; ; k += step) { const t = addMonths(t0, k); if (t > t1 + 3 * DAY) break; out.push(t); }
+  if (!out.length || Math.abs(out[out.length - 1] - t1) > 5 * DAY) out.push(t1);
+  return out;
+}
+function nbStatus(n) {
+  const today = state.latest, lv = n.ids.map((id, i) => { const s = nbSeries(id), a = s && asOf(s, today); const init = +n.init[i] || (s && asOf(s, Date.parse(n.trade)) ? asOf(s, Date.parse(n.trade)).v : null);
+    let lo = Infinity; if (s && init) for (let j = idxLE(s, Date.parse(n.trade)) + 1; j < s.t.length && s.t[j] <= today; j++) lo = Math.min(lo, s.v[j]);
+    return a && init ? { id, now: a.v / init * 100, low: lo < Infinity ? lo / init * 100 : a.v / init * 100, init } : null; });
+  if (lv.some(x => !x)) return { err: 'No price for one of the underlyings.' };
+  const worst = lv.reduce((a, b) => (b.now < a.now ? b : a)), lowest = Math.min(...lv.map(x => x.low));
+  const ki = +n.ki, ac = +n.ac, cb = +n.cb, strike = +n.strike || 100;
+  const knocked = n.kiType === 'daily' ? lowest < ki : false;
+  const next = nbObsDates(n).find(t => t > today), daysTo = next ? (next - today) / DAY : null, matured = Date.parse(n.maturity) <= today;
+  let st = 'On track';
+  if (matured) st = 'Matured';
+  else if (knocked) st = 'Knocked in';
+  else if (worst.now < ki) st = 'Below knock-in';
+  else if (worst.now < ki * 1.1) st = 'Near knock-in';
+  else if (ac && worst.now >= ac && daysTo != null && daysTo <= 30) st = 'Likely to call';
+  else if (cb && worst.now < cb) st = 'Coupon at risk';
+  const hitNow = knocked || worst.now < ki, value = hitNow && worst.now < strike ? worst.now / strike * 100 : 100;
+  return { lv, worst, toKi: worst.now - ki, toStrike: worst.now - strike, toAc: ac ? worst.now - ac : null, next, st, value, knocked };
+}
+const NB_TONE = { 'Knocked in': '--critical', 'Below knock-in': '--critical', 'Near knock-in': '--serious', 'Coupon at risk': '--warning', 'Likely to call': '--good', 'On track': '--muted', Matured: '--muted' };
+state.nbSel = null; state.nbEdit = null;
+function renderNbTable(c) {
+  const b = htmlBody(c), L = nbLoad();
+  if (!L.length) { b.append(el('div', { class: 'empty', text: 'No notes yet. Add one with the form: it stays in this browser only.' })); return; }
+  if (!SPH) { loadSPH().then(() => c.render()); b.append(el('div', { class: 'empty', text: 'Loading prices…' })); return; }
+  const heads = ['Note', 'Worst underlying', 'Level', 'To knock-in', 'To strike', 'To autocall', 'Next date', 'Status', 'Worth today', ''];
+  const rows = L.map(n => ({ n, s: nbStatus(n) })).sort((a, b) => (a.s.toKi ?? 999) - (b.s.toKi ?? 999)), tb = el('tbody'), csv = [heads.slice(0, 9)];
+  const pt = v => v == null ? '–' : sign(v) + fmtNum(Math.abs(v), 1) + ' pts';
+  for (const { n, s } of rows) {
+    if (s.err) { tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: n.label }), el('td', { colspan: 9, class: 'l muted', text: s.err }))); continue; }
+    tb.append(el('tr', { class: 'row' + (state.nbSel === n.id ? ' sel' : ''), style: 'cursor:pointer', onclick: () => { state.nbSel = n.id; ['nb_table', 'nb_chart'].forEach(k => cards[k].render()); } },
+      el('td', { class: 'l', text: n.label, title: `${(SP_KINDS.find(k => k[0] === n.kind) || [, n.kind])[1]} · ${n.ids.join(', ')} · ${n.trade} to ${n.maturity}` }), el('td', { class: 'l', text: SP_TINY(s.worst.id) }),
+      el('td', { class: 'num', text: fmtNum(s.worst.now, 1) + '%' }), el('td', { class: 'num ' + (s.toKi < 10 ? 'dn' : ''), text: pt(s.toKi) }), el('td', { class: 'num', text: pt(s.toStrike) }),
+      el('td', { class: 'num', text: pt(s.toAc) }), el('td', { class: 'num', text: s.next ? dShort(s.next) : '–' }),
+      el('td', { class: 'l' }, el('span', { class: 'qdot', style: `background:${tok(NB_TONE[s.st])}` }), s.st), el('td', { class: 'num', text: fmtNum(s.value, 0) + '%' }),
+      el('td', {}, el('button', { type: 'button', class: 'ghost', text: 'Edit', onclick: e => { e.stopPropagation(); state.nbEdit = n.id; cards.nb_form.render(); } }))));
+    csv.push([n.label, s.worst.id, s.worst.now, s.toKi, s.toStrike, s.toAc, s.next ? iso(s.next) : '', s.st, s.value]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 || i === 7 ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  setNote(c, 'Sorted by distance to knock-in (closest first). Levels are against the initial fixing; "Worth today" = the principal if the note matured now (coupons not included). Daily knock-ins use daily closes where the dashboard has them, weekly otherwise. Stored in this browser only; include them in the Idea log export to move them.');
+  setSource(c, 'Yahoo Finance prices; your note terms');
+}
+function renderNbChart(c) {
+  const L = nbLoad(), n = L.find(x => x.id === state.nbSel) || L[0]; if (!n) return setEmpty(c, 'Add a note to see its chart.');
+  if (!SPH) { loadSPH().then(() => c.render()); return setEmpty(c, 'Loading prices…'); }
+  const t0 = Date.parse(n.trade), list = n.ids.map((id, i) => { const s = nbSeries(id); const init = +n.init[i] || (s && asOf(s, t0) ? asOf(s, t0).v : null); return s && init ? { name: SP_SHORT(id), data: pts(s, t0, state.latest).map(([t, v]) => [t, v / init * 100]) } : null; }).filter(Boolean);
+  if (!list.length) return setEmpty(c, 'No prices for these underlyings.');
+  c.titleEl.textContent = `${n.label}: against its barriers`;
+  const hl = [{ y: +n.ki, label: `knock-in ${n.ki}%` }]; if (+n.ac) hl.push({ y: +n.ac, label: `autocall ${n.ac}%` }); if (+n.cb && +n.cb !== +n.ki) hl.push({ y: +n.cb, label: `coupon barrier ${n.cb}%` });
+  const keep = [state.from, state.to]; state.from = t0; state.to = state.latest;
+  drawLines(c, list, { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', hlines: hl, endLabels: list.length < 4 });
+  [state.from, state.to] = keep;
+  setNote(c, `Each underlying as % of its initial fixing on ${n.trade}. The note's outcome follows the lowest line.`);
+  setSource(c, 'Yahoo Finance');
+}
+function renderNbForm(c) {
+  const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const L = nbLoad(), ed = L.find(x => x.id === state.nbEdit);
+  const n = ed ? { ...ed, ids: [...ed.ids, '', '', ''].slice(0, 3), init: [...(ed.init || []), '', '', ''].slice(0, 3) } : { id: '', label: '', kind: 'fcn', ids: ['', '', ''], init: ['', '', ''], trade: iso(state.latest), maturity: iso(addMonths(state.latest, 12)), strike: 100, ki: 70, kiType: 'maturity', ac: 100, freq: 1, coupon: 8, cb: 70 };
+  c.titleEl.textContent = ed ? 'Edit note' : 'Add a note';
+  const U = spUnderOpts(), inp = (k, type = 'text', attrs = {}) => { const i = el('input', { type, value: n[k] ?? '', class: 'sp-num', ...attrs }); i.addEventListener('change', () => { n[k] = type === 'number' ? +i.value : i.value; }); return i; };
+  const sel = (k, opts) => { const s = el('select', { class: 'mini-select' }); for (const [v, l] of opts) s.append(el('option', { value: v, text: l })); s.value = String(n[k]); s.addEventListener('change', () => { n[k] = s.value; }); return s; };
+  const und = [0, 1, 2].map(i => { const s = el('select', { class: 'mini-select' }); for (const [v, l] of [['', '–'], ...U]) s.append(el('option', { value: v, text: l })); s.value = n.ids[i] || ''; s.addEventListener('change', () => { n.ids[i] = s.value; }); return s; });
+  const ini = [0, 1, 2].map(i => { const x = el('input', { type: 'number', class: 'sp-num', value: n.init[i] || '', placeholder: 'auto', step: 'any' }); x.addEventListener('change', () => { n.init[i] = x.value; }); return x; });
+  b.append(el('p', { class: 'small', style: `color:${tok('--critical')}`, text: 'This site is public code; notes stay on this device only. Do not enter client names.' }),
+    el('div', { class: 'sp-form' }, spField('Label (no client names)', inp('label')), spField('Structure', sel('kind', SP_KINDS.filter(k => !['pp', 'shark', 'acc'].includes(k[0])))),
+      spField('Underlyings (worst of)', el('div', { class: 'sp-und' }, ...und)), spField('Initial levels (blank = close on trade date)', el('div', { class: 'sp-und' }, ...ini)),
+      spField('Trade date', inp('trade', 'date')), spField('Maturity', inp('maturity', 'date')), spField('Strike, %', inp('strike', 'number')), spField('Knock-in, %', inp('ki', 'number')),
+      spField('Knock-in watched', sel('kiType', [['maturity', 'at maturity only'], ['daily', 'every day']])), spField('Autocall level, % (0 = none)', inp('ac', 'number')),
+      spField('Observation', sel('freq', [[1, 'monthly'], [3, 'quarterly']])), spField('Coupon, % a year', inp('coupon', 'number')), spField('Coupon barrier, % (0 = always paid)', inp('cb', 'number'))),
+    el('div', { class: 'sp-presets' },
+      el('button', { type: 'button', class: 'primary', text: ed ? 'Save changes' : 'Add note', onclick: () => {
+        n.ids = n.ids.filter(Boolean); if (!n.label || !n.ids.length) { alert('Give the note a label and at least one underlying.'); return; }
+        n.init = n.init.slice(0, n.ids.length).map(v => v === '' || v == null ? '' : +v);
+        const all = nbLoad(); if (ed) { const i = all.findIndex(x => x.id === ed.id); all[i] = n; } else { n.id = 'n' + Date.now().toString(36); all.push(n); }
+        nbSave(all); state.nbEdit = null; state.nbSel = n.id; ['nb_table', 'nb_chart', 'nb_form'].forEach(k => cards[k].render()); } }),
+      ed ? el('button', { type: 'button', class: 'ghost', text: 'Delete', onclick: () => { if (!window.confirm(`Delete "${ed.label}"?`)) return; nbSave(nbLoad().filter(x => x.id !== ed.id)); state.nbEdit = null; ['nb_table', 'nb_chart', 'nb_form'].forEach(k => cards[k].render()); } }) : '',
+      ed ? el('button', { type: 'button', class: 'ghost', text: 'Cancel', onclick: () => { state.nbEdit = null; c.render(); } }) : ''));
+  setNote(c, 'Enter the note’s terms from its term sheet. Levels are tracked against the initial fixing; daily knock-ins use daily closes where available.');
+}
+// "What changed" lines for the Strategist View (never in the printed brief)
+function spNoteAlerts() {
+  const out = []; if (!SPH && nbLoad().length) { loadSPH(); return out; }
+  for (const n of nbLoad()) { const s = nbStatus(n); if (s.err || s.st === 'Matured') continue;
+    if (s.knocked) out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is through the knock-in (${fmtNum(s.worst.now, 1)}% of initial).`]);
+    else if (s.st === 'Below knock-in') out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is below the knock-in at ${n.ki}% (${fmtNum(s.worst.now, 1)}% of initial; checked at maturity, ${dShort(Date.parse(n.maturity))}).`]);
+    else if (s.toKi < 10) out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is within ${fmtNum(s.toKi, 1)} points of the knock-in at ${n.ki}%.`]);
+    else if (s.st === 'Likely to call') out.push([3, `Note “${n.label}” is above its autocall level ahead of ${dShort(s.next)}: likely to be called.`]); }
+  return out;
+}
+SUBTABS.sp.push(['My notes', ['nb_table', 'nb_chart', 'nb_form']]);
+TILE_SETS.sp['My notes'] = ['Index volatility', 'Single-stock volatility', 'Implied correlation', 'Skew', 'USD 2Y yield'];
+function buildSPNotes() {
+  const g = $('#spGrid');
+  makeCard(g, { key: 'nb_table', title: 'My notes', wide: true, range: false, render: renderNbTable });
+  makeCard(g, { key: 'nb_chart', title: 'Note against its barriers', range: false, render: renderNbChart });
+  makeCard(g, { key: 'nb_form', title: 'Add a note', range: false, render: renderNbForm });
+  for (const k of ['nb_table', 'nb_form']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
