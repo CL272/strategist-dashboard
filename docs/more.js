@@ -203,10 +203,84 @@ function buildModelStress(g) {
   const r = cards.idea_stress.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; r.hidden = true;
 }
 
+// ------------------------------------------------------------------ WP48. Credit cycle (Stress & Signposts → Credit cycle)
+function renderCcStd(c) {
+  if (!has('SLOOS_CI', 'HY_OAS')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Banks tightening business-lending standards, net %', data: pts(S.SLOOS_CI, state.from, state.to) }, { name: 'US high-yield spread, %', data: pts(S.HY_OAS, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1) + '%', fmtB: v => fmtNum(v, 2) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 1) + '%', zeroA: true });
+  const a = asOf(S.SLOOS_CI, state.to), cc = has('SLOOS_CC') ? asOf(S.SLOOS_CC, state.to) : null;
+  setNote(c, `${a ? fmtNum(a.v, 1) + '% of banks net are tightening business-lending standards' : ''}${cc ? ` (credit cards: ${fmtNum(cc.v, 1)}%)` : ''}, ${monthLab(a.t)}. Tighter standards have tended to come before wider credit spreads and defaults; above 20% has preceded every recession since 1990. Quarterly survey (Fed SLOOS).`);
+  setSource(c, 'Federal Reserve SLOOS via FRED (DRTSCILM, DRTSCLCC); ICE BofA via FRED');
+}
+function renderCcDelinq(c) {
+  const ids = ['DELINQ_ALL', 'DELINQ_BUS', 'DELINQ_CC'].filter(id => has(id)); if (!ids.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, ids.map(id => ({ name: S[id].label, data: pts(S[id], state.from, state.to) })), { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 0) + '%', areas: recessionAreas(state.from, state.to), endLabels: false });
+  const a = asOf(S[ids[0]], state.to), b = asOf(S[ids[0]], addMonths(a.t, -12));
+  setNote(c, `All bank loans ${fmtNum(a.v, 2)}% delinquent (${monthLab(a.t)}), ${b ? (a.v > b.v ? 'up' : 'down') + ' from ' + fmtNum(b.v, 2) + '% a year earlier' : ''}. Delinquencies rise late in the cycle; credit cards turn first.`);
+  setSource(c, 'Federal Reserve via FRED (DRALACBS, DRBLACBS, DRCCLACBS), quarterly');
+}
+function renderCcCcc(c) {
+  if (!has('CCC_OAS', 'BB_OAS')) return setEmpty(c, 'Waiting for data.');
+  const s2 = combine(S.CCC_OAS, S.BB_OAS, (a, b) => (a - b) * 100, { label: 'CCC − BB spread' }, 5 * DAY), q = pctRank(s2, state.latest, 10);
+  drawLines(c, [{ name: 'CCC & lower minus BB spread, bp', data: pts(s2, state.from, state.to) }], { fmt: v => fmtNum(v, 0) + 'bp', axisFmt: v => fmtNum(v, 0), areas: recessionAreas(state.from, state.to) });
+  setNote(c, `${q ? fmtNum(q.v, 0) + 'bp, ' + ordF(q.p) + ' percentile of 10 years' : ''}. The gap between the weakest and the best junk bonds: it widens first when lenders start to worry about defaults.`);
+  setSource(c, 'ICE BofA via FRED (archived by this dashboard); calculated');
+}
+function renderCcCredit(c) {
+  const L = []; if (has('BANK_CREDIT')) L.push({ name: 'Bank credit, % YoY', data: pts(yoyOf('BANK_CREDIT', 52), state.from, state.to) });
+  if (has('CI_LOANS')) L.push({ name: 'Business (C&I) loans, % YoY', data: pts(yoyOf('CI_LOANS', 12), state.from, state.to) });
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => pctF1(v), axisFmt: v => fmtNum(v, 0) + '%', zero: true, areas: recessionAreas(state.from, state.to), endLabels: false });
+  setNote(c, 'Growth of credit from US commercial banks. Lending usually slows before and through downturns as standards tighten.');
+  setSource(c, 'Federal Reserve H.8 via FRED (TOTBKCR weekly, BUSLOANS monthly)');
+}
+
+// ------------------------------------------------------------------ WP49. Gold (Markets → Gold)
+function renderGoldReal(c) {
+  if (!has('GOLD', 'REAL10Y')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Gold, USD/oz', data: pts(S.GOLD, state.from, state.to) }, { name: 'US 10Y real yield (TIPS), %', data: pts(S.REAL10Y, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 0), fmtB: v => fmtNum(v, 2) + '%', axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 1) + '%' });
+  const r = typeof corrW === 'function' ? corrW(S.GOLD, S.REAL10Y, state.from, state.to) : null;
+  setNote(c, `For years gold moved against the real yield (what bonds pay after inflation): the lower it, the cheaper it is to hold a metal that pays nothing. Central-bank buying has weakened that link since 2022.${r != null ? ` Correlation of weekly changes over this range: ${r >= 0 ? '+' : '−'}${fmtNum(Math.abs(r), 2)}.` : ''}`);
+  setSource(c, 'Yahoo Finance (GC=F); FRED (DFII10)');
+}
+function renderGoldDxy(c) {
+  if (!has('GOLD', 'DXY')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Gold, USD/oz', data: pts(S.GOLD, state.from, state.to) }, { name: 'US dollar index', data: pts(S.DXY, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 0), fmtB: v => fmtNum(v, 1), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  setNote(c, 'Gold is priced in dollars, so a weaker dollar usually lifts it.');
+  setSource(c, 'Yahoo Finance');
+}
+function renderGoldCcy(c) {
+  if (!has('GOLD')) return setEmpty(c, 'Waiting for data.');
+  const L = [['USD', 'Gold in US dollars'], ['MYR', 'Gold in ringgit'], ['SGD', 'Gold in Singapore dollars']].map(([ccy, n]) => ({ name: n, data: rebase(inCcy('GOLD', ccy), state.from, state.to) })).filter(x => x.data.length);
+  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }] });
+  const r = id => { const s2 = inCcy('GOLD', id), a = asOf(s2, state.to), b = asOf(s2, state.from); return a && b ? pctF1((a.v / b.v - 1) * 100) : '–'; };
+  setNote(c, `Over this range: ${r('USD')} in US dollars, ${r('MYR')} in ringgit, ${r('SGD')} in Singapore dollars. For a Malaysian client the ringgit line is the one that counts.`);
+  setSource(c, 'Yahoo Finance; converted at daily FX');
+}
+function renderGoldRatio(c) {
+  if (!has('GOLD', 'SILVER')) return setEmpty(c, 'Waiting for data.');
+  const r = combine(S.GOLD, S.SILVER, (a, b) => a / b, { label: 'Gold ÷ silver' }, 4 * DAY), q = pctRank(r, state.latest, 10);
+  drawLines(c, [{ name: 'Gold ÷ silver (ounces of silver per ounce of gold)', data: pts(r, state.from, state.to) }], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+  setNote(c, `${q ? fmtNum(q.v, 1) + ', ' + ordF(q.p) + ' percentile of 10 years' : ''}. A high ratio = silver cheap against gold; it tends to fall when industry and risk appetite recover.`);
+  setSource(c, 'Yahoo Finance; calculated');
+}
+function renderGoldVol(c) {
+  if (!has('SP_GVZ')) return setEmpty(c, 'Waiting for data.');
+  const g = typeof spU === 'function' ? spU('GOLD') : null, M = SPD && SPD._meta, i1 = M ? M.mny.indexOf(1) : -1;
+  drawLines(c, [{ name: 'Gold implied volatility (Cboe GVZ)', data: pts(S.SP_GVZ, state.from, state.to) }], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+  const q = pctRank(S.SP_GVZ, state.latest, 10), term = g && g.surf && i1 >= 0 ? ['1M', '3M', '6M', '1Y'].map((l, i) => `${l} ${fmtNum(g.surf[i][i1] * 100, 1)}%`).join(', ') : '';
+  setNote(c, `Gold volatility at its ${q ? ordF(q.p) : '–'} percentile of 10 years. Higher = gold-linked ELNs and DCIs pay more (see Structured products).${term ? ` Implied vol by tenor (GLD options): ${term}.` : ''}`);
+  setSource(c, 'Cboe (GVZ, GLD options)');
+}
+
 // ------------------------------------------------------------------ build and wiring
-const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'] };   // pages whose own render function lists its cards: render these too
+const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'], stress: ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit'], markets: ['gold_real', 'gold_dxy', 'gold_ccy', 'gold_ratio', 'gold_vol'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
 SUBTABS.regime.push(['Playbook', ['pb_chart', 'pb_table', 'pb_events'], 'Leading']);
+SUBTABS.stress.push(['Credit cycle', ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit']]);
+SUBTABS.markets.push(['Gold', ['gold_ccy', 'gold_real', 'gold_dxy', 'gold_ratio', 'gold_vol']]);
 function buildMore() {
   const fi = $('#fiGrid');
   makeCard(fi, { key: 'inc_menu', title: 'Income menu: what pays what', wide: true, range: false, render: renderIncMenu });
@@ -218,4 +292,15 @@ function buildMore() {
   makeCard(rg, { key: 'pb_table', title: 'What followed, by asset', range: false, render: renderPbTable });
   makeCard(rg, { key: 'pb_events', title: 'The events', range: false, render: renderPbEvents });
   for (const k of ['pb_table', 'pb_events']) { const x = cards[k].root; x.querySelector('[title^="Focus"]').hidden = true; x.querySelector('[title^="Download chart as"]').hidden = true; }
+  const sg = $('#stGrid');
+  makeCard(sg, { key: 'cc_std', title: 'Lending standards vs credit spreads', wide: true, defaultRange: 'MAX', render: renderCcStd });
+  makeCard(sg, { key: 'cc_delinq', title: 'Loan delinquencies', defaultRange: 'MAX', render: renderCcDelinq });
+  makeCard(sg, { key: 'cc_ccc', title: 'Weakest vs best junk bonds', defaultRange: '10Y', render: renderCcCcc });
+  makeCard(sg, { key: 'cc_credit', title: 'Bank credit growth', wide: true, defaultRange: '10Y', render: renderCcCredit });
+  const mg = el('div', { class: 'grid', id: 'goldGrid' }); $('#tab-markets').append(mg);
+  makeCard(mg, { key: 'gold_ccy', title: 'Gold in USD, ringgit and SGD', wide: true, defaultRange: '3Y', render: renderGoldCcy });
+  makeCard(mg, { key: 'gold_real', title: 'Gold vs the real yield', defaultRange: '10Y', render: renderGoldReal });
+  makeCard(mg, { key: 'gold_dxy', title: 'Gold vs the US dollar', defaultRange: '3Y', render: renderGoldDxy });
+  makeCard(mg, { key: 'gold_ratio', title: 'Gold ÷ silver', defaultRange: '10Y', render: renderGoldRatio });
+  makeCard(mg, { key: 'gold_vol', title: 'Gold volatility', defaultRange: '10Y', render: renderGoldVol });
 }
