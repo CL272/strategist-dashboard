@@ -153,6 +153,20 @@ function renderPbEvents(c) {
   setNote(c, `${E.length} events found. ${PB_EVENTS[state.pbEvent][1]}`);
 }
 
+// ------------------------------------------------------------------ WP46. Earnings dates on the Calendar (from structured.json)
+const ER_KEY = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'AVGO', 'TSLA', 'JPM', 'TSM'];   // flagged as key events (Weekly brief week ahead)
+let erAdded = false;
+CAL_REGIONS.push('Earnings'); state.calRegions.add('Earnings');   // the chip exists from the start; the dates arrive with structured.json
+function addEarningsToCal() {
+  if (erAdded || !CAL || !CAL.events || !SPD || !SPD.earnings) return; erAdded = true;
+  for (const [sym, e] of Object.entries(SPD.earnings)) {
+    CAL.events.push({ d: e.d, region: 'Earnings', name: `${SP_SHORT(sym)} (${sym}) earnings`, kind: 'Data', conf: 'Estimated', hi: ER_KEY.includes(sym),
+      sgt: e.when === 'after close' ? '≈04:05 (+1 day)' : e.when === 'before open' ? '≈20:00' : '', src: 'Nasdaq',
+      detail: [e.when ? `${e.when} (US)` : '', e.eps ? `EPS forecast ${e.eps}` : '', e.move ? `options imply a ±${fmtNum(e.move, 1)}% move` : ''].filter(Boolean).join('; ') + '. Date as listed by Nasdaq; may change.' });
+  }
+  CAL.events.sort((a, b) => a.d.localeCompare(b.d));
+}
+
 // ------------------------------------------------------------------ build and wiring
 const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
