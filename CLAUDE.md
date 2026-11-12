@@ -20,7 +20,21 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
 - **Charts: at most 5 coloured lines.** `drawLines` greys the rest (home markets first) and shortens legend names;
   give series full names and let it shorten them.
-- **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `asia`, `regime`).
+- **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`).
+- **Region and country pages hold everything about one place, split by asset class.** Sub-tabs always in this order,
+  leaving out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one in two to stay
+  within the height budget, e.g. Malaysia "Sectors", US "Sectors & styles", the US Economy group).
+- **Markets-group pages (Markets, Fixed Income, Valuation, Positioning & Vol, Correlation) are cross-market tools**:
+  tables and charts that compare places or asset classes. Anything about a single place lives on that place's page.
+- **One home per card.** A card is never shown in two places. Where a reader would look for it elsewhere, add a
+  "See also" row at the top of that sub-tab (`seeAlso(id, grid, [[label, tab, sub], …])` in `buildSeeAlso`, then list
+  `'#id'` first in the sub-tab). Theme pages stay whole (AI → Chip cycle keeps its Korea and Malaysia cards).
+- **Sidebar tree**: country pages are child buttons (`data-parent`) under their region (Asia ex-Japan: `my`, `sg`,
+  `cn`, `kr`, `tw`, `in`; Europe: see WP36). A new page id must be registered in `index.html` (button and panel),
+  `TAB_TITLES`, the `renderTab` map, the `init` validation array, `SUBTABS`, `TILE_SETS`, and `loadTickers` if it uses
+  tickers. If a page's sub-tab order changes, add its old order to `OLD_SUBS` so bookmarks still land correctly.
+- Each Equities sub-tab starts with the "Signals for this market" strip (`SIG_TARGETS`); `eqCard` and `fxCard` build
+  the standard equity and currency views.
 - New cards, sections and markets are found by search (Ctrl+K) automatically; give cards a real title at build time.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
   wrapping, header controls and script errors; deliberate exceptions are listed in its `ALLOW` table.
