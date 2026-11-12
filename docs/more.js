@@ -67,12 +67,105 @@ function renderIncChart(c) {
   setSource(c, srcOf(ids));
 }
 
+// ------------------------------------------------------------------ WP45. Playbook (Regime & Leading → Playbook)
+// Event studies: what assets did around past events, median path 12 months either side, and how often they rose.
+function pbMonthly(id) {   // month-end values {t[], v[]} (t = month-end ms)
+  if (!has(id)) return null; const s = S[id], t = [], v = [];
+  for (let i = 0; i < s.t.length; i++) { const d = new Date(s.t[i]), me = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0);
+    if (t.length && t[t.length - 1] === me) v[v.length - 1] = s.v[i]; else { t.push(me); v.push(s.v[i]); } }
+  return { t, v };
+}
+const pbMax = id => { if (!has(id)) return null; const s = S[id], t = [], v = []; for (let i = 0; i < s.t.length; i++) { const d = new Date(s.t[i]), me = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0); if (t.length && t[t.length - 1] === me) v[v.length - 1] = Math.max(v[v.length - 1], s.v[i]); else { t.push(me); v.push(s.v[i]); } } return { t, v }; };
+const PB_EVENTS = {
+  first_cut: ['First Fed cut', 'The first cut in the fed funds rate after at least a year without one (monthly average).', () => { const f = pbMonthly('FEDFUNDS'); if (!f) return []; const out = []; let last = -1e15;
+    for (let i = 1; i < f.v.length; i++) if (f.v[i] - f.v[i - 1] <= -0.2) { if (f.t[i] - last > 365 * DAY) out.push(f.t[i]); last = f.t[i]; } return out; }],
+  last_hike: ['Last Fed hike', 'A rise in the fed funds rate not followed by another within 12 months.', () => { const f = pbMonthly('FEDFUNDS'); if (!f) return []; const out = [];
+    for (let i = 1; i < f.v.length - 12; i++) if (f.v[i] - f.v[i - 1] >= 0.2) { let more = false; for (let j = i + 1; j <= i + 12; j++) if (f.v[j] - f.v[j - 1] >= 0.2) more = true; if (!more) out.push(f.t[i]); } return out; }],
+  recession: ['US recession starts', 'First month of each NBER recession.', () => { const r = pbMonthly('USREC'); if (!r) return []; const out = []; for (let i = 1; i < r.v.length; i++) if (r.v[i] === 1 && r.v[i - 1] !== 1) out.push(r.t[i]); return out; }],
+  vix40: ['VIX above 40', 'First month the VIX closed above 40 after six months below it.', () => { const v = pbMax('VIXCLS') || pbMax('VIX'); if (!v) return []; const out = []; let quiet = 0;
+    for (let i = 0; i < v.v.length; i++) { if (v.v[i] > 40) { if (quiet >= 6) out.push(v.t[i]); quiet = 0; } else quiet++; } return out; }],
+  oil40: ['Oil up 40% in a year', 'First month WTI was more than 40% above a year earlier, after a year without that.', () => { const o = pbMonthly('LH_OIL'); if (!o) return []; const out = []; let last = -1e15;
+    for (let i = 12; i < o.v.length; i++) if (o.v[i] / o.v[i - 12] > 1.4) { if (o.t[i] - last > 366 * DAY) out.push(o.t[i]); last = o.t[i]; } return out; }],
+  usd_peak: ['US dollar peak', 'A 2-year high in the dollar index followed by a fall of 10% or more (known only afterwards).', () => { const d = pbMonthly('LH_USD'); if (!d) return []; const out = [];
+    for (let i = 12; i < d.v.length - 18; i++) { const w = d.v.slice(i - 12, i + 13); if (d.v[i] === Math.max(...w) && Math.min(...d.v.slice(i, i + 19)) <= d.v[i] * 0.9 && (!out.length || d.t[i] - out[out.length - 1] > 730 * DAY)) out.push(d.t[i]); } return out; }],
+  uninvert: ['Yield curve un-inverts', 'First month 2s10s turned positive after at least 3 months inverted.', () => { if (!has('UST10Y', 'UST2Y')) return []; const c = pbMonthly('UST10Y'), b = pbMonthly('UST2Y'), out = []; let inv = 0;
+    for (let i = 0; i < c.t.length; i++) { const j = b.t.indexOf(c.t[i]); if (j < 0) continue; const s2 = c.v[i] - b.v[j]; if (s2 < 0) inv++; else { if (inv >= 3) out.push(c.t[i]); inv = 0; } } return out; }],
+  ...Object.fromEntries([1, 2, 3, 4].map(q => [`reg${q}`, [`Regime turns ${(typeof QUADS !== 'undefined' && QUADS[q] ? QUADS[q].name : 'quad ' + q)}`, 'Months the dashboard’s growth / inflation regime switched to this one.',
+    () => { const r = pbMonthly('REG_QUAD'); if (!r) return []; const out = []; for (let i = 1; i < r.v.length; i++) if (r.v[i] === q && r.v[i - 1] !== q) out.push(r.t[i]); return out; }]])),
+};
+const PB_ASSETS = [['LH_SPX', 'S&P 500', 'pct'], ['UST10Y', 'US 10Y yield', 'bp'], ['LH_USD', 'US dollar', 'pct'], ['GOLD', 'Gold', 'pct'], ['LH_OIL', 'Oil (WTI)', 'pct'], ['COPPER', 'Copper', 'pct'],
+  ['EEM', 'Emerging markets', 'pct'], ['KLCI', 'FBM KLCI', 'pct'], ['STI', 'Straits Times', 'pct'], ['HY_OAS', 'US HY spread', 'bp'], ['USDMYR', 'USD/MYR', 'pct'], ['LH_GSCI', 'Commodities (GSCI)', 'pct']];
+state.pbEvent = 'first_cut'; state.pbAsset = 'LH_SPX';
+const pbCache = {};
+function pbEvents(k) { return pbCache[k] || (pbCache[k] = (PB_EVENTS[k] ? PB_EVENTS[k][2]() : []).filter(t => t < state.latest)); }
+function pbPaths(k, a) {   // [{t, path: [k=-12..12 → change]}]
+  const [id, , kind] = PB_ASSETS.find(x => x[0] === a) || [a, a, 'pct'], m = pbMonthly(id); if (!m) return [];
+  const idx = new Map(m.t.map((t, i) => [t, i]));
+  return pbEvents(k).map(t => { const i = idx.get(t); if (i == null) return null; const path = [];
+    for (let j = -12; j <= 12; j++) { const x = m.v[i + j]; path.push(x == null ? null : kind === 'bp' ? (x - m.v[i]) * 100 : (x / m.v[i] - 1) * 100); }
+    return { t, path }; }).filter(Boolean);
+}
+const pbMedAt = (P, j) => spMed(P.map(p => p.path[j + 12]));
+function renderPbChart(c) {
+  const k = state.pbEvent, ev = PB_EVENTS[k], A = PB_ASSETS.find(x => x[0] === state.pbAsset) || PB_ASSETS[0], P = pbPaths(k, A[0]);
+  const sel = el('select', { class: 'mini-select' }, ...PB_ASSETS.map(([id, l]) => el('option', { value: id, text: l }))); sel.value = A[0];
+  sel.addEventListener('change', () => { state.pbAsset = sel.value; c.render(); cards.pb_events.render(); });
+  c.subEl.replaceChildren(el('span', { class: 'muted small', text: 'Asset: ' }), sel, el('span', { class: 'muted small', text: ` · ${ev[1]}` }));
+  if (P.length < 2) return setEmpty(c, `Too few ${ev[0].toLowerCase()} events with ${A[1]} data.`);
+  const xs = [...Array(25)].map((_, j) => j - 12), unit = A[2] === 'bp' ? 'bp' : '%', f = v => sign(v) + fmtNum(Math.abs(v), unit === 'bp' ? 0 : 1) + unit;
+  const o = baseOpt();
+  o.series = [...P.map(p => line(new Date(p.t).getUTCFullYear() + '', xs.map((x, j) => [x, p.path[j]]).filter(q => q[1] != null), hexA(tok('--muted'), 0.35), { lineStyle: { width: 1, color: hexA(tok('--muted'), 0.35) }, silent: true })),
+    line('Median of all events', xs.map(x => [x, pbMedAt(P, x)]), col(0), { lineStyle: { width: 3, color: col(0) } })];
+  const last = pbEvents(k).slice(-1)[0], since = last ? Math.round((state.latest - last) / (30.44 * DAY)) : null;
+  if (since != null && since <= 12) { const cur = pbPaths(k, A[0]).find(p => p.t === last); if (cur) o.series.push(line(`Now (since ${monthLab(last)})`, xs.slice(0, 13 + since).map((x, j) => [x, cur.path[j]]).filter(q => q[1] != null), col(1), { lineStyle: { width: 2.5, color: col(1) } })); }
+  o.xAxis = { type: 'value', min: -12, max: 12, interval: 3, name: 'months from the event', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tok('--muted'), fontSize: 11 }, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v > 0 ? '+' + v : v }, splitLine: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0) + unit); o.grid.bottom = 28; o.legend.data = o.series.slice(-2).map(s => s.name);
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `${esc(p.seriesName)}: ${f(p.value[1])} at ${p.value[0] > 0 ? '+' : ''}${p.value[0]}m` };
+  o.series.push({ type: 'line', data: [], markLine: { silent: true, symbol: 'none', lineStyle: { color: tok('--axis'), type: 'dashed' }, label: { show: false }, data: [{ xAxis: 0 }, { yAxis: 0 }] } });
+  inst(c).setOption(o, true);
+  c.csv = [['Event', ...xs.map(x => 'm' + x)], ...P.map(p => [iso(p.t), ...p.path]), ['Median', ...xs.map(x => pbMedAt(P, x))]];
+  const m12 = pbMedAt(P, 12), up12 = P.filter(p => p.path[24] != null && p.path[24] > 0).length / P.filter(p => p.path[24] != null).length * 100;
+  setNote(c, `After a ${ev[0].toLowerCase()}, ${A[1]} has moved a median ${m12 == null ? '–' : f(m12)} over the next 12 months, ${A[2] === 'bp' ? 'rising' : 'up'} ${fmtNum(up12, 0)}% of the time (${P.length} events since ${new Date(P[0].t).getUTCFullYear()}). Grey = each event; blue = median; ${since != null && since <= 12 ? 'red = the latest event, so far.' : 'the latest event was ' + (since != null ? since + ' months ago.' : '–')} History, not a forecast: few events, each different.`);
+  setSource(c, 'FRED, Yahoo Finance, Shiller (long S&P); calculated');
+}
+function renderPbTable(c) {
+  const b = htmlBody(c), k = state.pbEvent, heads = ['Asset', 'n', '1M', '3M', '6M', '12M', 'Up 3M', 'Up 12M'], tb = el('tbody'), csv = [heads];
+  for (const [id, lab, kind] of PB_ASSETS) {
+    const P = pbPaths(k, id); if (P.length < 2) continue;
+    const f = v => v == null ? '–' : sign(v) + fmtNum(Math.abs(v), kind === 'bp' ? 0 : 1) + (kind === 'bp' ? 'bp' : '%');
+    const up = j => { const L = P.filter(p => p.path[j + 12] != null); return L.length ? L.filter(p => p.path[j + 12] > 0).length / L.length * 100 : null; };
+    const vals = [1, 3, 6, 12].map(j => pbMedAt(P, j));
+    tb.append(el('tr', { class: 'row' + (id === state.pbAsset ? ' sel' : ''), style: 'cursor:pointer', onclick: () => { state.pbAsset = id; ['pb_chart', 'pb_table'].forEach(x => cards[x].render()); } },
+      el('td', { class: 'l', text: lab }), el('td', { class: 'num muted', text: P.length }), ...vals.map(v => el('td', { class: 'num ' + (v == null ? '' : v > 0 ? 'up' : 'dn'), text: f(v) })),
+      el('td', { class: 'num', text: up(3) == null ? '–' : fmtNum(up(3), 0) + '%' }), el('td', { class: 'num strong', text: up(12) == null ? '–' : fmtNum(up(12), 0) + '%' })));
+    csv.push([lab, P.length, ...vals, up(3), up(12)]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  c.csv = csv;
+  setNote(c, `Median change after each ${PB_EVENTS[k][0].toLowerCase()}; Up = how often it was up (yields and spreads: rising); n = events with data. Event counts differ because histories start at different dates. Click a row to chart it.`);
+  setSource(c, 'FRED, Yahoo Finance; calculated');
+}
+function renderPbEvents(c) {
+  const b = htmlBody(c), E = pbEvents(state.pbEvent).slice().reverse();
+  if (!E.length) { b.append(el('div', { class: 'empty', text: 'No events in the data.' })); return; }
+  const since = Math.round((state.latest - E[0]) / (30.44 * DAY));
+  b.append(el('p', { class: 'strong', text: `Latest: ${monthLab(E[0])} (${since} month${since === 1 ? '' : 's'} ago)` }), el('ul', { class: 'pb-list' }, ...E.slice(0, 18).map(t => el('li', { text: monthLab(t) }))));
+  setNote(c, `${E.length} events found. ${PB_EVENTS[state.pbEvent][1]}`);
+}
+
 // ------------------------------------------------------------------ build and wiring
 const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
+SUBTABS.regime.push(['Playbook', ['pb_chart', 'pb_table', 'pb_events'], 'Leading']);
 function buildMore() {
   const fi = $('#fiGrid');
   makeCard(fi, { key: 'inc_menu', title: 'Income menu: what pays what', wide: true, range: false, render: renderIncMenu });
   makeCard(fi, { key: 'inc_chart', title: 'Yields over time', wide: true, defaultRange: '3Y', seg: { key: 'incIds', options: [['core', 'Bonds & credit'], ['cash', 'Cash']] }, render: renderIncChart });
   const r = cards.inc_menu.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+  const rg = $('#regGrid');
+  makeCard(rg, { key: 'pb_chart', title: 'Playbook: around past events', wide: true, range: false, seg: { key: 'pbEvent', select: true, label: 'Event', options: Object.entries(PB_EVENTS).map(([k, v]) => [k, v[0]]) },
+    render: c => { renderPbChart(c); cards.pb_table && cards.pb_table.render(); cards.pb_events && cards.pb_events.render(); } });
+  makeCard(rg, { key: 'pb_table', title: 'What followed, by asset', range: false, render: renderPbTable });
+  makeCard(rg, { key: 'pb_events', title: 'The events', range: false, render: renderPbEvents });
+  for (const k of ['pb_table', 'pb_events']) { const x = cards[k].root; x.querySelector('[title^="Focus"]').hidden = true; x.querySelector('[title^="Download chart as"]').hidden = true; }
 }

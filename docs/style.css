@@ -804,3 +804,4 @@ input.mp-w { width: 64px; text-align: right; }
 .sp-presets button { font-size: 12px; padding: 3px 8px; }
 .sp-bigs { display: flex; gap: 22px; flex-wrap: wrap; margin: 2px 0 10px; }
 .sp-big-v { font-size: 26px; font-weight: 650; color: var(--ink); line-height: 1.2; }
+.pb-list { columns: 3; margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
