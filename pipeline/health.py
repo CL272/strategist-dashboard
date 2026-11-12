@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
@@ -36,6 +36,10 @@ IGNORE = {"USREC", "SH_FWD10"}     # recession flag only changes at NBER announc
 def allowed_for(sid: str, default: int) -> int:
     if sid.startswith("RAMP_TOK_"):
         return 45
+    if sid.startswith("FSI_"):
+        return 400   # IMF soundness indicators arrive two to three quarters after the quarter
+    if sid.startswith("MY_HH_"):
+        return 200   # Bank Negara's household-loan figures reach data.gov.my about four months late
     return SLOW.get(sid, default)
 
 

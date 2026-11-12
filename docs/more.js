@@ -306,12 +306,94 @@ function renderEtfFlows(c) {
   setSource(c, 'iShares fund pages (NAV, yield, net assets, shares outstanding); calculated');
 }
 
+// ------------------------------------------------------------------ BANKS AND CREDIT from central banks (IMF FSI, Bank Negara, MAS)
+// For markets FRED does not cover: bad-loan ratios and bank capital for 15 economies, Malaysia's household loan
+// applications and approvals, Singapore's bank lending. Data: data/banks.json (pipeline/banks.py).
+let BANKS = null, bkLoading = null;
+function loadBanks() {
+  if (!bkLoading) bkLoading = loadJSON('data/banks.json').then(d => { BANKS = d;
+    for (const [id, x] of Object.entries(d)) if (!id.startsWith('_') && x && x.d) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
+    return d; }).catch(() => { BANKS = { _meta: {} }; return BANKS; });
+  return bkLoading;
+}
+const bkWait = c => { if (BANKS) return false; loadBanks().then(() => c.render()); setEmpty(c, 'Loading…'); return true; };
+const BK_ORDER = ['MYS', 'IDN', 'THA', 'PHL', 'IND', 'CHN', 'HKG', 'JPN', 'AUS', 'USA', 'GBR', 'DEU', 'FRA', 'ITA', 'ESP', 'SGP', 'KOR'];
+function renderBkTable(c) {
+  const b = htmlBody(c); if (!BANKS) { loadBanks().then(() => c.render()); b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
+  const C = (BANKS._meta || {}).countries || {}, heads = ['Economy', 'Bad loans', '1Y change', 'Highest on record', 'Pct of its history', 'Tier 1 capital', 'Return on equity', 'Credit growth', 'As of'];
+  const tb = el('tbody'), csv = [heads];
+  for (const iso3 of BK_ORDER) {
+    const id = 'FSI_NPL_' + iso3; if (!has(id)) continue;
+    const s = S[id], a = asOf(s, state.latest), b1 = asOf(s, addMonths(a.t, -12)), mx = Math.max(...s.v), mi = s.v.indexOf(mx), pct = s.v.filter(v => v <= a.v).length / s.v.length * 100;
+    const lv = k => has(k) ? asOf(S[k], state.latest) : null, t1 = lv('FSI_T1_' + iso3), roe = lv('FSI_ROE_' + iso3), cg = lv('FSI_CRG_' + iso3);
+    const ch = b1 ? a.v - b1.v : null, q = d => { const x = new Date(d); return `Q${Math.floor(x.getUTCMonth() / 3) + 1} ${x.getUTCFullYear()}`; };
+    tb.append(el('tr', { class: 'row' + (iso3 === 'MYS' ? ' sel' : '') }, el('td', { class: 'l', text: C[iso3] || iso3 }), el('td', { class: 'num strong', text: fmtNum(a.v, 2) + '%' }),
+      el('td', { class: 'num ' + (ch == null ? '' : ch > 0.05 ? 'dn' : ch < -0.05 ? 'up' : ''), text: ch == null ? '–' : sign(ch) + fmtNum(Math.abs(ch), 2) + 'pp' }),
+      el('td', { class: 'num muted', text: `${fmtNum(mx, 1)}% (${new Date(s.t[mi]).getUTCFullYear()})` }), el('td', { class: 'num', text: ordF(pct) }),
+      el('td', { class: 'num', text: t1 ? fmtNum(t1.v, 1) + '%' : '–' }), el('td', { class: 'num', text: roe ? fmtNum(roe.v, 1) + '%' : '–' }),
+      el('td', { class: 'num', text: cg ? pctF1(cg.v) : '–' }), el('td', { class: 'num muted', text: q(a.t) })));
+    csv.push([C[iso3] || iso3, a.v, ch, mx, pct, t1 && t1.v, roe && roe.v, cg && cg.v, iso(a.t)]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  c.csv = csv;
+  setNote(c, 'Bad loans = non-performing loans as a share of all bank loans, as each central bank reports it to the IMF (definitions differ a little between countries, so compare each against its own history). Rising bad loans with falling capital is the warning sign. Singapore and Korea no longer report this series to the IMF (they stopped in 2019 and 2024), so they are left out; Singapore’s bank lending is on its Economy page.');
+  setSource(c, 'IMF Financial Soundness Indicators (FSIC), from each central bank; quarterly');
+}
+function renderBkChart(c) {
+  if (bkWait(c)) return;
+  const ids = ['MYS', 'THA', 'IDN', 'PHL', 'IND', 'CHN', 'HKG', 'USA'].map(x => 'FSI_NPL_' + x).filter(id => has(id)); if (!ids.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, ids.map(id => ({ name: S[id].label.split(':')[0] + ' bad loans', data: pts(S[id], state.from, state.to) })), { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false });
+  setNote(c, 'Non-performing loans as a share of all bank loans, quarterly. Malaysia in colour first; hover a name to bring another forward.');
+  setSource(c, 'IMF Financial Soundness Indicators (FSIC)');
+}
+const avg3 = s => { const t = [], v = []; for (let i = 2; i < s.v.length; i++) { t.push(s.t[i]); v.push((s.v[i] + s.v[i - 1] + s.v[i - 2]) / 3); } return { t, v }; };
+const yoy3 = s => { const a = avg3(s), t = [], v = []; for (let i = 12; i < a.v.length; i++) if (a.v[i - 12]) { t.push(a.t[i]); v.push((a.v[i] / a.v[i - 12] - 1) * 100); } return { t, v }; };
+function renderMyHhFlow(c) {
+  if (bkWait(c)); if (!BANKS) return; if (!has('MY_HH_APPLIED', 'MY_HH_APPROVED')) return setEmpty(c, 'Waiting for data.');
+  const ap = avg3(S.MY_HH_APPLIED), ok = avg3(S.MY_HH_APPROVED), rate = { t: [], v: [] };
+  ap.t.forEach((t, i) => { const j = ok.t.indexOf(t); if (j >= 0 && ap.v[i]) { rate.t.push(t); rate.v.push(ok.v[j] / ap.v[i] * 100); } });
+  drawPair(c, { name: 'Household loan applications, % YoY (3-month average)', data: pts(yoy3(S.MY_HH_APPLIED), state.from, state.to) }, { name: 'Share of applications approved, % (3-month average)', data: pts(rate, state.from, state.to) },
+    { fmtA: v => pctF1(v), fmtB: v => fmtNum(v, 1) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true });
+  const a = asOf(S.MY_HH_APPLIED, state.latest), r = asOf(rate, state.latest), y = asOf(yoy3(S.MY_HH_APPLIED), state.latest);
+  setNote(c, `Households applied for RM${fmtNum(a.v, 1)}bn of loans in ${monthLab(a.t)}; applications ${y ? (y.v >= 0 ? 'up ' : 'down ') + fmtNum(Math.abs(y.v), 1) + '% on a year' : ''} and ${r ? fmtNum(r.v, 0) + '% approved' : ''}. Applications lead lending: a fall in demand or in the approval rate tends to show up in loan growth and consumption months later.`);
+  setSource(c, 'Bank Negara Malaysia (Central Credit Reference Information System) via data.gov.my; calculated');
+}
+function renderMyHhPurpose(c) {
+  if (bkWait(c)); if (!BANKS) return;
+  const L = [['PROPERTY', 'Homes'], ['CARS', 'Cars'], ['CARDS', 'Credit cards'], ['PERSONAL', 'Personal loans']].filter(([k]) => has('MY_HH_APPLIED_' + k))
+    .map(([k, n]) => ({ name: `${n} (applications, % YoY)`, data: pts(yoy3(S['MY_HH_APPLIED_' + k]), state.from, state.to) }));
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => pctF1(v), axisFmt: v => fmtNum(v, 0) + '%', zero: true, endLabels: false });
+  setNote(c, 'Loan applications by purpose, year-on-year change of the 3-month average. Homes and cars are the big-ticket, rate-sensitive ones; credit cards and personal loans react first when household cash flow is squeezed.');
+  setSource(c, 'Bank Negara Malaysia (CCRIS) via data.gov.my; calculated');
+}
+function renderMyBanks(c) {
+  if (bkWait(c)); if (!BANKS) return; if (!has('FSI_NPL_MYS', 'FSI_T1_MYS')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Malaysia: bad loans, % of all loans', data: pts(S.FSI_NPL_MYS, state.from, state.to) }, { name: 'Malaysia: Tier 1 capital, % of risk-weighted assets', data: pts(S.FSI_T1_MYS, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 2) + '%', fmtB: v => fmtNum(v, 1) + '%', axisA: v => fmtNum(v, 1) + '%', axisB: v => fmtNum(v, 0) + '%' });
+  const a = asOf(S.FSI_NPL_MYS, state.latest), r = has('FSI_ROE_MYS') ? asOf(S.FSI_ROE_MYS, state.latest) : null;
+  setNote(c, `Malaysian banks’ bad loans are ${fmtNum(a.v, 2)}% of all loans (${monthLab(a.t)}), with return on equity ${r ? fmtNum(r.v, 1) + '%' : '–'}. Bad loans near their lows with strong capital = room to keep lending. Quarterly, as Bank Negara reports it to the IMF.`);
+  setSource(c, 'IMF Financial Soundness Indicators (FSIC), reported by Bank Negara Malaysia');
+}
+function renderSgLoans(c) {
+  if (bkWait(c)); if (!BANKS) return;
+  const L = [['SG_LOANS', 'All loans'], ['SG_LOANS_BUS', 'Business loans'], ['SG_LOANS_CONS', 'Consumer loans'], ['SG_LOANS_HOUSING', 'Housing loans']].filter(([k]) => has(k))
+    .map(([k, n]) => ({ name: `${n}, % YoY`, data: pts(yoyOf(k, 12), state.from, state.to) }));
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L, { fmt: v => pctF1(v), axisFmt: v => fmtNum(v, 0) + '%', zero: true, endLabels: false });
+  setNote(c, 'Growth of Singapore commercial banks’ loans to residents. The current MAS series starts in July 2021, so growth rates start in mid-2022.');
+  setSource(c, 'MAS via SingStat (M701091)');
+}
+
 // ------------------------------------------------------------------ build and wiring
-const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'], stress: ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit'], markets: ['gold_real', 'gold_dxy', 'gold_ccy', 'gold_ratio', 'gold_vol'] };   // pages whose own render function lists its cards: render these too
+const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'], stress: ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit', 'bk_table', 'bk_chart'], markets: ['gold_real', 'gold_dxy', 'gold_ccy', 'gold_ratio', 'gold_vol'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
 SUBTABS.regime.push(['Playbook', ['pb_chart', 'pb_table', 'pb_events'], 'Leading']);
 SUBTABS.asia[0][1].push('etf_flows');   // Asia ex-Japan → Across Asia
 SUBTABS.stress.push(['Credit cycle', ['cc_std', 'cc_delinq', 'cc_ccc', 'cc_credit']]);
+SUBTABS.stress.push(['Bank health', ['bk_table', 'bk_chart']]);
+SUBTABS.my.push(['Credit', ['#sa_my_credit', 'my_hh_flow', 'my_hh_purpose', 'my_banks']]);   // part of Malaysia's Economy, split for height
+SUBTABS.sg.find(x => x[0] === 'Economy')[1].push('sg_loans');
 SUBTABS.markets.push(['Gold', ['gold_ccy', 'gold_real', 'gold_dxy', 'gold_ratio', 'gold_vol']]);
 function buildMore() {
   const fi = $('#fiGrid');
@@ -331,6 +413,15 @@ function buildMore() {
   makeCard(sg, { key: 'cc_credit', title: 'Bank credit growth', wide: true, defaultRange: '10Y', render: renderCcCredit });
   makeCard($('#asiaGrid'), { key: 'etf_flows', title: 'Country funds: yields and flows', wide: true, range: false, render: renderEtfFlows });
   { const x = cards.etf_flows.root; x.querySelector('[title^="Focus"]').hidden = true; x.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard(sg, { key: 'bk_table', title: 'Bank health across markets', wide: true, range: false, render: renderBkTable });
+  makeCard(sg, { key: 'bk_chart', title: 'Bad loans: Asia and the US', wide: true, defaultRange: 'MAX', render: renderBkChart });
+  { const x = cards.bk_table.root; x.querySelector('[title^="Focus"]').hidden = true; x.querySelector('[title^="Download chart as"]').hidden = true; }
+  const myg = $('#myGrid');
+  makeCard(myg, { key: 'my_hh_flow', title: 'Household loan demand and approvals', wide: true, defaultRange: '10Y', render: renderMyHhFlow });
+  makeCard(myg, { key: 'my_hh_purpose', title: 'Loan applications by purpose', defaultRange: '5Y', render: renderMyHhPurpose });
+  makeCard(myg, { key: 'my_banks', title: 'Malaysian banks: bad loans and capital', defaultRange: 'MAX', render: renderMyBanks });
+  seeAlso('sa_my_credit', myg, [['Bank health across markets', 'stress', 'Bank health'], ['US credit cycle', 'stress', 'Credit cycle'], ['Bank Negara on the Central banks page', 'cbwatch', 'BNM']]);
+  makeCard($('#sgGrid'), { key: 'sg_loans', title: 'Singapore bank lending', wide: true, defaultRange: '3Y', render: renderSgLoans });
   const mg = el('div', { class: 'grid', id: 'goldGrid' }); $('#tab-markets').append(mg);
   makeCard(mg, { key: 'gold_ccy', title: 'Gold in USD, ringgit and SGD', wide: true, defaultRange: '3Y', render: renderGoldCcy });
   makeCard(mg, { key: 'gold_real', title: 'Gold vs the real yield', defaultRange: '10Y', render: renderGoldReal });

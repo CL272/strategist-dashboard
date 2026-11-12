@@ -596,7 +596,26 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
-## Planned, not built (owner's request, 12 Nov 2026): WP37 to WP50, structured products and completeness
+## Built (owner's request, 12 Nov 2026): central-bank data for markets FRED does not cover
+
+Owner: "For other currency can check the banks for data like BNM has it for delinquency." Built the same day in
+`pipeline/banks.py` (banks.json):
+- **IMF Financial Soundness Indicators** (FSIC, api.imf.org; each central bank's own report): bad loans to gross loans,
+  Tier 1 capital, return on equity, private credit growth, quarterly, for Malaysia, Indonesia, Thailand, the
+  Philippines, India, China, Hong Kong, Japan, Australia, the US, the UK, Germany, France, Italy and Spain. Singapore
+  (stopped 2019) and Korea (stopped mid-2024) are left out; a series is dropped once it is two years old.
+- **Bank Negara Malaysia** (Central Credit Reference Information System, via the data.gov.my household-debt dashboard file
+  on storage.data.gov.my, parquet: `pyarrow` added to requirements): household loans applied for, approved, disbursed
+  and repaid, by purpose, monthly since Dec 2006. Bank Negara's own Monthly Highlights & Statistics are PDFs behind a
+  portal and were not automated; data.gov.my has no impaired-loans dataset (checked against its catalogue).
+- **MAS** via SingStat M701091: bank loans to residents (total, business, consumer, housing), monthly from Jul 2021 (the
+  series was restarted then).
+Pages: Stress & Signposts → Bank health (table and chart); Malaysia → Credit (after Economy); Singapore → Economy adds bank
+lending. Pricing rates for MYR and SGD stay on Bank Negara and MAS (FRED has none).
+
+---
+
+## Built (owner's request, 12 Nov 2026): WP37 to WP50, structured products and completeness
 
 **Status: all built on 12 Nov 2026** (owner: "Go all", with the recommended answers, and pricing rates from FRED). Notes from the
 build: rates for pricing come from FRED for USD (Treasury curve 1M to 10Y), EUR (ECB deposit rate, Bund), AUD and JPY
