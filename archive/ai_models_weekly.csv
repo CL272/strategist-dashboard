@@ -83,8 +83,8 @@ week_ending,slug,org,tokens
 2026-11-11,anthropic/claude-opus-5.5-20260921,anthropic,6648676245465
 2026-11-11,anthropic/claude-sonnet-5.5-20260928,anthropic,2390294824919
 2026-11-11,deepseek/deepseek-v4-flash-20260731,deepseek,3205835913804
-2026-11-11,deepseek/deepseek-v4.1-flash-20260910,deepseek,16302424493274
-2026-11-11,deepseek/deepseek-v4.1-flash-20261017,deepseek,53187233614273
+2026-11-11,deepseek/deepseek-v4.1-flash-20260910,deepseek,16302424799550
+2026-11-11,deepseek/deepseek-v4.1-flash-20261017,deepseek,53187237391573
 2026-11-11,meta/muse-spark-1.3-contributor-20260902,meta,2943397470730
 2026-11-11,minimax/minimax-m3.1-flash-20261019,minimax,3831488340154
 2026-11-11,moonshotai/kimi-k3.1-pro-20261023,moonshotai,4420397893449
