@@ -2758,7 +2758,20 @@ function leadCard(key, a, b, k, intro) {   // a, b = [id, mode, name]
     if (!has(a[0], b[0])) return setEmpty(c, 'Waiting for data.');
     leadPair(c, a, b, +state[key] || 0, { fmtA: llFmtF(a[1]), fmtB: llFmtF(b[1]), axisA: llAxF(a[1]), axisB: llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
     const st = leadStats(a[0], a[1], b[0], b[1], k);
-    setNote(c, (intro ? intro + ' ' : '') + leadNote(st && { ...st, a: a[0] }, a[2].replace(/,.*$/, ''), b[2].replace(/,.*$/, '')) + (+state[key] ? ` The first series is drawn ${k} months later than measured; the part past today hints at the months ahead. ` : ' ') + (/^CLI_/.test(a[0]) ? LL_CAVEAT + (['KOSPI', 'TWSE'].includes(b[0]) ? cleanAltNote(b[0], b[0] === 'KOSPI' ? 'KOSPI' : 'Taiwan Weighted') : '') : ''));
+    // Korea: draw the leading index without share prices as a dashed line on the same axis, shifted the same way
+    let xspLine = '';
+    if (a[0] === 'CLI_KOR' && has('KR_LI_XSP') && c.pairMode !== 'stack') {
+      const X = monthlyOf('KR_LI_XSP', 'chg6'), sh = +state[key] || 0, xmax = sh ? addMonths(state.to, sh) : state.to;
+      const data = pts(sh ? { t: X.t.map(t => addMonths(t, sh)), v: X.v } : X, state.from, xmax);
+      const o = c.inst.getOption();
+      o.series.push({ name: 'Same index without share prices' + (sh ? `, moved forward ${sh} months` : ''), type: 'line', yAxisIndex: 0, data, showSymbol: false,
+        lineStyle: { type: 'dashed', width: 2, color: tok('--muted') }, itemStyle: { color: tok('--muted') } });
+      c.inst.setOption({ series: o.series, legend: { data: o.series.map(x => x.name) } });
+      const sx = leadStats('KR_LI_XSP', 'chg6', b[0], b[1], k);
+      xspLine = `; without them (dashed line): ${sx ? `${cF(sx.rk)} at ${k} months against ${cF(sx.r0)} in the same month` : 'not enough history'}`;
+    }
+    const spFirst = /^CLI_/.test(a[0]) && ['KOSPI', 'TWSE', 'JCI', 'NIFTY'].includes(b[0]) ? `ⓢ This leading index contains share prices${a[0] === 'CLI_KOR' ? ' (the KOSPI is one of its six components)' : ''}, so part of its link to equities is circular${xspLine}. ` : '';
+    setNote(c, spFirst + (intro ? intro + ' ' : '') + leadNote(st && { ...st, a: a[0] }, a[2].replace(/,.*$/, ''), b[2].replace(/,.*$/, '')) + (+state[key] ? ` The first series is drawn ${k} months later than measured; the part past today hints at the months ahead. ` : ' ') + (/^CLI_/.test(a[0]) ? LL_CAVEAT + (['KOSPI', 'TWSE'].includes(b[0]) ? cleanAltNote(b[0], b[0] === 'KOSPI' ? 'KOSPI' : 'Taiwan Weighted') : '') : ''));
     setSource(c, srcOf([a[0], b[0]]));
   } };
 }
