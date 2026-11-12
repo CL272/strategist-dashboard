@@ -2713,7 +2713,7 @@ function llCorrAt(A, B, k, lo = -Infinity, hi = Infinity) {
   for (const [t, v] of A) { if (t < lo || t >= hi) continue; const w = B.get(addMonths(t, k)); if (w != null) { x.push(v); y.push(w); } }
   return x.length >= 36 ? pearson(x, y) : null;
 }
-const PUB_LAG = id => /^CLI_|^BCI_/.test(id) ? 2 : /^MY_LEAD/.test(id) ? 3 : S[id] && /Yahoo/.test(S[id].source || '') ? 0 : /^(UST|DXY|BRENT|SOX|COPPER)/.test(id) ? 0 : 1;
+const PUB_LAG = id => /^CLI_|^BCI_|^KR_LI_XSP/.test(id) ? 2 : /^MY_LEAD/.test(id) ? 3 : S[id] && /Yahoo/.test(S[id].source || '') ? 0 : /^(UST|DXY|BRENT|SOX|COPPER)/.test(id) ? 0 : 1;
 function leadStats(a, ma, b, mb, k) {
   if (!has(a, b)) return null;
   const A = llSeries(a, ma), B = llSeries(b, mb), ts = [...A.keys()].filter(t => B.has(addMonths(t, k))).sort((p, q) => p - q);
@@ -2737,7 +2737,7 @@ function leadNote(st, aLab, bLab) {
 }
 const LL_CAVEAT = 'The OECD leading indices are revised after the fact, smoothed and partly built from share prices (Korea’s includes the KOSPI), so part of their lead over equity markets is circular and the real-time lead is shorter than the history suggests; year-on-year changes overlap month to month, which flatters correlations.';
 // stock-free candidates for Korea and Taiwan: the best one that passes the lead rule is shown next to the OECD index
-const CLEAN_ALT = [['BCI_USA', 'chg6', 'US business confidence (ISM-based)'], ['KR_BCI', 'chg6', 'Korea business confidence'], ['KR_CCI', 'chg6', 'Korea consumer confidence'],
+const CLEAN_ALT = [['KR_LI_XSP', 'chg6', 'Korea leading index without share prices'], ['BCI_USA', 'chg6', 'US business confidence (ISM-based)'], ['KR_BCI', 'chg6', 'Korea business confidence'], ['KR_CCI', 'chg6', 'Korea consumer confidence'],
   ['KR_EXP_YOY', 'level', 'Korea exports'], ['TW_ORDERS_YOY', 'level', 'Taiwan export orders']];
 function cleanAlt(target) {
   let best = null;
@@ -3028,10 +3028,10 @@ const ASIA_LL = [
   ['CLI_KOR', 'chg6', 'TWSE', 'yoy', 5], ['CLI_KOR', 'chg6', 'KOSPI', 'yoy', 4], ['CLI_IDN', 'chg6', 'JCI', 'yoy', 4], ['CLI_IND', 'chg6', 'NIFTY', 'yoy', 5],
   ['CLI_CHN', 'chg6', 'COPPER', 'yoy', 7], ['MY_LEAD_DIFF', 'level', 'KLCI', 'yoy', 4], ['BRENT', 'yoy', 'IN_10Y', 'chg', 2], ['BRENT', 'yoy', 'KR_CPI_YOY', 'level', 7],
   ['BRENT', 'yoy', 'SG_CORE_YOY', 'level', 8], ['DXY', 'yoy', 'KR_EXP_YOY', 'level', 4], ['BCI_USA', 'chg6', 'TWSE', 'yoy', 3], ['BCI_USA', 'chg6', 'KOSPI', 'yoy', 3], ['TW_ORDERS_YOY', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['TW_M1B_M2', 'chg6', 'TWSE', 'yoy', 5],
-  ['CLI_KOR', 'chg6', 'TW_EXP_YOY', 'level', 9], ['BRENT', 'yoy', 'TW_CPI_YOY', 'level', 2],
+  ['KR_LI_XSP', 'chg6', 'TWSE', 'yoy', 2], ['BRENT', 'yoy', 'TW_CPI_YOY', 'level', 2],
 ];
 const SHORT = { CLI_KOR: 'Korea leading index', CLI_IDN: 'Indonesia leading index', CLI_IND: 'India leading index', CLI_CHN: 'China leading index', MY_LEAD_DIFF: 'Malaysia leading diffusion',
-  BRENT: 'Brent oil', DXY: 'US dollar', BCI_USA: 'US business confidence', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
+  BRENT: 'Brent oil', DXY: 'US dollar', BCI_USA: 'US business confidence', KR_LI_XSP: 'Korea leading index ex share prices', KR_3M: 'Korea 3M rate', UST10Y: 'UST 10Y', SOX: 'SOX', TWSE: 'Taiwan Weighted', KOSPI: 'KOSPI', JCI: 'Jakarta Composite', NIFTY: 'Nifty 50',
   COPPER: 'Copper', KLCI: 'KLCI', IN_10Y: 'India 10Y', KR_CPI_YOY: 'Korea CPI', SG_CORE_YOY: 'Singapore core CPI', KR_EXP_YOY: 'Korea exports', HSI: 'Hang Seng', KR_10Y: 'Korea 10Y',
   STI: 'STI', SG_NODX_YOY: 'Singapore NODX', TW_EXP_YOY: 'Taiwan exports', TW_ORDERS_YOY: 'Taiwan export orders', TW_M1B_M2: 'Taiwan M1B − M2 gap', TW_CPI_YOY: 'Taiwan CPI', TW_IP_ICT_YOY: 'Taiwan electronics output', MY_EXPORTS_YOY: 'Malaysia exports', CN_EXP_YOY: 'China exports', MY_CPI_YOY: 'Malaysia CPI' };
 const shortOf = id => SHORT[id] || (S[id] ? S[id].label : id);
@@ -3049,7 +3049,7 @@ function renderAsiaLL(c) {
     const row = el('tr', { class: 'row' + (i === state.asiaLLsel ? ' sel' : ''), style: 'cursor:pointer', title: `Same month ${cF(st.r0)} · halves ${cF(st.h1)} / ${cF(st.h2)} (stable in both: ${both}) · ${st.n} months from ${monthLab(st.from)}. Click to chart.`,
       onclick: () => { state.asiaLLsel = i; cards.asia_ll.render(); cards.asia_llchart.render(); } },
       el('td', { text: `${shortOf(p[0])} → ${shortOf(p[2])}` }), el('td', { class: 'num', text: p[4] + 'm' }), el('td', { class: 'num', text: cF(st.rk) }),
-      el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), title: st.sp ? 'Contains share prices: the leading index includes the stock market it is compared with, so part of the lead is circular' : '', text: st.ok ? `Leads${st.sp ? ' ⓢ' : ''} ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
+      el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), title: st.sp ? 'Contains share prices: the leading index includes the stock market it is compared with, so part of the lead is circular' : '', text: st.ok && !st.usable ? 'No usable lead (publication delay)' : st.ok ? `Leads${st.sp ? ' ⓢ' : ''} ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
     tb.append(row); csv.push([`${shortOf(p[0])} → ${shortOf(p[2])}`, p[4], st.rk, st.r0, both, st.ok ? st.usable : '', now ? now.v : '', st.verdict]);
   });
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
@@ -5080,6 +5080,13 @@ function sigEvidence(x) {
   const what = isRatio(x.target) ? 'relative move' : x.kind === 'ret' ? 'move' : 'change';
   return `${st.n} time${st.n === 1 ? '' : 's'} since ${yr}: median ${what} ${sigMove(x.kind, st.med)} over ${h} months, up ${fmtNum(st.hit, 0)}% of the time; in all months ${sigMove(x.kind, st.base_med)}, up ${fmtNum(st.base_hit, 0)}%.`;
 }
+function sigOos(x) {   // one line on the out-of-sample check
+  const w = x.wf; if (!w) return '';
+  if (w.verdict === 'held up') return `Out of sample (after ${w.split.slice(0, 4)}): held up, ${w.n_oos} events, up ${fmtNum(w.hit_oos, 0)}% of the time vs ${fmtNum(w.base_hit_oos, 0)}% normally.`;
+  if (w.verdict === 'failed') return `Out of sample (after ${w.split.slice(0, 4)}): did not hold up (${w.n_oos} events), so graded down.`;
+  return `Out of sample: not testable yet (${w.verdict}).`;
+}
+const sigWhy = x => (x.downgrades || []).length ? ` · graded down from ${x.tier_before.toLowerCase()}: ${x.downgrades.join(', ')}` : '';
 function sigChip(t) { return el('span', { class: 'chip tchip ' + (TIER_CLS[t] || 'none'), text: t }); }
 function renderSigIdeas(c) {
   const b = htmlBody(c); if (!SIG) { b.append(el('div', { class: 'empty', text: 'The signal engine runs with the next full data refresh.' })); return; }
@@ -5094,7 +5101,7 @@ function renderSigIdeas(c) {
     const box = el('div', { class: 'sig-idea' + (dis[key] ? ' dismissed' : '') + (watch[key] ? ' watched' : '') });
     box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), sigChip(lead.tier)));
     box.append(el('div', { class: 'muted small', text: `${sigs.length} signal${sigs.length === 1 ? '' : 's'} for${g.against.length ? `, ${g.against.length} against` : ', none against'} · since ${lead.since ? monthLab(dayMs(lead.since)) : '–'}` }));
-    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + (x.share_prices ? ` · contains share prices: graded down from ${x.tier_before.toLowerCase()}` : '') }), el('div', { class: 'muted small', text: sigEvidence(x) })));
+    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + sigWhy(x) }), el('div', { class: 'muted small', text: sigEvidence(x) + ' ' + sigOos(x) })));
     if (frac != null) box.append(el('div', { class: 'sig-priced' }, el('span', { class: 'muted small', text: `Since it fired: ${sigMove(lead.kind, moved)} (typical over ${h}m: ${sigMove(lead.kind, typ)})` }),
       el('div', { class: 'rbar' }, el('div', { class: 'rbar-fill', style: `width:${Math.round(Math.min(frac, 1) * 100)}%` }))));
     box.append(el('div', { class: 'muted small', text: `Cancels if the rule stops holding (${lead.rule}), or ${g.target_name} breaks its trend the other way.` }));
@@ -5135,7 +5142,7 @@ function renderSigTable(c) {
   if (!state.sigSel && L.length) state.sigSel = L[0].id;
   for (const x of L) { const st = x.best_h ? x.stats[String(x.best_h)] : null;
     tb.append(el('tr', { class: 'row' + (x.id === state.sigSel ? ' sel' : ''), style: 'cursor:pointer', title: x.rule + (x.revised ? ' · uses revised data' : '') + ' · click for detail', onclick: () => { state.sigSel = x.id; c.render(); cards.sig_detail.render(); } },
-      el('td', { text: x.name + (x.share_prices ? ' ⓢ' : ''), title: x.share_prices ? `Contains share prices (OECD leading index or the dashboard’s US leading index): graded down one tier from ${x.tier_before}` : '' }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
+      el('td', { text: x.name + (x.share_prices ? ' ⓢ' : ''), title: (x.share_prices ? 'Contains share prices (OECD leading index or the dashboard’s US leading index). ' : '') + sigOos(x) + sigWhy(x) }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
       el('td', {}, sigChip(x.tier)), el('td', { class: 'num', text: x.best_h ? x.best_h + 'm' : '–' }),
       el('td', { class: 'num', text: st ? `${sigMove(x.kind, st.med)} · ${fmtNum(st.hit, 0)}% up · n${st.n}` : '–' }), el('td', { class: 'num muted', text: st ? `${sigMove(x.kind, st.base_med)} · ${fmtNum(st.base_hit, 0)}% up` : '–' })));
     csv.push([x.name, x.family, x.on, x.since || '', x.tier, x.best_h || '', st ? st.n : '', st ? st.med : '', st ? st.hit : '', st ? st.base_med : '', st ? st.base_hit : '']); }
@@ -5152,7 +5159,7 @@ function renderSigDetail(c) {
     { fmt: v => fmtNum(v, isRatio(x.target) ? 3 : 2), axisFmt: v => fmtNum(v, isRatio(x.target) ? 2 : 0), endLabels: false });
   const rows = (SIG.horizons || [1, 3, 6, 12]).map(h => { const st = x.stats[String(h)]; return st ? `${h}m: ${sigMove(x.kind, st.med)} (middle half ${sigMove(x.kind, st.p25)} to ${sigMove(x.kind, st.p75)}), up ${fmtNum(st.hit, 0)}% vs ${fmtNum(st.base_hit, 0)}% normally; first half of history ${st.h1 == null ? '–' : sigMove(x.kind, st.h1)} vs normal, second ${st.h2 == null ? '–' : sigMove(x.kind, st.h2)}` : null; }).filter(Boolean);
   const inputs = Object.entries(x.inputs_now || {}).map(([k, [d, v]]) => `${(S[k] && S[k].label) || k} ${fmtNum(v, 2)} (as known ${monthLab(dayMs(d))}${x.lags[k] ? `, ${x.lags[k]}-month publication delay applied` : ''})`).join('; ');
-  setNote(c, `Rule: ${x.rule}. Dashed lines = past switch-ons. ${x.tier}. ${rows.join('. ')}. Latest inputs: ${inputs}.${x.revised ? ' Uses data that is revised after the fact, so the live record may be weaker.' : ''}`);
+  setNote(c, `Rule: ${x.rule}. Dashed lines = past switch-ons. ${x.tier}${sigWhy(x)}. ${sigOos(x)} ${rows.join('. ')}. Latest inputs: ${inputs}.${x.revised ? ' Uses data that is revised after the fact, so the live record may be weaker.' : ''}`);
   setSource(c, 'Dashboard signal engine; ' + srcOf(x.inputs.filter(i => S[i])));
 }
 state.sigDiv = 0;
@@ -5206,6 +5213,7 @@ function renderSigHow(c) {
   b.append(P('What this is: a fixed list of rules applied to the dashboard’s own public data. Each rule is a condition (for example, “Korea’s OECD leading index is higher than six months ago”) and a target market. The page shows which rules are on now and how the target behaved after each past switch-on.'),
     P('How a rule is tested: monthly data; macro data is moved forward by its publication delay, so the test only uses what was known at the time. Each switch-on (at least six months after the previous one) is an event; the target’s move 1, 3, 6 and 12 months later is compared with its move in all months over the same period.'),
     P('Tiers: Tested edge = at least 12 events, a hit rate at least 12 points better than normal in the signal’s direction, and the edge holding in both halves of the history. Thin evidence = 6 to 11 events and at least 20 points. Context only = on, but the record is no better than normal. Not enough history = fewer than 6 events.'),
+    P('Out-of-sample check: the best horizon is chosen on the first 60% of each rule’s history only, then tested on the last 40%. A rule that no longer beats normal there (hit rate at least 5 points better, median edge the right way, at least 4 events) is graded down one tier; one with too few later events is marked “not testable yet”. Rules built on leading indices that contain share prices are also graded down one tier.'),
     P('Ideas to investigate: rules that are on and still within their best horizon, grouped by market and direction; a market with rules on both sides shows the count against. Divergences: pairs that normally move together whose 3-month moves are more than 2 standard deviations apart.'),
     P('Limits: samples are small; past patterns break; leading indicators are revised after the fact; everything here uses public data that the market also sees. The track record starts on the day the engine went live and is the real test. Research prompts for further work, not investment advice.'));
   setSource(c, 'pipeline/signals.py');

@@ -289,6 +289,14 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
                 s = pd.Series(g["OBS_VALUE"].astype(float).values, index=g["t"]).sort_index()
                 out[f"CLI_{area}"] = (s, dict(label=f"{name} leading indicator", unit="idx", kind="level", group="Macro · Leading indicators",
                                               source="OECD Composite Leading Indicators (amplitude adjusted, 100 = trend)"))
+    # Korea's leading index rebuilt without its share-price component (LOCOSP = the KOSPI): the average of the other
+    # normalised OECD components, so the lead over equity markets is not circular
+    comp = oecd_frame("OECD.SDD.STES,DSD_STES@DF_CLI,", "KOR.M.LOCOBS+LOCOIS+LOCOSI+LOCOSK+LOCOTT...NOR...")
+    if comp is not None and len(comp):
+        x = comp.pivot_table(index="t", columns="MEASURE", values="OBS_VALUE").sort_index()
+        if x.shape[1] >= 4:
+            out["KR_LI_XSP"] = (x.mean(axis=1).dropna(), dict(label="Korea leading index without share prices", unit="idx", kind="level", group="Macro · Leading indicators",
+                                source=f"OECD Composite Leading Indicators: average of the normalised non-stock components ({', '.join(x.columns)})"))
     bci = oecd_frame("OECD.SDD.STES,DSD_STES@DF_CLI,", f"{'+'.join(BCI_AREAS)}.M.BCICP...AA...H")
     if bci is not None:
         for area, name in BCI_AREAS.items():
@@ -320,6 +328,6 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
         print("      " + n)
         if cpi_missing and len(DIAG) < 12:   # only surface e-Stat notes when something failed
             DIAG.append(n)
-    for sid in [k[0] for k in KEI + KEI_Q] + [f"CLI_{a}" for a in CLI_AREAS] + [f"BCI_{a}" for a in BCI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
+    for sid in ["KR_LI_XSP"] + [k[0] for k in KEI + KEI_Q] + [f"CLI_{a}" for a in CLI_AREAS] + [f"BCI_{a}" for a in BCI_AREAS] + [b[0] for b in BOJ_SERIES] + ["JP_CPI_YOY", "JP_CORE_YOY", "JP_CORECORE_YOY"]:
         status[sid] = "ok" if sid in out else "missing"
     return out

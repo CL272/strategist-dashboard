@@ -46,6 +46,8 @@ def lag_of(sid: str) -> int:
         return 2
     if sid.startswith("MY_LEAD"):
         return 3
+    if sid == "KR_LI_XSP":
+        return 2
     if sid == "KR_CHIP_EXP":
         return 10   # UN Comtrade publishes Korea's trade about 10 months late
     if sid in ("PALM", "STLFSI", "NFCI"):
@@ -208,6 +210,11 @@ def rules():
             ["BCI_USA"], lambda M: chg(M["BCI_USA"], 6) < 0, tgt, -1)
         add(f"kr_bci_up_{tgt.lower()}", "Clean leads", f"Korea business confidence turning up → {k}", "OECD Korea business confidence higher than 6 months earlier",
             ["KR_BCI"], lambda M: chg(M["KR_BCI"], 6) > 0, tgt, 1)
+    for tgt, k in (("TWSE", "Taiwan Weighted"), ("KOSPI", "KOSPI")):
+        add(f"kr_lixsp_up_{tgt.lower()}", "Clean leads", f"Korea leading index ex share prices turns up → {k}", "Korea leading index without its share-price component higher than 6 months earlier",
+            ["KR_LI_XSP"], lambda M: chg(M["KR_LI_XSP"], 6) > 0, tgt, 1)
+        add(f"kr_lixsp_dn_{tgt.lower()}", "Clean leads", f"Korea leading index ex share prices turns down → {k}", "Korea leading index without its share-price component lower than 6 months earlier",
+            ["KR_LI_XSP"], lambda M: chg(M["KR_LI_XSP"], 6) < 0, tgt, -1)
     add("kr_exp_accel_kospi", "Clean leads", "Korea exports accelerating → KOSPI", "Korea export growth higher than 3 months earlier",
         ["KR_EXP_YOY"], lambda M: chg(M["KR_EXP_YOY"], 3) > 0, "KOSPI", 1)
     add("kr_chip_up_kospi", "Clean leads", "Korea chip exports growing → KOSPI", "Korea chip exports (UN Comtrade) higher than a year earlier, as published (about 10 months late)",
@@ -273,8 +280,42 @@ def study(cond: pd.Series, target: pd.Series, kind: str, d: int, gap: int) -> di
             tier = "Thin evidence"
         else:
             tier = "Context only"
+    wf = walk_forward(ev, target, kind, d, valid)
     return dict(events=[str(t.date()) for t in ev], n_events=len(ev), on=bool(cond.iloc[-1]), since=str(run_start.date()) if run_start is not None else None,
-                stats={str(h): v for h, v in stats.items()}, best_h=best, tier=tier, history_from=str(start.date()) if start is not None else None)
+                stats={str(h): v for h, v in stats.items()}, best_h=best, tier=tier, history_from=str(start.date()) if start is not None else None, wf=wf)
+
+
+def walk_forward(ev, target, kind, d, valid) -> dict | None:
+    """Out-of-sample check: pick the best horizon on the first 60% of the history only, then test that horizon on the
+    last 40% (events and baseline from that period alone). Passes if the later events still beat the baseline in the
+    signal's direction: hit rate at least 5 points better and a median edge of the right sign."""
+    if len(valid) < 60:
+        return None
+    split = valid[int(len(valid) * 0.6)]
+    def rec(h, lo, hi):
+        f = fwd(target, h, kind)
+        x = f.reindex([t for t in ev if lo <= t < hi]).dropna()
+        base = f[(f.index >= lo) & (f.index < hi)].dropna()
+        if len(base) < 12:
+            return None
+        return dict(n=int(len(x)), hit=float((x > 0).mean() * 100) if len(x) else None, med=float(x.median()) if len(x) else None,
+                    base_hit=float((base > 0).mean() * 100), base_med=float(base.median()))
+    first, h_is = None, None
+    for h in (3, 6, 12):
+        r = rec(h, valid.min(), split)
+        if r and r["n"] >= 3 and (first is None or d * (r["hit"] - r["base_hit"]) > d * (first["hit"] - first["base_hit"])):
+            first, h_is = r, h
+    if first is None:
+        return dict(split=str(split.date()), h=None, n_is=0, n_oos=0, verdict="too few events before the split")
+    later = rec(h_is, split, pd.Timestamp.max)
+    n_oos = later["n"] if later else 0
+    if n_oos < 4:
+        return dict(split=str(split.date()), h=h_is, n_is=first["n"], n_oos=n_oos, gap_is=d * (first["hit"] - first["base_hit"]), verdict="too few events since the split")
+    gap = d * (later["hit"] - later["base_hit"])
+    edge = d * (later["med"] - later["base_med"])
+    ok = gap >= 5 and edge > 0
+    return dict(split=str(split.date()), h=h_is, n_is=first["n"], n_oos=n_oos, gap_is=d * (first["hit"] - first["base_hit"]), gap_oos=gap, edge_oos=edge,
+                hit_oos=later["hit"], base_hit_oos=later["base_hit"], verdict="held up" if ok else "failed")
 
 
 # ---------------------------------------------------------------- divergences (weekly)
@@ -379,10 +420,15 @@ def build(status: dict) -> None:
                     m = M_get(i)
                     now_vals[i] = [str(m.dropna().index[-1].date()), float(m.dropna().iloc[-1])]
                 sp = any(i.startswith("CLI_") or i == "LEI_6M" for i in r["inputs"])
+                res["tier_before"], res["downgrades"] = res["tier"], []
                 if sp:   # owner's rule: keep, but one tier lower (circular with equity markets, and revised after the fact)
-                    res["tier_before"] = res["tier"]
                     res["tier"] = DOWN.get(res["tier"], res["tier"])
-                    active = res["on"] and res["best_h"] is not None and months_on is not None and months_on <= res["best_h"]
+                    res["downgrades"].append("contains share prices")
+                wf = res.get("wf") or {}
+                if wf.get("verdict") == "failed" and TIER_W[res["tier"]] > 0:   # did not hold up out of sample
+                    res["tier"] = DOWN.get(res["tier"], res["tier"])
+                    res["downgrades"].append("failed out-of-sample")
+                active = res["on"] and res["best_h"] is not None and months_on is not None and months_on <= res["best_h"]
                 sigs.append(dict(id=r["id"], family=r["family"], name=r["name"], rule=r["rule"], inputs=r["inputs"], inputs_now=now_vals, share_prices=sp,
                                  target=r["target"], target_name=NAMES.get(r["target"], r["target"]), dir=r["dir"], kind=r["kind"],
                                  revised=any(i.startswith("CLI_") or i == "REG_QUAD" for i in r["inputs"]),

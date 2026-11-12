@@ -570,6 +570,17 @@ exports have only 2 events in real time (Comtrade is about 10 months late). The 
 indices' components in its CLI dataflow, so a "Korea leading index without KOSPI" could not be built. The Korea and Taiwan
 lead cards now name the best stock-free alternative.
 
+### WP31. Out-of-sample check, stock-free Korea index, email alerts (owner's request, 12 Nov 2026)
+
+*Built 12 Nov 2026.* (1) Walk-forward check in pipeline/signals.py: best horizon chosen on the first 60% of each rule's
+history, tested on the last 40%; rules that fail are graded down one tier ("failed out-of-sample"). On 12 Nov no graded
+rule failed; several had too few later events to judge. (2) KR_LI_XSP: Korea's OECD leading index rebuilt from its five
+non-stock components (average of the normalised series). By correlation, with the 2-month publication delay counted, it
+gives about 1 usable month over KOSPI and none over Taiwan Weighted; as an event signal, its turning up has a tested
+edge for both (Taiwan Weighted up 92% of the time over 3 months vs 67% normally; KOSPI up 92% over 12 months vs 63%),
+and held up out of sample. (3) tools/signal_alerts.py, run by update.yml: one GitHub issue (label signal-idea) per
+active idea to investigate, closed with a comment when it switches off; GitHub emails both.
+
 ### Suggested order
 
 WP23 → WP22 → WP24 → WP25 → WP26 → WP27 → WP28 → WP29. WP23 and WP22 answer the idea-generation request and need no new

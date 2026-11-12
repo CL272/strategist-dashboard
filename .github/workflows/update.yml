@@ -107,6 +107,12 @@ jobs:
             gh issue close "$open" --comment "All series are updating again."
           fi
 
+      - name: Signal alerts (one issue per active idea to investigate; GitHub emails you)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/signal_alerts.py
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
