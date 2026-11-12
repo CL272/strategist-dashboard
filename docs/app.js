@@ -7253,7 +7253,16 @@ async function init() {
   try { STR = await loadJSON('data/stress.json'); } catch (e) { STR = null; }
   try { CAL = await loadJSON('data/calendar.json'); } catch (e) { CAL = null; }
   try { FP = await loadJSON('data/fedpath.json'); } catch (e) { FP = null; }
-  setInterval(async () => { await loadNews(); if (state.tab === 'news') renderNews(); }, 10 * 60 * 1000);
+  // headlines: check every 10 minutes, and straight away when the tab or phone comes back after a while
+  // (browsers pause timers in background tabs, so a page left open could otherwise show hours-old headlines)
+  const refreshNews = async (force) => {
+    if (!force && state.newsChecked && Date.now() - state.newsChecked < 2 * 60 * 1000) return;
+    await loadNews();
+    if (state.tab === 'news') renderNews(); else if (state.tab === 'overview' && cards.headlines) cards.headlines.render();
+  };
+  setInterval(() => refreshNews(true), 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNews(false); });
+  addEventListener('pageshow', e => { if (e.persisted) refreshNews(false); });
   META = meta.status === 'fulfilled' ? meta.value : {};
   if (SENT && SENT.series) for (const [id, x] of Object.entries(SENT.series)) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
   if (rp.status === 'fulfilled') RAMP_META = rp.value._meta || null;
