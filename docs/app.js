@@ -5466,6 +5466,7 @@ function buildIdeas() {
   makeCard(g, { key: 'idea_viewlog', range: false, wide: true, title: 'Changes of view', render: renderViewLog });
   makeCard(g, { key: 'idea_model', range: false, title: 'Model portfolio', render: renderModel });
   makeCard(g, { key: 'idea_modelchart', range: false, title: 'Model portfolio vs world equities', render: renderModelChart });
+  if (typeof buildModelStress === 'function') buildModelStress(g);   // WP47 (more.js)
   g.prepend(cards.idea_watch.root);
   for (const k of ['idea_table', 'idea_score', 'idea_watch', 'idea_views', 'idea_viewlog', 'idea_model']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
@@ -5607,9 +5608,9 @@ function renderIdeas() {
   cards.idea_chart.root.hidden = own || view === 'score' || (view === 'watch' ? !state.watchSel : !IDEAS.some(x => x.sid));
   cards.idea_score.root.hidden = view !== 'score';
   for (const k of ['idea_views', 'idea_viewlog']) cards[k].root.hidden = view !== 'views';
-  for (const k of ['idea_model', 'idea_modelchart']) cards[k].root.hidden = view !== 'model';
+  for (const k of ['idea_model', 'idea_modelchart', 'idea_stress']) if (cards[k]) cards[k].root.hidden = view !== 'model';
   if (view === 'views') { cards.idea_views.render(); cards.idea_viewlog.render(); return; }
-  if (view === 'model') { cards.idea_model.render(); cards.idea_modelchart.render(); return; }
+  if (view === 'model') { cards.idea_model.render(); cards.idea_modelchart.render(); if (cards.idea_stress) cards.idea_stress.render(); return; }
   if (view === 'watch') cards.idea_watch.render();
   else if (view !== 'score') cards.idea_table.render();
   else cards.idea_score.render();

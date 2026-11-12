@@ -167,6 +167,42 @@ function addEarningsToCal() {
   CAL.events.sort((a, b) => a.d.localeCompare(b.d));
 }
 
+// ------------------------------------------------------------------ WP47. Model portfolio: past episodes and risk contribution (Idea log → Model portfolio)
+const MP_EPISODES = [['Global financial crisis', '2007-10-09', '2009-03-09'], ['Taper tantrum', '2013-05-21', '2013-06-24'], ['China devaluation', '2015-08-10', '2016-02-11'],
+  ['Late-2018 sell-off', '2018-09-20', '2018-12-24'], ['Covid crash', '2020-02-19', '2020-03-23'], ['2022 rates shock', '2022-01-03', '2022-10-12']];
+function renderModelStress(c) {
+  const o = mpLoad(), b = htmlBody(c), rows = o.rows.filter(([id, w]) => w > 0), tot = rows.reduce((a, [, w]) => a + w, 0); if (!tot) { b.append(el('div', { class: 'empty', text: 'Add weights first.' })); return; }
+  const lab = id => (MP_ASSETS.find(x => x[0] === id) || [, id])[1].replace(/ \(.*\)$/, '');
+  const ret = (id, a, z) => { if (id === 'CASH') { const cr = CASH_RATE[o.ccy], r = has(cr) ? asOf(S[cr], a) : null; return r ? r.v * (z - a) / (365.25 * DAY) : 0; }
+    if (!has(id)) return null; const s2 = inCcy(id, o.ccy), p = asOf(s2, a), q = asOf(s2, z); return p && q && p.t >= a - 10 * DAY ? (q.v / p.v - 1) * 100 : null; };
+  const heads = ['Episode', 'Portfolio', ...rows.map(([id]) => lab(id))], tb = el('tbody'), csv = [heads];
+  for (const [name, f, t] of MP_EPISODES) {
+    const a = dayMs(f), z = dayMs(t), rs = rows.map(([id]) => ret(id, a, z)), known = rows.map(([, w], i) => rs[i] == null ? 0 : w).reduce((x, y) => x + y, 0);
+    const port = known >= tot * 0.8 ? rows.reduce((acc, [, w], i) => acc + (rs[i] == null ? 0 : w / known * rs[i]), 0) : null;
+    tb.append(el('tr', { class: 'row', title: `${f} to ${t}` }, el('td', { class: 'l', text: name }), el('td', { class: 'num strong ' + (port == null ? '' : port < 0 ? 'dn' : 'up'), text: port == null ? '–' : pctF1(port) }),
+      ...rs.map(v => el('td', { class: 'num ' + (v == null ? 'muted' : v < 0 ? 'dn' : 'up'), text: v == null ? '–' : pctF1(v) }))));
+    csv.push([name, port, ...rs]);
+  }
+  // contribution to risk over the last 3 years (weekly returns)
+  const fr = []; for (let t = state.latest - 3 * 365 * DAY; t <= state.latest; t += 7 * DAY) fr.push(t);
+  const R = rows.map(([id]) => fr.slice(1).map((t, k) => { if (id === 'CASH') return 0; if (!has(id)) return 0; const s2 = inCcy(id, o.ccy), p = asOf(s2, fr[k]), q = asOf(s2, t); return p && q ? q.v / p.v - 1 : 0; }));
+  const W = rows.map(([, w]) => w / tot), n = R[0].length, mu = R.map(r => r.reduce((x, y) => x + y, 0) / n);
+  const cov = (i, j) => R[i].reduce((acc, x, k) => acc + (x - mu[i]) * (R[j][k] - mu[j]), 0) / (n - 1);
+  const sw = W.map((_, i) => W.reduce((acc, wj, j) => acc + wj * cov(i, j), 0)), varP = W.reduce((acc, wi, i) => acc + wi * sw[i], 0);
+  tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: 'Share of portfolio risk (last 3 years, weekly)' })));
+  tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: 'Contribution to risk' }), el('td', { class: 'num', text: varP > 0 ? fmtNum(Math.sqrt(varP * 52) * 100, 1) + '% vol' : '–' }),
+    ...W.map((w, i) => el('td', { class: 'num strong', text: varP > 0 ? fmtNum(w * sw[i] / varP * 100, 0) + '%' : '–', title: `weight ${fmtNum(w * 100, 0)}%` }))));
+  csv.push(['Contribution to risk %', '', ...W.map((w, i) => varP > 0 ? w * sw[i] / varP * 100 : '')]);
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  c.csv = csv;
+  setNote(c, `How today’s weights would have done in six past sell-offs (peak to trough of world equities, in ${o.ccy}, no rebalancing inside the episode) and which holdings carry the risk now. A holding with a small weight but a large share of risk is where the portfolio’s swings come from. – = no price history for that period (the portfolio figure needs 80% of the weight covered).`);
+  setSource(c, 'Your weights; Yahoo Finance, FRED, Bank Negara, MAS; calculated');
+}
+function buildModelStress(g) {
+  makeCard(g, { key: 'idea_stress', title: 'Stress test and risk', wide: true, range: false, render: renderModelStress });
+  const r = cards.idea_stress.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; r.hidden = true;
+}
+
 // ------------------------------------------------------------------ build and wiring
 const EXTRA_RENDER = { fixed: ['inc_menu', 'inc_chart'] };   // pages whose own render function lists its cards: render these too
 SUBTABS.fixed.push(['Income menu', ['inc_menu', 'inc_chart']]);
