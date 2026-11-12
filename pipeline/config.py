@@ -150,6 +150,13 @@ FRED = [
     ("UST2Y",       "DGS2",        "UST 2Y yield",                "Rates · US", "yield", "%"),
     ("UST10Y",      "DGS10",       "UST 10Y yield",               "Rates · US", "yield", "%"),
     ("UST30Y",      "DGS30",       "UST 30Y yield",               "Rates · US", "yield", "%"),
+    # pricing rates for the Structured products page (owner's choice: rates from FRED)
+    ("UST1M",       "DGS1MO",      "UST 1M yield",                "Rates · US", "yield", "%"),
+    ("UST6M",       "DGS6MO",      "UST 6M yield",                "Rates · US", "yield", "%"),
+    ("UST1Y",       "DGS1",        "UST 1Y yield",                "Rates · US", "yield", "%"),
+    ("UST3Y",       "DGS3",        "UST 3Y yield",                "Rates · US", "yield", "%"),
+    ("UST5Y",       "DGS5",        "UST 5Y yield",                "Rates · US", "yield", "%"),
+    ("EA_DFR_F",    "ECBDFR",      "ECB deposit facility rate (FRED)", "Rates · Euro area", "yield", "%"),
     ("REAL10Y",     "DFII10",      "UST 10Y real yield (TIPS)",   "Rates · US", "yield", "%"),
     ("BE10Y",       "T10YIE",      "10Y breakeven inflation",     "Rates · US", "yield", "%"),
     ("CURVE_2s10s", "T10Y2Y",      "2s10s curve",                 "Rates · US", "yield", "%"),
@@ -229,6 +236,23 @@ FRED = [
     ("ES_10Y",      "IRLTLT01ESM156N", "Spain 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
     ("FR_10Y",      "IRLTLT01FRM156N", "France 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
     ("DE_10Y",      "IRLTLT01DEM156N", "Germany 10Y government bond yield", "Rates · Euro area", "yield", "%", "1990-01-01"),
+    ("AU_IB3M_F",   "IR3TIB01AUM156N", "Australia 3M interbank rate (OECD via FRED)", "Rates · Australia", "yield", "%", "2000-01-01"),
+    ("AU_LT_F",     "IRLTLT01AUM156N", "Australia 10Y yield (OECD via FRED)", "Rates · Australia", "yield", "%", "2000-01-01"),
+    ("JP_IB3M_F",   "IR3TIB01JPM156N", "Japan 3M interbank rate (OECD via FRED)", "Rates · Japan", "yield", "%", "2000-01-01"),
+    ("JP_LT_F",     "IRLTLT01JPM156N", "Japan 10Y yield (OECD via FRED)", "Rates · Japan", "yield", "%", "2000-01-01"),
+    ("GB_LT_F",     "IRLTLT01GBM156N", "UK 10Y yield (OECD via FRED)", "Rates · UK", "yield", "%", "2000-01-01"),
+    # Income menu (WP44): effective yields of credit indices (FRED keeps 3 years: archived)
+    ("IG_EY",       "BAMLC0A0CMEY", "US investment grade, effective yield", "Credit", "yield", "%"),
+    ("HY_EY",       "BAMLH0A0HYM2EY", "US high yield, effective yield", "Credit", "yield", "%"),
+    ("EM_CORP_EY",  "BAMLEMCBPIEY", "EM corporates (USD), effective yield", "Credit", "yield", "%"),
+    ("ASIA_CORP_EY","BAMLEMRACRPIASIAEY", "Asia EM corporates (USD), effective yield", "Credit", "yield", "%"),
+    # Credit cycle (WP48)
+    ("DELINQ_ALL",  "DRALACBS",    "Delinquency rate, all bank loans", "Credit", "level", "%", "1985-01-01"),
+    ("DELINQ_BUS",  "DRBLACBS",    "Delinquency rate, business loans", "Credit", "level", "%", "1987-01-01"),
+    ("DELINQ_CC",   "DRCCLACBS",   "Delinquency rate, credit cards", "Credit", "level", "%", "1991-01-01"),
+    ("SLOOS_CC",    "DRTSCLCC",    "Banks tightening credit card standards (net %)", "Credit", "level", "%", "1996-01-01"),
+    ("BANK_CREDIT", "TOTBKCR",     "US bank credit (all commercial banks)", "Credit", "level", "USD bn", "1990-01-01"),
+    ("CI_LOANS",    "BUSLOANS",    "US commercial and industrial loans", "Credit", "level", "USD bn", "1990-01-01"),
     ("VIXCLS",      "VIXCLS",      "VIX (FRED, from 1990)",       "Volatility", "level", "idx", MACRO_START),
     ("WEI",         "WEI",         "Weekly Economic Index",       "Macro · Growth", "level", "idx"),
     ("CCSA",        "CCSA",        "Continued claims",            "Macro · Growth", "level", "persons"),
@@ -263,7 +287,7 @@ FRED = [
 # FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.
 # These are archived in archive/<id>.csv (committed by the daily job) so history
 # is never lost again: each run merges what FRED returns into the archive.
-ARCHIVE = {"HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS", "CCC_OAS", "BB_OAS", "AAA_OAS", "AA_OAS", "A_OAS", "BBB_OAS", "B_OAS",
+ARCHIVE = {"IG_EY", "HY_EY", "EM_CORP_EY", "ASIA_CORP_EY", "HY_OAS", "IG_OAS", "EUR_HY_OAS", "ASIA_CORP_OAS", "CCC_OAS", "BB_OAS", "AAA_OAS", "AA_OAS", "A_OAS", "BBB_OAS", "B_OAS",
            "EM_CORP_OAS", "EM_HY_OAS"}
 
 # Long daily histories from Yahoo (for regime statistics back to the 1970s), stored monthly
