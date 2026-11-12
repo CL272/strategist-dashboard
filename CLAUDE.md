@@ -35,6 +35,14 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   tickers. If a page's sub-tab order changes, add its old order to `OLD_SUBS` so bookmarks still land correctly.
 - Each Equities sub-tab starts with the "Signals for this market" strip (`SIG_TARGETS`); `eqCard` and `fxCard` build
   the standard equity and currency views.
+- **Structured products** live in `docs/sp.js` (page), `docs/sp-model.js` (pricing maths, shared with the Monte Carlo worker
+  `docs/sp-worker.js`) and `pipeline/structured.py` (data). Generic structure names only, never issuer or product brand
+  names; every figure says "indicative … not a quote". Run `node tools/sp-check.js` after any change to the model or the
+  surfaces: it checks identities and listed put prices (within 15%) and must pass before pushing. The owner's notes stay
+  in localStorage (`sd-notes-v1`), never in the repository.
+- **Later packages** (Income menu, Playbook, earnings, model stress, credit cycle, gold, country funds) live in
+  `docs/more.js`. Pages whose render function lists its own cards (Fixed Income, Stress, Markets) also render the keys
+  in `EXTRA_RENDER`; add new cards there.
 - New cards, sections and markets are found by search (Ctrl+K) automatically; give cards a real title at build time.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
   wrapping, header controls and script errors; deliberate exceptions are listed in its `ALLOW` table.

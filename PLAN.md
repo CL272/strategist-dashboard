@@ -598,7 +598,17 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ## Planned, not built (owner's request, 12 Nov 2026): WP37 to WP50, structured products and completeness
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go" and names the packages.** Follow
+**Status: all built on 12 Nov 2026** (owner: "Go all", with the recommended answers, and pricing rates from FRED). Notes from the
+build: rates for pricing come from FRED for USD (Treasury curve 1M to 10Y), EUR (ECB deposit rate, Bund), AUD and JPY
+(OECD via FRED) and GBP (10Y; the overnight rate is OECD because FRED's UK 3-month series stops in Jan 2026); FRED has
+no ringgit or Singapore-dollar rates, so MYR uses Bank Negara interbank and deposit rates and SGD uses SORA and SGS
+yields, labelled on the page. Cboe's chain "current_price" includes after-hours trading, so the spot is taken from
+put-call parity on the option quotes (Nvidia was 6% off before). The model check (tools/sp-check.js) reproduces listed
+3-month puts within 4% for eight underlyings. Worst-of coupons for high-volatility names come out high (about 40% a
+year for Nvidia/AMD/Broadcom) because the correlation is low and the loss odds are high (about 29%); the card shows
+the odds next to the coupon. Thin option markets (EWM, EWS) are not used; KLCI and STI rows are estimates. P/E and P/B
+on the iShares pages load through a script and were not read (WP50 ships yields and flows; flows build from 12 Nov
+2026). The Income menu's credit history is three years until the new archive lengthens it. Follow
 `CLAUDE.md` (sub-tabs, 2,300 px, ≤ 5 tiles, ≤ 16 rows, one home per card) and run `node tools/design-check.js` before
 each push. One commit per package.
 
