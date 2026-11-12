@@ -41,7 +41,13 @@
     <button role="tab" data-tab="scorecard" aria-selected="false"><span class="ic">▥</span>Country scorecard</button>
     <button role="tab" data-tab="us" aria-selected="false"><span class="ic">◧</span>US</button>
     <button role="tab" data-tab="europe" aria-selected="false"><span class="ic">◨</span>Europe</button>
-    <button role="tab" data-tab="asia" aria-selected="false"><span class="ic">◐</span>Asia ex-Japan</button>
+    <button role="tab" data-tab="asia" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◐</span>Asia ex-Japan<span class="nav-caret" aria-hidden="true">▸</span></button>
+    <button role="tab" data-tab="my" data-parent="asia" class="nav-child" aria-selected="false" hidden>Malaysia</button>
+    <button role="tab" data-tab="sg" data-parent="asia" class="nav-child" aria-selected="false" hidden>Singapore</button>
+    <button role="tab" data-tab="cn" data-parent="asia" class="nav-child" aria-selected="false" hidden>China</button>
+    <button role="tab" data-tab="kr" data-parent="asia" class="nav-child" aria-selected="false" hidden>Korea</button>
+    <button role="tab" data-tab="tw" data-parent="asia" class="nav-child" aria-selected="false" hidden>Taiwan</button>
+    <button role="tab" data-tab="in" data-parent="asia" class="nav-child" aria-selected="false" hidden>India</button>
     <button role="tab" data-tab="japan" aria-selected="false"><span class="ic">◑</span>Japan</button>
     <button role="tab" data-tab="australia" aria-selected="false"><span class="ic">◒</span>Australia</button>
     <div class="nav-group">Markets</div>
@@ -143,8 +149,37 @@
 
   <section id="tab-asia" class="tab-panel" hidden>
     <div class="kpis" id="asiaKpis"></div>
-    <div class="kpis" id="cnjpKpis" hidden></div>
     <div class="grid" id="asiaGrid"></div>
+  </section>
+
+  <section id="tab-my" class="tab-panel" hidden>
+    <div class="kpis" id="myKpis"></div>
+    <div class="grid" id="myGrid"></div>
+  </section>
+
+  <section id="tab-sg" class="tab-panel" hidden>
+    <div class="kpis" id="sgKpis"></div>
+    <div class="grid" id="sgGrid"></div>
+  </section>
+
+  <section id="tab-cn" class="tab-panel" hidden>
+    <div class="kpis" id="cnKpis"></div>
+    <div class="grid" id="cnGrid"></div>
+  </section>
+
+  <section id="tab-kr" class="tab-panel" hidden>
+    <div class="kpis" id="krKpis"></div>
+    <div class="grid" id="krGrid"></div>
+  </section>
+
+  <section id="tab-tw" class="tab-panel" hidden>
+    <div class="kpis" id="twKpis"></div>
+    <div class="grid" id="twGrid"></div>
+  </section>
+
+  <section id="tab-in" class="tab-panel" hidden>
+    <div class="kpis" id="inKpis"></div>
+    <div class="grid" id="inGrid"></div>
   </section>
 
 

@@ -598,7 +598,7 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ## Planned, not built (owner's request, 12 Nov 2026): WP32 to WP36, regions reorganised
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go".** Follow `CLAUDE.md` and run
+**Status: WP32 built on 12 Nov 2026** (country pages `my`, `sg`, `cn`, `kr`, `tw`, `in` under Asia ex-Japan in the sidebar; old `#tab=asia&sub=N` and `#tab=cnjp` links land on the new pages; Asia overview links carry `v=2`). WP33 to WP36 follow in order. Follow `CLAUDE.md` and run
 `node tools/design-check.js` before each push. One commit per package.
 
 **The request:** (1) move the region-specific parts of the Markets pages to their regions; (2) organise each region

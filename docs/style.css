@@ -477,6 +477,10 @@ table.ideas th.l, table.ideas td.l { text-align: left; }
 .tabs button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .tabs button[aria-selected="true"] { background: rgba(255, 255, 255, 0.13); color: #fff; font-weight: 650; box-shadow: inset 3px 0 0 var(--brand-red); }
 .tabs button[aria-selected="true"] .ic { color: #fff; }
+.tabs button.nav-child { padding: 6px 10px 6px 36px; font-size: 13px; }
+.tabs button[hidden] { display: none; }
+.tabs .nav-caret { margin-left: auto; font-size: 10px; opacity: .6; transition: transform .15s; }
+.tabs button[aria-expanded="true"] .nav-caret { transform: rotate(90deg); }
 .side-foot { border-top: 1px solid rgba(255, 255, 255, 0.12); }
 .side-foot #asof { color: rgba(255, 255, 255, 0.65); }
 .side-foot .status-pill { color: #fff; border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.06); }
