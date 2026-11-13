@@ -24,6 +24,7 @@ SLOW.update({k: 200 for k in ("MY_ALR", "MY_BR", "MY_FD12", "MY_M2", "MY_M3", "M
 SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD", "MYR", "KRW", "INR", "AUD", "IDR")})
 SLOW["ID_IP_YOY"] = 200
 SLOW["EPU_GLOBAL"] = 200   # global policy uncertainty is published about four months late
+SLOW.update({k: 21 for k in ("GPR_DAILY", "GPR_MA30", "GPR_ACTS", "GPR_THREATS")})   # the daily GPR file is posted one to two weeks after the last day it covers
 SLOW["MMF_RETAIL"] = 50
 SLOW["UK_UNEMP"] = 170   # ONS labour data reach the OECD feed about four months after the month
 # UN Comtrade publishes Korea's monthly trade about 10 months late; Ramp's token table is weekly but posted with a lag
@@ -63,7 +64,7 @@ def build_health(status: dict) -> dict:
         if not p.exists():
             continue
         for sid, s in json.loads(p.read_text()).items():
-            if not s.get("d") or sid in IGNORE or sid.startswith(IGNORE_PREFIX):
+            if not isinstance(s, dict) or not s.get("d") or sid in IGNORE or sid.startswith(IGNORE_PREFIX):   # structured.json also holds lists
                 continue
             last = (EPOCH + pd.Timedelta(days=s["d"][-1])).date()
             freq, allowed = classify(s["d"])
