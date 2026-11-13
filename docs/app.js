@@ -3080,7 +3080,7 @@ function renderAsiaLL(c) {
       el('td', {}, el('span', { class: 'chip ' + (st.ok ? 'up' : st.verdict === 'Market leads the data' ? 'dn' : ''), title: st.sp ? 'Contains share prices: the leading index includes the stock market it is compared with, so part of the lead is circular' : '', text: st.ok && !st.usable ? 'No usable lead (publication delay)' : st.ok ? `Leads${st.sp ? ' ⓢ' : ''} ~${st.usable}m · ${dir}${pointer ? ' ' + pointer.slice(2) : ''}` : st.verdict === 'Market leads the data' ? 'Market leads' : st.verdict })));
     tb.append(row); csv.push([`${shortOf(p[0])} → ${shortOf(p[2])}`, p[4], st.rk, st.r0, both, st.ok ? st.usable : '', now ? now.v : '', st.verdict]);
   });
-  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); c.csv = csv;
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl)); capRows(tb, 'asia_ll', 16); c.csv = csv;
   setNote(c, 'ⓢ = contains share prices: the leading index includes the stock market it is compared with, so part of its lead is circular; US business confidence is the stock-free alternative. "Leads" = lead of at least 2 months, correlation at least 0.40 and above the same-month figure, and the same sign in both halves of the history. "Usable" = lead minus the publication delay. The arrow is the indicator’s latest direction; "up" or "down" is where the target has tended to go next. Hover a row for the same-month and half-sample figures; click it to chart. ' + LL_CAVEAT);
   setSource(c, 'Calculated on OECD, DOSM, Yahoo Finance and US Treasury data; monthly');
 }
@@ -5143,14 +5143,15 @@ function renderSigIdeas(c) {
   const ideas = SIG.ideas.filter(g => g.net > 0), shown = ideas.filter(g => !dis[g.target + '|' + g.dir] || state.sigShowDis);
   if (!ideas.length) b.append(el('div', { class: 'muted', text: 'No signal with a tested or thin edge is active right now. Context-only signals are listed below; check back after the next refresh.' }));
   const wrap = el('div', { class: 'sig-ideas' });
-  for (const g of shown.slice(0, 8)) {
+  for (const g of shown.slice(0, state.sigIdeasAll ? 12 : 3)) {
     const key = g.target + '|' + g.dir, sigs = g.signals.map(sigById).filter(Boolean).sort((p, q) => (TIER_W[q.tier] - TIER_W[p.tier]));
     const lead = sigs[0], h = lead.best_h, ls = lead.stats[String(h)];
     const moved = lead.moved, typ = ls ? ls.med : null, frac = moved != null && typ ? Math.max(0, Math.min(1.5, (moved * lead.dir) / Math.abs(typ))) : null;
     const box = el('div', { class: 'sig-idea' + (dis[key] ? ' dismissed' : '') + (watch[key] ? ' watched' : '') });
     box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), sigChip(lead.tier)));
     box.append(el('div', { class: 'muted small', text: `${sigs.length} signal${sigs.length === 1 ? '' : 's'} for${g.against.length ? `, ${g.against.length} against` : ', none against'} · since ${lead.since ? monthLab(dayMs(lead.since)) : '–'}` }));
-    for (const x of sigs) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + sigWhy(x) }), el('div', { class: 'muted small', text: sigEvidence(x) + ' ' + sigOos(x) })));
+    for (const x of sigs.slice(0, 3)) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + sigWhy(x) }), el('div', { class: 'muted small', text: sigEvidence(x) + ' ' + sigOos(x) })));
+    if (sigs.length > 3) box.append(el('div', { class: 'muted small', text: `+ ${sigs.length - 3} more rule${sigs.length === 4 ? '' : 's'} pointing the same way: ${sigs.slice(3).map(x => x.name).join('; ')}.` }));
     if (frac != null) box.append(el('div', { class: 'sig-priced' }, el('span', { class: 'muted small', text: `Since it fired: ${sigMove(lead.kind, moved)} (typical over ${h}m: ${sigMove(lead.kind, typ)})` }),
       el('div', { class: 'rbar' }, el('div', { class: 'rbar-fill', style: `width:${Math.round(Math.min(frac, 1) * 100)}%` }))));
     box.append(el('div', { class: 'muted small', text: `Cancels if the rule stops holding (${lead.rule}), or ${g.target_name} breaks its trend the other way.` }));
@@ -5165,6 +5166,7 @@ function renderSigIdeas(c) {
     wrap.append(box);
   }
   b.append(wrap);
+  if (shown.length > 3 && !state.sigIdeasAll) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${Math.min(shown.length, 12)} ideas`, onclick: () => { state.sigIdeasAll = true; c.render(); } }));
   const nd = ideas.filter(g => dis[g.target + '|' + g.dir]).length;
   if (nd) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: state.sigShowDis ? 'Hide dismissed' : `Show ${nd} dismissed`, onclick: () => { state.sigShowDis = !state.sigShowDis; c.render(); } }));
   setNote(c, `Research prompts from fixed rules on public data, ranked by the strength of their record: not recommendations. Each card shows how the target behaved after past signals against all months, how much has already happened since this one fired, and what would cancel it. Engine run ${SIG.generated}.`);
@@ -5287,7 +5289,8 @@ function buildSignals() {
     const ul = el('ul', { class: 'changes sig-list' }); for (const d of SIG.divergences.slice(0, 4)) ul.append(el('li', {}, el('a', { href: '#', text: `${d.name_b} vs ${d.name_a}: ${sign(d.z)}${fmtNum(Math.abs(d.z), 1)}σ`, onclick: e => { e.preventDefault(); state.sigDiv = SIG.divergences.indexOf(d); goSub('signals', 'Divergences'); } }),
       el('span', { class: 'muted small', text: ` · ${d.name_b} ${pctF1(d.ret_b)} vs implied ${pctF1(d.implied_b)} over 3 months` }))); b.append(ul);
     setNote(c, 'Pairs that usually move together, ranked by how far apart they are now (standard deviations of the usual gap). Beyond ±2σ is unusual.'); } });
-  makeCard(g, { key: 'sig_table', title: 'All signals', wide: true, range: false, seg: { key: 'sigFam', select: true, label: 'Family', options: [['All', 'All families'], ['Tested leads', 'Tested leads'], ['Clean leads', 'Clean leads (no share prices)'], ['Regime', 'Regime'], ['Policy', 'Central bank pricing'], ['Stress', 'Stress'], ['Extremes', 'Extremes'], ['Trend', 'Trend'], ['Malaysia', 'Malaysia'], ['AI theme', 'AI theme']] }, render: renderSigTable });
+  makeCard(g, { key: 'sig_table', title: 'All signals', wide: true, range: false, seg: { key: 'sigFam', select: true, label: 'Family', options: [['All', 'All families'], ['Tested leads', 'Tested leads'], ['Clean leads', 'Clean leads (no share prices)'], ['Regime', 'Regime'], ['Policy', 'Central bank pricing'], ['Stress', 'Stress'], ['Extremes', 'Extremes'], ['Trend', 'Trend'], ['Malaysia', 'Malaysia'], ['AI theme', 'AI theme'],
+    ['US cycle', 'US cycle (leading indicators)'], ['Global breadth', 'Global breadth and money'], ['Inflation leads', 'Inflation leads'], ['Canaries', 'Market canaries'], ['Sentiment', 'Sentiment'], ['Seasonality', 'Seasonality']] }, render: renderSigTable });
   makeCard(g, { key: 'sig_detail', title: 'Signal detail', wide: true, defaultRange: 'MAX', render: renderSigDetail });
   makeCard(g, { key: 'sig_div', title: 'Divergence monitor', range: false, render: renderSigDiv });
   makeCard(g, { key: 'sig_divchart', title: 'Gap history', range: false, render: renderSigDivChart });

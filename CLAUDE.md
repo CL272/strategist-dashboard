@@ -43,6 +43,14 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Later packages** (Income menu, Playbook, earnings, model stress, credit cycle, gold, country funds) live in
   `docs/more.js`. Pages whose render function lists its own cards (Fixed Income, Stress, Markets) also render the keys
   in `EXTRA_RENDER`; add new cards there.
+- **Leading indicators** live in `docs/leads.js` (page code, loaded after `more.js`) and `pipeline/leads.py` (`leads.json`:
+  supply chains, rents, OECD breadth and money, the Malaysia pulse, and derived series such as orders minus inventories,
+  the cycle baskets, canary ratios, the Asian pulse and the China credit impulse). One registry, `LB_ROWS`, drives the
+  Leading board, its tiles, breadth and the Strategist View / Weekly brief line: add a lead there in one line.
+  **Every lead shown carries its measured lead or the word "context"**: figures come live from `ldBestLead` (the
+  `leadStats` rule searched over 2 to 18 months, plus at least 12 years of overlap); never type a lead into a note.
+  Add publication delays for new series to `PUB_LAG` (app.js) and `lag_of` (signals.py). Tiles for app.js pages are added
+  through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
 - New cards, sections and markets are found by search (Ctrl+K) automatically; give cards a real title at build time.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
   wrapping, header controls and script errors; deliberate exceptions are listed in its `ALLOW` table.

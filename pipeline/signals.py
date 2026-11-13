@@ -26,7 +26,7 @@ import pandas as pd
 
 from fetch import ARCHIVE_DIR, OUT, load_existing, unpack, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "taiwan.json", "gpu.json", "ramp.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "taiwan.json", "gpu.json", "ramp.json", "leads.json", "structured.json"]
 HORIZONS = (1, 3, 6, 12)
 TIER_W = {"Tested edge": 3, "Thin evidence": 1, "Context only": 0, "Not enough history": 0}
 DOWN = {"Tested edge": "Thin evidence", "Thin evidence": "Context only"}
@@ -35,15 +35,28 @@ NAMES = {"TWSE": "Taiwan Weighted", "KOSPI": "KOSPI", "JCI": "Jakarta Composite"
          "R_AAXJ_ACWI": "Asia ex-Japan vs world", "R_EEM_SPX": "Emerging markets vs S&P 500", "R_SOX_SPX": "Chip stocks vs S&P 500",
          "R_KLCI_AAXJ": "KLCI (USD) vs Asia ex-Japan", "NVDA": "Nvidia", "KR_CPI_YOY": "Korea CPI", "TLT": "Long Treasuries (TLT)",
          "USDMYR": "USD/MYR", "AUDUSD": "Australian dollar (AUD/USD)", "EURUSD": "Euro (EUR/USD)",
-         "DAX": "DAX", "CAC": "CAC 40", "FTSEMIB": "FTSE MIB", "IBEX": "IBEX 35", "UKX": "FTSE 100"}
+         "DAX": "DAX", "CAC": "CAC 40", "FTSEMIB": "FTSE MIB", "IBEX": "IBEX 35", "UKX": "FTSE 100",
+         "EEM": "Emerging-market equities", "WAGE_ATL": "US wage growth (Atlanta Fed)"}
 REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY": ["India"], "IN_10Y": ["India"], "COPPER": ["China"], "AAXJ": ["China", "US"],
           "LH_SPX": ["US"], "SPX": ["US"], "UST10Y": ["US"], "GOLD": ["US"], "KLCI": ["Malaysia"], "R_KLCI_AAXJ": ["Malaysia"], "R_AAXJ_ACWI": ["China", "US"],
           "R_EEM_SPX": ["US", "China"], "R_SOX_SPX": ["Korea", "Taiwan", "US"], "NVDA": ["US"], "TLT": ["US"],
           "USDMYR": ["Malaysia", "US"], "AUDUSD": ["Australia"], "EURUSD": ["Euro area"],
-          "DAX": ["Euro area"], "CAC": ["Euro area"], "FTSEMIB": ["Euro area"], "IBEX": ["Euro area"], "UKX": ["UK"]}
+          "DAX": ["Euro area"], "CAC": ["Euro area"], "FTSEMIB": ["Euro area"], "IBEX": ["Euro area"], "UKX": ["UK"],
+          "EEM": ["China", "Korea", "Taiwan", "India"], "WAGE_ATL": ["US"]}
+# WP61 publication delays: JOLTS, OECD money and leading-index breadth, Malaysian monthly data about 2 months; US monthly macro about 1;
+# BIS China credit about a year; regional Fed surveys, canary ratios and online payments none
+LAG2 = ("QUITS", "JOLTS", "LD_CLI_DIFF", "LD_RNM6", "LD_RBM6", "MY_CARS", "MY_ARR", "MY_ELEC", "MY_EXP_EE", "MY_EXP_VOL")
+LAG1 = ("PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
+        "IMPORT_PX", "PPI_FD", "CPI_SHELTER", "CPI_GOODS", "STICKY_CPI")
 
 
 def lag_of(sid: str) -> int:
+    if sid.startswith(("LD_CN_", "CN_CREDIT")):
+        return 12
+    if sid.startswith(LAG2):
+        return 2
+    if sid.startswith(LAG1):
+        return 1
     if sid.startswith(("CLI_", "BCI_")):
         return 2
     if sid.startswith("MY_LEAD"):
@@ -234,6 +247,61 @@ def rules():
         ["KR_CHIP_EXP"], lambda M: yoy(M["KR_CHIP_EXP"]) > 0, "KOSPI", 1)
     add("tw_orders_accel_twse", "Clean leads", "Taiwan export orders accelerating → Taiwan Weighted", "Taiwan export-order growth higher than 3 months earlier",
         ["TW_ORDERS_YOY"], lambda M: chg(M["TW_ORDERS_YOY"], 3) > 0, "TWSE", 1)
+    # ---- WP61 (13 Nov 2026): rules on the leading indicators of WP51 to WP60 (same tests and tiers; most are expected to grade
+    # "context only" or "thin evidence", and the page says so)
+    g6 = lambda m: (m / m.shift(6) - 1) * 100
+    add("temps_falling", "US cycle", "Temporary help jobs falling → S&P 500", "Temporary help jobs lower than a year earlier",
+        ["TEMPHELPS"], lambda M: yoy(M["TEMPHELPS"]) < 0, "LH_SPX", -1, gap=12)
+    add("permits_down", "US cycle", "Single-family permits down 10% over six months → S&P 500", "Single-family building permits at least 10% lower than 6 months earlier",
+        ["PERMIT1"], lambda M: g6(M["PERMIT1"]) < -10, "LH_SPX", -1, gap=12)
+    add("permits_up", "US cycle", "Single-family permits up 10% over six months → S&P 500", "Single-family building permits at least 10% higher than 6 months earlier",
+        ["PERMIT1"], lambda M: g6(M["PERMIT1"]) > 10, "LH_SPX", 1, gap=12)
+    add("oi_negative", "US cycle", "Orders below inventories → S&P 500", "Philadelphia Fed new orders minus inventories below zero (3-month average)",
+        ["LD_OI_PHI"], lambda M: M["LD_OI_PHI"].rolling(3).mean() < 0, "LH_SPX", -1)
+    add("oi_positive_cu", "US cycle", "Orders above inventories → copper", "Philadelphia Fed new orders minus inventories above 10 (3-month average)",
+        ["LD_OI_PHI"], lambda M: M["LD_OI_PHI"].rolling(3).mean() > 10, "COPPER", 1)
+    add("cycle_warn", "US cycle", "Leading basket negative, Cyclical turning down → S&P 500", "US cycle: Leading basket below 0 and Cyclical basket lower than 3 months earlier",
+        ["LD_BASKET_LEAD", "LD_BASKET_CYC"], lambda M: (M["LD_BASKET_LEAD"] < 0) & (chg(M["LD_BASKET_CYC"], 3) < 0), "LH_SPX", -1)
+    add("cycle_ok", "US cycle", "Leading basket positive and rising → S&P 500", "US cycle: Leading basket above 0 and higher than 3 months earlier",
+        ["LD_BASKET_LEAD"], lambda M: (M["LD_BASKET_LEAD"] > 0) & (chg(M["LD_BASKET_LEAD"], 3) > 0), "LH_SPX", 1)
+    add("diff_turn_up", "Global breadth", "Leading-index breadth recovers from below 30% → EM equities", "Share of 17 leading indices rising was below 30% within 3 months and is 10 points higher than 2 months earlier",
+        ["LD_CLI_DIFF"], lambda M: (M["LD_CLI_DIFF"].rolling(3).min() < 30) & (chg(M["LD_CLI_DIFF"], 2) >= 10), "EEM", 1)
+    add("diff_turn_up_cu", "Global breadth", "Leading-index breadth recovers from below 30% → copper", "Share of 17 leading indices rising was below 30% within 3 months and is 10 points higher than 2 months earlier",
+        ["LD_CLI_DIFF"], lambda M: (M["LD_CLI_DIFF"].rolling(3).min() < 30) & (chg(M["LD_CLI_DIFF"], 2) >= 10), "COPPER", 1)
+    add("diff_roll_over", "Global breadth", "Leading-index breadth falls from above 70% → EM equities", "Share of 17 leading indices rising was above 70% within 3 months and is 10 points lower than 2 months earlier",
+        ["LD_CLI_DIFF"], lambda M: (M["LD_CLI_DIFF"].rolling(3).max() > 70) & (chg(M["LD_CLI_DIFF"], 2) <= -10), "EEM", -1)
+    add("rnm_up", "Global breadth", "Global real narrow money accelerating → EM equities", "Global real narrow money growth (ex-China) higher than 6 months earlier",
+        ["LD_RNM6"], lambda M: chg(M["LD_RNM6"], 6) > 0, "EEM", 1)
+    add("rnm_dn", "Global breadth", "Global real narrow money slowing → EM equities", "Global real narrow money growth (ex-China) lower than 6 months earlier",
+        ["LD_RNM6"], lambda M: chg(M["LD_RNM6"], 6) < 0, "EEM", -1)
+    add("pp_hot_10y", "Inflation leads", "Factory prices paid jump → US 10Y yield up", "Philadelphia Fed prices paid at least 15 points higher than 3 months earlier",
+        ["PHILLY_PP"], lambda M: chg(M["PHILLY_PP"], 3) >= 15, "UST10Y", 1, "chg")
+    add("pp_cold_10y", "Inflation leads", "Factory prices paid slump → US 10Y yield down", "Philadelphia Fed prices paid at least 15 points lower than 3 months earlier",
+        ["PHILLY_PP"], lambda M: chg(M["PHILLY_PP"], 3) <= -15, "UST10Y", -1, "chg")
+    add("rents_cool_10y", "Inflation leads", "Asking rents cooling → US 10Y yield down", "Zillow asking-rent growth at least 1 point lower than 6 months earlier",
+        ["ZORI_US"], lambda M: chg(yoy(M["ZORI_US"]), 6) <= -1, "UST10Y", -1, "chg")
+    add("quits_fall_wages", "Inflation leads", "Quits rate falling → wage growth slows", "JOLTS quits rate at least 0.2 points lower than 6 months earlier",
+        ["QUITS"], lambda M: chg(M["QUITS"], 6) <= -0.2, "WAGE_ATL", -1, "chg")
+    add("quits_rise_wages", "Inflation leads", "Quits rate rising → wage growth picks up", "JOLTS quits rate at least 0.2 points higher than 6 months earlier",
+        ["QUITS"], lambda M: chg(M["QUITS"], 6) >= 0.2, "WAGE_ATL", 1, "chg")
+    for cid, nm in (("CAN_XHB", "Homebuilders ÷ S&P 500"), ("CAN_KBE", "Banks ÷ S&P 500"), ("CAN_KRE", "Regional banks ÷ S&P 500"), ("CAN_XLY_XLP", "Discretionary ÷ staples"),
+                    ("CAN_SPHB_SPLV", "High beta ÷ low volatility"), ("CAN_IYT_XLU", "Transports ÷ utilities")):
+        add(f"{cid.lower()}_below", "Canaries", f"{nm} below its 10-month average → S&P 500", f"{nm} closes a month below its 10-month average",
+            [cid], lambda M, c=cid: M[c] < M[c].rolling(10).mean(), "SPX", -1)
+    add("pc_index_high", "Sentiment", "Index put/call above 1.4 → S&P 500", "Puts per call on S&P 500, Nasdaq 100 and Russell 2000 options above 1.4 (dashboard’s own count, from Nov 2026)",
+        ["SP_PC_INDEX"], lambda M: M["SP_PC_INDEX"] > 1.4, "SPX", 1, gap=3)
+    add("pc_equity_low", "Sentiment", "Single-share put/call below 0.5 → S&P 500", "Puts per call on US single shares below 0.5 (dashboard’s own count, from Nov 2026)",
+        ["SP_PC_EQUITY"], lambda M: M["SP_PC_EQUITY"] < 0.5, "SPX", -1, gap=3)
+    add("my_ee_accel", "Malaysia", "Malaysian electronics exports accelerating → KLCI", "Machinery and electronics export growth (3-month average) higher than 3 months earlier",
+        ["MY_EXP_EE"], lambda M: chg(yoy(M["MY_EXP_EE"].rolling(3).mean()), 3) > 0, "KLCI", 1)
+    add("my_cars_up", "Malaysia", "Car registrations growing → KLCI", "New car registrations (3-month average) more than 5% higher than a year earlier",
+        ["MY_CARS"], lambda M: yoy(M["MY_CARS"].rolling(3).mean()) > 5, "KLCI", 1)
+    def midterm(M):   # October of the mid-term year to June of the pre-election year (1962, 1966, … 2026)
+        ix = M["LH_SPX"].index
+        k = (ix.year - 1961) % 4
+        return pd.Series(((k == 1) & (ix.month >= 10)) | ((k == 2) & (ix.month <= 6)), index=ix)
+    add("midterm_window", "Seasonality", "Mid-term to pre-election window → S&P 500", "October of a US mid-term year to June of the pre-election year",
+        ["LH_SPX"], midterm, "LH_SPX", 1, gap=12)
     # AI theme (short histories: shown, graded honestly)
     add("gpu_rent_up", "AI theme", "GPU rents rising → Nvidia", "H100 on-demand rent more than 5% higher than 3 months earlier",
         ["GPU_H100_OD"], lambda M: (M["GPU_H100_OD"] / M["GPU_H100_OD"].shift(3) - 1) * 100 > 5, "NVDA", 1, gap=3)

@@ -61,6 +61,12 @@ EVENTS = [
     ev("US", "Initial jobless claims", ("fred", "ICSA", "level"), "count", ("fred", "ICSA"), ("ET", "08:30"), False, "Weekly"),
     ev("US", "UMich consumer sentiment", ("fred", "UMCSENT", "level"), "idx", ("fred", "UMCSENT"), ("ET", "10:00")),
     ev("US", "Housing starts", ("fred", "HOUST", "level"), "k", ("fred", "HOUST"), ("ET", "08:30"), False, "Annualised"),
+    # leading indicators (WP62): the first dominoes of the cycle and the regional Fed surveys
+    ev("US", "Building permits", ("fred", "PERMIT", "level"), "k", ("fred", "PERMIT"), ("ET", "08:30"), False, "Annualised; single-family permits lead jobs (Leading board)"),
+    ev("US", "New home sales", ("fred", "HSN1F", "level"), "k", ("fred", "HSN1F"), ("ET", "10:00"), False, "Annualised"),
+    ev("US", "Durable goods orders (MoM)", ("fred", "DGORDER", "mom"), "%", ("fred", "DGORDER"), ("ET", "08:30")),
+    ev("US", "Empire State manufacturing survey", ("fred", "GACDISA066MSFRBNY", "level"), "idx", ("fred", "GACDISA066MSFRBNY"), ("ET", "08:30"), False, "New York Fed; first factory survey of the month"),
+    ev("US", "Philadelphia Fed manufacturing survey", ("fred", "GACDFSA066MSFRBPHI", "level"), "idx", ("fred", "GACDFSA066MSFRBPHI"), ("ET", "08:30"), False, "New orders, inventories and prices paid feed the Leading board"),
     # ---- Euro area
     ev("Euro area", "HICP inflation (YoY)", ("fred", "CP0000EZ19M086NEST", "yoy"), "%", ("fred", "CP0000EZ19M086NEST"), ("CET", "11:00"), True),
     # ---- euro-area countries and the UK (WP36): flash CPI near the end of the month it covers, GDP flash a month after the quarter

@@ -97,6 +97,7 @@ const LB_ROWS = [
 ];
 function ldDerived() {   // ratios the board needs that no file holds
   if (!S.LB_CUGOLD && has('COPPER', 'GOLD')) { const r = combine(S.COPPER, S.GOLD, (a, b) => a / b, {}, 5 * DAY); S.LB_CUGOLD = { ...r, id: 'LB_CUGOLD', label: 'Copper ÷ gold', kind: 'price', source: 'Yahoo Finance (HG=F ÷ GC=F)' }; }
+  if (!S.LB_KRW && has('USDKRW')) S.LB_KRW = { ...S.USDKRW, id: 'LB_KRW', label: 'Korean won (US dollars per 1,000 won)', kind: 'price', v: S.USDKRW.v.map(v => 1000 / v) };
 }
 
 // ------------------------------------------------------------------ reading a row: latest value, direction, percentile, verdict
@@ -516,10 +517,10 @@ function ldCanaries() {
   ldDerived();
   for (const [id, , a, b] of CAN_ROWS) {
     if (S[id] || !has(a)) continue;
-    if (b === 'inv') { S[id] = { ...S[a], id, label: id, kind: 'price', v: S[a].v.map(v => 1 / v) }; continue; }
+    if (b === 'inv') { S[id] = { ...S[a], id, label: CAN_ROWS.find(r => r[0] === id)[1], kind: 'price', v: S[a].v.map(v => 1 / v) }; continue; }
     const bb = b === 'x' ? 'USDJPY' : b; if (!has(bb)) continue;
     const r = combine(S[a], S[bb], b === 'x' ? (x, y) => x * y : (x, y) => x / y, {}, 5 * DAY);
-    S[id] = { ...r, id, label: id, kind: 'price', source: `Yahoo Finance (${a} ${b === 'x' ? '×' : '÷'} ${bb})` };
+    S[id] = { ...r, id, label: CAN_ROWS.find(x => x[0] === id)[1], kind: 'price', source: `Yahoo Finance (${a} ${b === 'x' ? '×' : '÷'} ${bb})` };
   }
 }
 function canStats(id) {   // vs 200-day average, since when, 3-month change (daily ratio)
@@ -704,7 +705,17 @@ function regLeadTiles() {
 }
 function asiaLeadTiles() { if (ldSub('asia') !== 'Trade pulse') return; if (!LEADS) { loadLeads().then(() => state.tab === 'asia' && renderTab()); return; } ldTiles('#asiaKpis', axTiles); }
 function myLeadTiles() { if (['Equities', 'Sectors'].includes(ldSub('my'))) return; if (!LEADS) { loadLeads().then(() => state.tab === 'my' && renderTab()); return; } ldTiles('#myKpis', myPulseTile); }
-const EXTRA_HOOKS = { regime: [lbTiles, regLeadTiles], us: [usLeadTiles], asia: [asiaLeadTiles], my: [myLeadTiles] };
+function ldEnsure(tab) { ldDerived(); if (!LEADS) loadLeads().then(() => { ldDerived(); if (state.tab === tab) renderTab(); }); }   // pages that read leads.json in app.js's own cards
+const EXTRA_HOOKS = { regime: [lbTiles, regLeadTiles], us: [usLeadTiles], asia: [() => ldEnsure('asia'), asiaLeadTiles], my: [myLeadTiles], correlation: [() => ldEnsure('correlation')] };
+// WP61: the new pairs in Correlation → Lead-lag and Asia → What leads (both run the same lead test)
+LL_PAIRS.push(['PERMIT1', 'yoy', 'PAYEMS', 'yoy', 'Single-family permits → payrolls'], ['MSACSR', 'level', 'UNRATE', 'chg', 'Unsold new homes → unemployment'],
+  ['LD_OI_PHI', 'level', 'INDPRO', 'yoy', 'Orders minus inventories → output'], ['AWOTMAN', 'chg6', 'PAYEMS', 'yoy', 'Overtime hours → payrolls'],
+  ['QUITS', 'level', 'WAGE_ATL', 'level', 'Quits → wage growth'], ['PHILLY_PP', 'level', 'CPI', 'yoy', 'Factory prices paid → CPI'], ['ZORI_US', 'yoy', 'CPI_SHELTER', 'yoy', 'Asking rents → CPI shelter'],
+  ['GSCPI', 'level', 'CPI_GOODS', 'yoy', 'Supply-chain pressure → goods prices'], ['LD_BASKET_LEAD', 'level', 'LD_BASKET_AGG', 'level', 'Cycle: Leading basket → Aggregate basket'],
+  ['LD_CLI_DIFF', 'level', 'BCI_G7', 'level', 'Leading-index breadth → G7 confidence'], ['LD_RNM6', 'level', 'BCI_G7', 'level', 'Global real money → G7 confidence'],
+  ['CAN_XHB', 'yoy', 'PAYEMS', 'yoy', 'Homebuilders ÷ S&P 500 → payrolls'], ['CAN_SOX', 'yoy', 'ISM_BAL', 'level', 'Chips ÷ S&P 500 → ISM']);
+ASIA_LL.push(['LD_CLI_DIFF', 'level', 'EEM', 'yoy', 3], ['LB_KRW', 'yoy', 'KR_EXP_YOY', 'level', 2], ['LD_ASIA_PULSE', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['MY_EXP_EE', 'yoy', 'KLCI', 'yoy', 3]);
+Object.assign(SHORT, { LD_CLI_DIFF: 'Leading-index breadth', LB_KRW: 'Korean won', LD_ASIA_PULSE: 'Asian trade pulse', MY_EXP_EE: 'Malaysia electronics exports', EEM: 'EM equities' });
 { const R = SUBTABS.regime, i = R.findIndex(x => x[0] === 'Indicators'); R.splice(i < 0 ? R.length : i, 0, ['Leading board', ['lb_table', 'lb_breadth', 'lb_changes'], 'Leading']);
   const g = R.findIndex(x => x[0] === 'Global business cycle'); R.splice(g + 1, 0, ['Global breadth & money', ['gl_diff', 'gl_money', 'gl_table'], 'Leading']);
   R.find(x => x[0] === 'Market signals')[1].push('can_table', 'can_chart'); }

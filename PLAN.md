@@ -596,13 +596,37 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
-## Planned, not built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
+## Built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
 
-**Status: decisions taken on 13 Nov 2026 (owner: "plan based on your recommended one"); ready to build. Nothing below
-is built yet. Build all twelve packages in the three runs under "Order of work" when the owner says "Go".** Follow
-`CLAUDE.md` (sub-tabs, 2,300 px, ≤ 5 tiles, ≤ 16 rows, one home per card) and run `node tools/design-check.js` before
-each push. One commit per package. Read "Decisions taken", "Pre-test" and "Build brief" (end of this section) first;
-where they differ from a package description, they win.
+**Status: all twelve packages built on 13 Nov 2026** (owner: "Go", all recommended decisions). Three commits: WP51 (data),
+WP52–55 (Run 1 pages), WP56–60 with WP58 (Run 2 pages), then WP61–62 (signals, lead-lag pairs, calendar, docs).
+Design check and model check passed before each push; the live pipeline built all 32 `leads.json` series and 720 of 720
+series refreshed.
+
+Notes from the build (what differs from the plan below):
+- **Thin-evidence bar.** A lead must also hold on at least 12 years of overlapping months to count (`ldBestLead`); Zillow
+  asking rents pass the correlation test at 10 months on exactly 10 years, so they show as "thin evidence", as the plan
+  intended. With the full test the board has 18 tested growth-type leads and 2 inflation leads today.
+- **US → Inflation was split** to stay within 2,300 px: "Inflation" (outcomes plus underlying inflation) and a new
+  "Inflation pipeline" sub-tab (the pipeline table, asking rents, prices paid).
+- **Leading-index breadth** is drawn against G7 business confidence by default (a tested 7-month lead), with EM equities,
+  world equities and copper as alternatives; it sits on a new sub-tab, Regime → "Global breadth & money", with global
+  real money (context: no stable lead since 1981) and a table of the 19 OECD leading indices with their phases.
+- **Electricity**: data.gov.my reports commercial and domestic use only, so "business" = commercial (which includes
+  industry), not industrial alone. Tourist arrivals and FPX payments start in 2020: too short to test, said on the cards.
+- **Canaries** include the Korean won (a tested 2-month lead on Korea's exports) and AUD/JPY (context).
+- **Put/call**: summed from the Cboe chains already downloaded (single shares 0.77, index options 1.15 on day one),
+  shown beside CNN's 5-day ratio, which the dashboard already archived.
+- **Skipped**: FINRA margin debt (www.finra.org not reachable from the build environment); the breadth-thrust rule (the
+  per-share breadth is computed in the browser, not in the pipeline; it can be added once the pipeline computes it).
+- **Signals**: 28 new rules (118 in all). Tested edge: Leading basket positive and rising → S&P 500; Malaysian electronics
+  exports accelerating → KLCI; the mid-term to pre-election window → S&P 500. Thin evidence: leading-index breadth
+  rolling over from 70% → EM, global real money slowing → EM, quits → wages, high beta ÷ low volatility below trend.
+  The rest grade context only or not enough history (put/call: history starts Nov 2026).
+- Calendar: building permits, new home sales, durable goods, Empire State and Philadelphia Fed surveys added (JOLTS was
+  already there).
+
+Original plan, kept for reference:
 
 **The request:** look through the dashboard, plan what is still worth adding, and add the leading indicators that
 strategists use online.
