@@ -60,6 +60,13 @@ YAHOO = [
     ("XLV",      "XLV",       "US Health Care (XLV)", "Equities · US sectors","price", "USD"),
     ("XLB",      "XLB",       "US Materials (XLB)",   "Equities · US sectors","price", "USD"),
     ("XLC",      "XLC",       "US Comm. Services (XLC)", "Equities · US sectors","price", "USD"),
+    # market canaries (WP57): price ratios that tend to turn before the economy
+    ("XHB",      "XHB",       "US Homebuilders (XHB)", "Equities · Canaries", "price", "USD"),
+    ("KBE",      "KBE",       "US Banks (KBE)",       "Equities · Canaries",  "price", "USD"),
+    ("KRE",      "KRE",       "US Regional banks (KRE)", "Equities · Canaries", "price", "USD"),
+    ("IYT",      "IYT",       "US Transports (IYT)",  "Equities · Canaries",  "price", "USD"),
+    ("SPHB",     "SPHB",      "S&P 500 High beta (SPHB)", "Equities · Canaries", "price", "USD"),
+    ("SPLV",     "SPLV",      "S&P 500 Low volatility (SPLV)", "Equities · Canaries", "price", "USD"),
     # US style factors
     ("IWF",      "IWF",       "US Growth (IWF)",      "Equities · US styles", "price", "USD"),
     ("IWD",      "IWD",       "US Value (IWD)",       "Equities · US styles", "price", "USD"),
@@ -282,6 +289,52 @@ FRED = [
     ("MMF_TOTAL",   "MMMFFAQ027S", "Money market fund assets (total, Z.1)", "Liquidity", "level", "USD mn", "2005-01-01"),
     ("USREC",       "USREC",       "NBER recession indicator",    "Macro · Recession", "level", "", MACRO_START),
     ("CURVE_3m10y_LONG", "T10Y3M", "3m10y curve (long history)",  "Macro · Recession", "yield", "%", MACRO_START),
+    # ---- Leading indicators (WP51, 13 Nov 2026): the US cycle sequence, labour leads and the inflation pipeline
+    # housing and the cyclical basket
+    ("PERMIT1",     "PERMIT1",     "Single-family building permits", "Macro · Housing", "level", "k, SAAR", MACRO_START),
+    ("HSN1F",       "HSN1F",       "New home sales",              "Macro · Housing", "level", "k, SAAR", MACRO_START),
+    ("MSACSR",      "MSACSR",      "New homes for sale, months' supply", "Macro · Housing", "level", "months", MACRO_START),
+    ("RES_JOBS",    "CES2023610001", "Residential building construction jobs", "Macro · Cycle", "level", "k", MACRO_START),
+    ("USCONS",      "USCONS",      "Construction jobs",           "Macro · Cycle", "level", "k", MACRO_START),
+    ("DMANEMP",     "DMANEMP",     "Durable-goods manufacturing jobs", "Macro · Cycle", "level", "k", MACRO_START),
+    ("MANEMP",      "MANEMP",      "Manufacturing jobs",          "Macro · Cycle", "level", "k", MACRO_START),
+    ("HTRUCKS",     "HTRUCKSSAAR", "Heavy truck sales",           "Macro · Cycle", "level", "mn, SAAR", MACRO_START),
+    ("REALINC_XT",  "W875RX1",     "Real personal income less transfers", "Macro · Cycle", "level", "USD bn", MACRO_START),
+    ("DGORDER",     "DGORDER",     "Durable goods orders",        "Macro · Cycle", "level", "USD mn", MACRO_START),
+    ("FREIGHT_CASS","FRGSHPUSM649NCIS", "Cass freight shipments", "Macro · Cycle", "level", "idx", "1990-01-01"),
+    ("TRUCK_TON",   "TRUCKD11",    "Truck tonnage (ATA)",         "Macro · Cycle", "level", "idx", "2000-01-01"),
+    ("IP_SEMI",     "IPG3344S",    "Industrial production: semiconductors", "Macro · Cycle", "level", "idx", MACRO_START),
+    # labour leads
+    ("TEMPHELPS",   "TEMPHELPS",   "Temporary help jobs",         "Macro · Labour", "level", "k", MACRO_START),
+    ("AWOTMAN",     "AWOTMAN",     "Avg weekly overtime hours, manufacturing", "Macro · Labour", "level", "hours", MACRO_START),
+    ("FT_EMP",      "LNS12500000", "Full-time employment",        "Macro · Labour", "level", "k", MACRO_START),
+    ("JOLTS",       "JTSJOL",      "Job openings (JOLTS)",        "Macro · Labour", "level", "k", "2000-01-01"),
+    ("QUITS",       "JTSQUR",      "Quits rate (JOLTS)",          "Macro · Labour", "level", "%", "2000-01-01"),
+    ("INDEED",      "IHLIDXUS",    "Indeed job postings (Feb 2020 = 100)", "Macro · Labour", "level", "idx", "2020-01-01"),
+    # inflation pipeline
+    ("WAGE_ATL",    "FRBATLWGT3MMAUMHWGO", "Atlanta Fed wage tracker (3m avg)", "Macro · Inflation", "level", "%", "1997-01-01"),
+    ("STICKY_CPI",  "CORESTICKM159SFRBATL", "Sticky-price core CPI (yoy)", "Macro · Inflation", "level", "%", "1968-01-01"),
+    ("MEDIAN_CPI",  "MEDCPIM158SFRBCLE", "Median CPI (annualised m/m)", "Macro · Inflation", "level", "%", "1983-01-01"),
+    ("TRIM_PCE",    "PCETRIM12M159SFRBDAL", "Trimmed-mean PCE (yoy)", "Macro · Inflation", "level", "%", "1978-01-01"),
+    ("IMPORT_PX",   "IR",          "Import prices",               "Macro · Inflation", "level", "idx", "1985-01-01"),
+    ("PPI_FD",      "PPIFIS",      "Producer prices, final demand", "Macro · Inflation", "level", "idx", "2009-01-01"),
+    ("CPI_SHELTER", "CUSR0000SAH1", "CPI shelter",                "Macro · Inflation", "level", "idx", MACRO_START),
+    ("CPI_GOODS",   "CUSR0000SACL1E", "CPI core goods",           "Macro · Inflation", "level", "idx", MACRO_START),
+    # regional Fed surveys: orders, inventories, prices paid (stand-ins for ISM's licensed sub-indices)
+    ("PHILLY_IV",   "IVCDFSA066MSFRBPHI", "Philly Fed inventories (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    ("PHILLY_PP",   "PPCDFSA066MSFRBPHI", "Philly Fed prices paid (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    ("EMPIRE_NO",   "NOCDISA066MSFRBNY", "Empire State new orders (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    ("EMPIRE_IV",   "IVCDISA066MSFRBNY", "Empire State inventories (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    ("EMPIRE_PP",   "PPCDISA066MSFRBNY", "Empire State prices paid (diffusion)", "Macro · Leading", "level", "idx", MACRO_START),
+    # money, profits, credit
+    ("M2REAL",      "M2REAL",      "Real M2 (1982-84 dollars)",   "Macro · Leading", "level", "USD bn", MACRO_START),
+    ("M1REAL",      "M1REAL",      "Real M1 (1982-84 dollars)",   "Macro · Leading", "level", "USD bn", MACRO_START),
+    ("PROFITS",     "CP",          "Corporate profits after tax", "Macro · Cycle", "level", "USD bn", MACRO_START),
+    ("ULC",         "ULCNFB",      "Unit labour costs (nonfarm business)", "Macro · Inflation", "level", "idx", MACRO_START),
+    ("PSAVERT",     "PSAVERT",     "Personal saving rate",        "Macro · Cycle", "level", "%", MACRO_START),
+    ("CONS_CREDIT", "TOTALSL",     "Consumer credit outstanding", "Macro · Cycle", "level", "USD bn", MACRO_START),
+    ("CN_CREDIT",   "CRDQCNAPABIS", "China credit to the private non-financial sector (BIS)", "Macro · China", "level", "CNY bn", "1990-01-01"),
+    ("CN_CREDIT_GDP", "QCNPAM770A", "China private credit, % of GDP (BIS)", "Macro · China", "level", "%", "1990-01-01"),
 ]
 
 # FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.

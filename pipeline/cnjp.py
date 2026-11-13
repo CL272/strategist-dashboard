@@ -114,7 +114,9 @@ KEI_Q = [
     ("UK_GDP_YOY",  "GBR", "B1GQ_Q", "GR",      "_T", "GY", "UK real GDP YoY",              "%", "Macro · UK"),
 ]
 CLI_AREAS = {"USA": "United States", "CHN": "China", "JPN": "Japan", "DEU": "Germany", "KOR": "Korea", "IND": "India",
-             "AUS": "Australia", "IDN": "Indonesia", "FRA": "France", "ITA": "Italy", "ESP": "Spain", "GBR": "UK"}
+             "AUS": "Australia", "IDN": "Indonesia", "FRA": "France", "ITA": "Italy", "ESP": "Spain", "GBR": "UK",
+             # WP51: the rest of the economies the OECD keeps current, and the G7 and G20 aggregates
+             "CAN": "Canada", "MEX": "Mexico", "BRA": "Brazil", "TUR": "Turkey", "ZAF": "South Africa", "G7": "G7", "G20": "G20"}
 
 # OECD business confidence (manufacturing, amplitude adjusted, 100 = long-run average). The US series is built from
 # the ISM manufacturing survey, so BCI_USA is the free long-history stand-in for the ISM PMI (100 ~ ISM 50).

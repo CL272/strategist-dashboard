@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json", "leads.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
@@ -27,7 +27,10 @@ SLOW["EPU_GLOBAL"] = 200   # global policy uncertainty is published about four m
 SLOW["MMF_RETAIL"] = 50
 SLOW["UK_UNEMP"] = 170   # ONS labour data reach the OECD feed about four months after the month
 # UN Comtrade publishes Korea's monthly trade about 10 months late; Ramp's token table is weekly but posted with a lag
-SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})   # weekly, but the Fed publishes it about a month late (H.6)
+SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})
+# WP51: BIS China credit is quarterly and about a year late; Malaysian electricity use reaches data.gov.my about 5 months late
+SLOW.update({k: 500 for k in ("CN_CREDIT", "CN_CREDIT_GDP", "LD_CN_FLOW", "LD_CN_IMPULSE")})
+SLOW.update({k: 200 for k in ("MY_ELEC_COM", "MY_ELEC_TOT")})   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")
 IGNORE = {"USREC", "SH_FWD10"}     # recession flag only changes at NBER announcements; forward returns end 10 years back

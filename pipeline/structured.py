@@ -91,6 +91,7 @@ def bs_put(S, K, T, r, q, v):
 
 # ---------------------------------------------------------------- option chains -> surface
 OCC = re.compile(r"^([A-Z_]+?)(\d{6})([CP])(\d{8})$")
+PCV = re.compile(r"\d{6}([CP])\d{8}$")
 
 
 def chain_surface(sym: str) -> dict | None:
@@ -187,6 +188,16 @@ def chain_surface(sym: str) -> dict | None:
             if row[i] is None:
                 row[i] = min(known, key=lambda kv: abs(kv[0] - i))[1]
     out = {"spot": S, "asof": asof.isoformat(), "iv30": d.get("iv30"), "surf": surf, "src": "chain", "exp_max": exps[-1]}
+    # session volume of puts and calls (for the put/call ratio, WP58)
+    pv = cv = 0.0
+    for o in d.get("options", []):
+        m = PCV.search(o.get("option", ""))
+        if m:
+            if m.group(1) == "P":
+                pv += o.get("volume") or 0
+            else:
+                cv += o.get("volume") or 0
+    out["pcv"] = [pv, cv]
     if put90:
         _, days, k, bidp, midp, oi, spr = put90
         out["put90"] = {"days": days, "k": round(k, 3), "bid": round(bidp, 3), "mid": round(midp, 3), "oi": oi, "spread": round(spr, 3),
@@ -325,6 +336,38 @@ def _universe() -> list[dict]:
     return U
 
 
+PC_INDEX = ("_SPX", "QQQ", "IWM")
+
+
+def put_call(surfs: dict, equity: set, status: dict) -> dict:
+    """Daily equity and index put/call volume ratios from the chains, archived (history builds from Nov 2026)."""
+    today = date.today().isoformat()
+    vals = {}
+    for sid, syms in (("SP_PC_EQUITY", equity), ("SP_PC_INDEX", set(PC_INDEX))):
+        p = sum(surfs[s]["pcv"][0] for s in syms if s in surfs and surfs[s].get("pcv"))
+        c = sum(surfs[s]["pcv"][1] for s in syms if s in surfs and surfs[s].get("pcv"))
+        if c > 0 and p > 0:
+            vals[sid] = (round(p / c, 4), p, c)
+    ARCHIVE_DIR.mkdir(exist_ok=True)
+    ap = ARCHIVE_DIR / "structured_pc.csv"
+    arc = pd.read_csv(ap) if ap.exists() else pd.DataFrame(columns=["date", "id", "ratio", "puts", "calls"])
+    if vals:
+        new = pd.DataFrame([{"date": today, "id": k, "ratio": v[0], "puts": v[1], "calls": v[2]} for k, v in vals.items()])
+        arc = pd.concat([arc[arc["date"] != today], new]).sort_values(["date", "id"])
+        arc.to_csv(ap, index=False)
+    out = {}
+    lab = {"SP_PC_EQUITY": "Put/call volume ratio, US single shares (dashboard's own sample)",
+           "SP_PC_INDEX": "Put/call volume ratio, S&P 500, Nasdaq 100 and Russell 2000 options"}
+    for sid in lab:
+        a = arc[arc["id"] == sid]
+        if len(a):
+            s = pd.Series(a["ratio"].astype(float).values, index=pd.to_datetime(a["date"])).sort_index()
+            out[sid] = {"label": lab[sid], "group": "Structured products", "kind": "level", "unit": "ratio",
+                        "source": "Cboe (delayed) option volume, summed by the dashboard; history from Nov 2026", **pack(s)}
+            status[sid] = "ok"
+    return out
+
+
 def build(status: dict) -> None:
     print("Structured products")
     old = load_existing("structured.json")
@@ -442,6 +485,9 @@ def build(status: dict) -> None:
             if after:
                 e["move"] = after[0][1]
         print(f"  earnings dates: {len(er)}")
+        # 8. put/call volume ratios (WP58): single US shares, and the index proxies (S&P 500, Nasdaq 100, Russell 2000)
+        pc = put_call(surfs, {u["chain"] for u in U if u["kind"] == "us" and u.get("chain")}, status)
+        idx.update(pc)
         fx = {pair: {"atm": [surfs[sym]["surf"][ti][MNY.index(1.0)] for ti in range(len(TENORS))], "asof": surfs[sym]["asof"]}
               for pair, sym in FX_CHAINS.items() if sym in surfs}
         if len(rows) < 20:
