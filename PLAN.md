@@ -596,6 +596,234 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
+## Planned, not built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go" and names the packages.** Follow
+`CLAUDE.md` (sub-tabs, 2,300 px, ≤ 5 tiles, ≤ 16 rows, one home per card) and run `node tools/design-check.js` before
+each push. One commit per package.
+
+**The request:** look through the dashboard, plan what is still worth adding, and add the leading indicators that
+strategists use online.
+
+### What the review found
+
+The dashboard already holds many leads, but scattered: its own US leading index, 12 OECD leading indices, the ISM
+cards, Asia → What leads, the Signals engine (90 rules), the Playbook, the credit cycle. What is missing:
+
+1. **No single view of the leads.** Nothing answers "of everything that leads, how much is improving?" in one table.
+2. **The US business-cycle sequence** (housing and orders turn first, then cyclical jobs, then the whole economy) is
+   the framework most recession-watchers use (Leamer's "Housing is the business cycle"; EPB's four baskets). The
+   dashboard shows the pieces but not the sequence, and lacks permits by type, months' supply, residential and
+   durable-goods jobs, heavy trucks.
+3. **Inflation has no leading side.** US → Inflation is one chart of CPI and PCE. The standard pipeline (supply
+   chains → prices paid → import and producer prices → asking rents → wages → sticky CPI) is absent.
+4. **Labour leads** (temporary help, overtime, job postings, quits) are absent; quits lead wages, temp help leads
+   payrolls.
+5. **Global:** only 12 leading indices and no diffusion ("how many economies are improving"); no money-growth lead
+   (real narrow money, the Simon Ward / Janus Henderson signal for global manufacturing 6 to 9 months ahead).
+6. **Market canaries** that lead the economy (homebuilders, banks, transports, high beta) are only partly covered
+   by Markets → Trend's leadership ratios, with no statement of what each leads.
+7. **Malaysia has no real-time pulse.** data.gov.my publishes daily online payments, monthly vehicle
+   registrations, tourist arrivals and electricity use: early reads on spending and activity before DOSM's figures.
+8. **Sentiment** lacks an options-positioning gauge (put/call).
+9. **Seasonality** lacks the US presidential cycle, timely now: November 2026 is just after the mid-terms, and the
+   stretch from then to mid year three has been the strongest of the four years since 1960.
+
+### The principle (same as Asia → What leads and the Signals page)
+
+A lead is only called a lead if the dashboard's own test agrees: lead ≥ 2 months, correlation ≥ 0.40 and at least
+0.05 above the same-month figure, same sign in both halves of the history, usable after its publication delay.
+Everything else is shown as **context**, in grey, with the reason. Strategist folklore ("leads by 9 to 12 months")
+is quoted as the claim and the measured result is shown beside it.
+
+### Data (all tested 13 Nov 2026 from this environment unless marked)
+
+| Source | Series | Result |
+|---|---|---|
+| FRED (key already in place) | Cycle: `PERMIT1`, `HSN1F`, `MSACSR`, `HTRUCKSSAAR`, `CES2023610001`, `USCONS`, `DMANEMP`, `MANEMP`, `W875RX1`, `LNS12500000`, `AMTMNO`, `DGORDER`, `ANDENO`, `FRGSHPUSM649NCIS`, `TRUCKD11`, `IPG3344S`. Labour: `TEMPHELPS`, `AWOTMAN`, `JTSJOL`, `JTSQUR`, `IHLIDXUS` (Indeed postings, daily). Inflation: `FRBATLWGT3MMAUMHWGO`, `CORESTICKM159SFRBATL`, `MEDCPIM158SFRBCLE`, `PCETRIM12M159SFRBDAL`, `IR`, `PPIFIS`, `CUSR0000SAH1` (CPI shelter). Regional Fed surveys: new orders, inventories and prices paid for Philadelphia (`NOCDFSA066MSFRBPHI`, `IVCDFSA066MSFRBPHI`, `PPCDFSA066MSFRBPHI`) and New York (`NOCDISA066MSFRBNY`, `IVCDISA066MSFRBNY`, `PPCDISA066MSFRBNY`). Money and profits: `M2REAL`, `M1REAL`, `CP`, `ULCNFB`, `PSAVERT`, `TOTALSL`. China credit: `CRDQCNAPABIS` (BIS, quarterly). | All current (monthly ones to Sep or Oct 2026). China credit is quarterly to Q4 2025: about a year behind. |
+| NY Fed (host allowed) | Global Supply Chain Pressure Index (`gscpi_data.xlsx`) | Works; Oct 2026. |
+| Zillow (`files.zillowstatic.com`, host added) | Observed Rent Index, US and metros (`Metro_zori_uc_sfrcondomfr_sm_month.csv`) | Works; monthly from 2015 to Sep 2026. |
+| OECD (host allowed) | Leading indices for 18 economies plus G7, G20 (22 areas current, against 12 loaded). Narrow money (`MANM`) and broad money (`MABM`) in the key-indicators feed for the US, euro area, Japan, UK, Canada, Australia, Korea, India, Brazil. | Works. No China money series. |
+| data.gov.my (host allowed) | `trnsc_daily_fpx` (online payments, daily, business and consumer), `registrations_type_fuel` (vehicle registrations, monthly), `arrivals` (tourist arrivals by country, monthly), `electricity_consumption` (by sector, monthly), `trade_sitc_1d` section 7 (machinery and electronics exports), `tradeidx` (trade volumes) | All work. |
+| Cboe option chains (already downloaded by `pipeline/structured.py`) | Put and call volume per chain → an equity put/call ratio | Volume is in the chains; history builds from the first day (Cboe's own ratio file stops in 2019; its daily statistics are access-denied). |
+| Yahoo (host allowed) | ETFs for canaries not yet loaded: XHB, KBE, KRE, IYT, SPHB, SPLV (check the list first; XLU and others may already be there) | Standard tickers; not individually tested. |
+
+**No free source** (stated on the pages where a reader would expect them): the Conference Board's leading index and
+ISM's sub-indices (licensed; the regional Fed surveys stand in for new orders, inventories and prices paid), global
+PMI new orders (S&P Global), Korea's first-20-days exports (no machine-readable feed; the monthly figure is already
+tracked), China's monthly money and total social financing (the only feed found, DBnomics, stops at Feb 2026), earnings
+revisions, NYSE advance-decline data.
+
+**Readings today, to show what the pages would say:** housing is the weak link (single-family permits −4.7% on a
+year, new-home supply 8.4 months, residential construction jobs −0.5%); orders are fine (regional Fed new orders
+minus inventories at their 70th percentile); labour leads are steady (temporary help +3.0%, quits 2.1%); the
+inflation pipeline is warm at the front (prices paid at the 74th percentile, supply-chain pressure +1.3 standard
+deviations) and cool at the back (asking rents +2.7%, wage tracker 3.9%).
+
+### WP51. Data layer
+
+- `pipeline/config.py`: the FRED series above (groups "Macro · Leading", "Macro · Labour", "Macro · Inflation",
+  "Macro · Housing").
+- `pipeline/leads.py` → `leads.json`: GSCPI (NY Fed xlsx), Zillow rent index (US row only), OECD narrow and broad
+  money for nine economies, the extra OECD leading indices (extend `CLI_AREAS` in `pipeline/cnjp.py`: Brazil, Canada,
+  Mexico, Turkey, South Africa, G7, G20), Malaysia pulse series (FPX as 28-day sums for business and consumer;
+  registrations of cars; arrivals total, from China and from Singapore; industrial and commercial electricity;
+  section-7 exports; export volume index). Isolated like the other modules; add to the carry-over list and health.
+- `pipeline/structured.py`: while each chain is open, add up put and call volume → `SP_PC_EQUITY` (all single shares),
+  `SP_PC_INDEX` (SPY, QQQ, IWM), archived daily.
+- Derived in the pipeline (so the Signals engine can use them): regional Fed **new orders minus inventories** and
+  **prices paid** (average of the two banks), **real narrow money, six-month growth** (index ÷ CPI, GDP-weighted, labelled
+  "ex-China"), **leading-index diffusion** (share of the 18 economies whose index is above its level six months earlier),
+  **cycle baskets** (WP53).
+- Health allowances: BIS China credit 500 days; Malaysia electricity and arrivals 200 days.
+
+### WP52. The Leading board (Regime & Leading → new sub-tab "Leading board", first in the Leading group)
+
+- **Tiles (5):** leads improving (count of tested leads pointing up, of all), growth leads, inflation leads, global and
+  Asia leads, market canaries: each "x of y improving" with the change over three months.
+- **Card `lb_table` (wide; view chips Growth · Jobs · Inflation · Global & Asia · Markets; 16 rows at rest):** one row
+  per indicator: latest value, direction over three and six months (arrow), 10-year percentile, **what it leads**,
+  **lead claimed** (what strategists say), **lead measured** (months and correlation from the dashboard's rule, or
+  "context: no stable lead"), and a one-word read (improving / deteriorating / flat). Clicking a row opens the card
+  where the indicator lives. About 45 rows in all: the new series plus the existing leads (own LEI, OECD indices, yield
+  curve, credit spreads, lending standards, net liquidity, copper ÷ gold, cyclicals ÷ defensives, Korea and Taiwan
+  leads, Malaysia leading index).
+- **Card `lb_breadth` (half):** share of tested leads improving over time, by group, against the S&P 500 and world
+  equities: the "breadth of the leads".
+- **Card `lb_changes` (half):** which leads turned this month (direction changed), newest first.
+- One line on the Strategist View's "Where we are" and in the Weekly brief: "Leads: 14 of 22 improving (growth 6 of 9,
+  inflation 5 of 6 rising)".
+
+### WP53. US cycle sequence (US → Economy group → new sub-tab "Cycle sequence")
+
+- **Card `cs_baskets` (wide):** four baskets as six-month annualised growth of an equal-weight index: **Leading**
+  (single-family permits, new orders minus inventories, real M2, the 10Y minus fed funds spread, weekly hours),
+  **Cyclical** (residential construction jobs, durable-goods jobs, heavy truck sales, new home sales, core capital
+  goods orders), **Aggregate** (payrolls, real income less transfers, real retail sales, industrial production),
+  **Lagging** (unemployment rate inverted, core services inflation). Recessions shaded. Note leads with where the
+  sequence stands ("Leading basket negative for N months; Cyclical still positive").
+- **Card `cs_table` (half):** every component with its six-month change, months since its peak and a flag.
+- **Card `cs_housing` (half):** single-family permits and months' supply (inverted), with homebuilders ÷ S&P 500.
+- **Card `cs_orders` (half):** regional Fed new orders minus inventories against the ISM (OECD form already loaded),
+  with the lead toggle used on the Korea cards; states that ISM's own sub-indices are licensed.
+- **Card `cs_freight` (half):** heavy truck sales, truck tonnage and Cass shipments, year on year.
+
+### WP54. Labour leads (US → Economy group → new sub-tab "Labour leads")
+
+- `lab_temp`: temporary help and full-time employment, year on year, against payroll growth.
+- `lab_hours`: factory weekly hours and overtime (firms cut hours before people).
+- `lab_postings`: Indeed job postings (daily) against JOLTS openings.
+- `lab_quits`: quits rate against the Atlanta Fed wage tracker with a lead toggle (claim: quits lead wages by about
+  nine months; show the measured figure).
+- Tiles: temp help, quits rate, postings, weekly hours, continuing claims.
+
+### WP55. Inflation pipeline (US → Inflation, which has one card today)
+
+- **Card `inf_pipe` (wide table, early to late):** oil and commodities (year on year) → supply-chain pressure (GSCPI) →
+  regional Fed prices paid → import prices → producer prices → asking rents (Zillow) → wages (tracker, quits) → sticky,
+  median and trimmed-mean inflation → expectations (Michigan, 10Y breakeven, 5y5y: already loaded). Columns: latest,
+  three-month direction, percentile, what it leads and by how long (measured), read. Colour by stage so "warm at the
+  front, cool at the back" is visible.
+- **Card `inf_rents` (half):** Zillow asking rents against CPI shelter, year on year, with a 12-month lead toggle
+  (San Francisco Fed research: asking rents lead CPI shelter by about a year).
+- **Card `inf_paid` (half):** prices paid and GSCPI against core goods inflation.
+- **Card `inf_core` (half):** sticky, median and trimmed-mean measures against core CPI.
+- Tiles keep CPI and core PCE and add asking rents, prices paid and the wage tracker.
+
+### WP56. Global cycle, money and Asian trade
+
+- **Regime & Leading → Global business cycle** (five cards today; split into two sub-tabs if over height):
+  `gl_diff`: share of 18 economies' leading indices rising, against world equities year on year (lead toggle);
+  `gl_money`: real narrow money, six-month growth, G7 plus Korea, India and Brazil ("ex-China": no free Chinese feed)
+  against G7 business confidence, with the 6-to-9-month claim tested; a toggle to broad money.
+- **Asia ex-Japan → new sub-tab "Trade pulse"** (the overview's fourth): `ax_pulse`: a composite of the early
+  exporters already loaded (Korea, Taiwan, Singapore, Japan and China exports; Taiwan export orders; Korean chip
+  exports), year on year, against Asia ex-Japan equities; `ax_pulse_table`: each component with its latest reading
+  and direction; `cn_credit`: China credit to the private sector as % of GDP and its 12-month change in flow (the
+  "credit impulse") from the BIS, quarterly, with the note that it arrives about a year late and that the monthly
+  version needs PBoC data with no free feed.
+
+### WP57. Market canaries (Regime & Leading → Market signals, two cards today)
+
+- **Card `can_table` (wide):** price ratios that tend to turn before the economy, each with its three-month change,
+  position against its 200-day average, what it leads and the measured lead: homebuilders ÷ S&P 500 (housing),
+  banks and regional banks ÷ S&P 500 (credit), transports ÷ utilities (activity), high beta ÷ low volatility (risk
+  appetite), semiconductors ÷ S&P 500 (ISM, Asian exports), small ÷ large caps, discretionary ÷ staples, copper ÷ gold
+  (yields), high yield ÷ Treasuries, AUD/JPY (global risk), the Korean won (trade cycle). The ratios themselves stay on
+  Markets → Trend (one home); this table adds the macro meaning and links there.
+- **Card `can_chart` (half):** the selected canary against the series it leads, with the lead toggle.
+
+### WP58. Options positioning (Positioning & Vol → Sentiment)
+
+- `sent_pc`: equity and index put/call ratio from the dashboard's own option chains (10-day average once history
+  allows), with the reading rule (very high = fear, often near lows; very low = complacency). States plainly that the
+  history starts in November 2026.
+- Optional, test at build: FINRA margin debt (monthly; needs `www.finra.org`, not tested). Skip if blocked.
+
+### WP59. Malaysia pulse (Malaysia → new sub-tab "Pulse", part of Economy)
+
+- **Card `my_pulse` (wide table):** online payments by consumers and by businesses (28-day totals, year on year),
+  car registrations, tourist arrivals (all, China, Singapore), industrial and commercial electricity use, machinery
+  and electronics exports, export volumes: latest, year on year, three-month trend, and the measured lead against
+  DOSM's coincident index, retail trade and the KLCI.
+- **Cards (half):** `my_pay` (payments, daily, smoothed), `my_cars` (registrations against the consumer sector
+  basket), `my_arrivals` (arrivals against the ringgit and the REIT and consumer baskets), `my_ee` (electronics
+  exports against the technology basket and the SOX).
+- Tile on Malaysia pages: "Pulse: x of 6 improving".
+
+### WP60. Presidential cycle (Markets → Seasonality)
+
+- **Card `sea_cycle`:** average S&P 500 path through each of the four cycle years since 1960 (monthly data already
+  loaded), the current cycle drawn on top, and a small table of average return and hit rate by cycle-year quarter.
+  Note: 16 cycles only; the mid-term-to-year-three pattern is the best known and is shown with its losers too.
+
+### WP61. Signal engine and lead-lag tool
+
+- Add rules built on the new series (same tests, tiers, walk-forward check and share-price downgrade as now): temp
+  help falling year on year; single-family permits down over six months; orders minus inventories below zero; cycle
+  sequence ("Leading down, Cyclical turning down"); leading-index diffusion below 30% and rising; real narrow money
+  turning up or down; asking rents and prices paid for inflation and the 10Y yield; quits for wages; each canary
+  below its 200-day average; put/call extremes (context only until history exists); Malaysia pulse for the KLCI;
+  breadth thrust on the dashboard's own sample (55% of US large caps at 20-day highs); the mid-term window.
+- Only rules that pass show as ideas; the rest appear under "context only", as today.
+- Add the new pairs to Correlation → Lead-lag and to Asia → What leads so the owner can inspect any of them.
+
+### WP62. Housekeeping
+
+- `CLAUDE.md`: "every lead shown must carry its measured lead or the word context"; where the new modules live.
+- README, PLAN status, Calendar (JOLTS, building permits, durable goods and the regional Fed surveys via the FRED
+  release calendar already used), search check, design check.
+
+### Suggested order
+
+1. **Run 1 (the core): WP51 + WP52 + WP55 + WP53 + WP54.** Data, the Leading board, and the three US pages.
+2. **Run 2: WP56 + WP57 + WP59 + WP60 + WP58.** Global, canaries, Malaysia pulse, presidential cycle, put/call.
+3. **Run 3: WP61 + WP62.** Signals and housekeeping (needs the series from Runs 1 and 2).
+
+### Risks and how the build handles them
+
+- **Folklore.** Many quoted lead times fail a strict test. The board shows claim and measurement side by side and
+  greys what fails; nothing is hidden and nothing unproven is called a lead.
+- **Overfitting the Signals page.** About 25 new rules: all go through the existing tiers and the walk-forward check;
+  expect most to grade "context only" or "thin evidence".
+- **Short histories.** Zillow from 2015, Indeed from 2020, Malaysian payments from their start dates, put/call from
+  November 2026: each card states its start year and the lead test refuses series with too little history.
+- **Height.** US gains two sub-tabs (11 in all, grouped); Regime gains one or two; Malaysia gains one (seven); the
+  Leading board uses view chips to stay within 16 rows.
+- **Run time.** One more module (five small downloads); the FRED batch grows by about 40 series (roughly 20 seconds).
+
+### Decisions for the owner
+
+1. **Which packages, in which order?** Recommended: Run 1 first.
+2. **Failed leads:** show them greyed as "context" (recommended), or hide them?
+3. **The Leading board on the Strategist View:** add the one-line summary there and in the Weekly brief
+   (recommended), or keep it only on its own page?
+4. **China credit impulse:** include the BIS quarterly version with its one-year delay stated (recommended: it is
+   still the standard chart), or leave China credit out until a monthly source exists?
+5. **Malaysia pulse:** include (recommended) or skip?
+
+---
+
 ## Built (owner's request, 12 Nov 2026): central-bank data for markets FRED does not cover
 
 Owner: "For other currency can check the banks for data like BNM has it for delinquency." Built the same day in
