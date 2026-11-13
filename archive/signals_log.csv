@@ -7,10 +7,13 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2025-07-31,kr_lixsp_up_twse,TWSE,1,ret,Tested edge,3,23542.5,2026-11-12
 2025-08-31,cli_chn_dn_copper,COPPER,-1,ret,Context only,12,4.5185,2026-11-11
 2025-10-31,us_lei_pos,LH_SPX,1,ret,Context only,6,6840.2,2026-11-11
+2025-11-30,my_ee_accel,KLCI,1,ret,Tested edge,3,1604.47,2026-11-13
 2026-02-28,bci_us_up_kospi,KOSPI,1,ret,Context only,6,6244.13,2026-11-11
 2026-02-28,bci_us_up_twse,TWSE,1,ret,Context only,6,35414.5,2026-11-11
+2026-02-28,can_xly_xlp_below,SPX,-1,ret,Context only,12,6878.88,2026-11-13
 2026-02-28,kr_bci_up_kospi,KOSPI,1,ret,Context only,6,6244.13,2026-11-11
 2026-02-28,kr_bci_up_twse,TWSE,1,ret,Context only,3,35414.5,2026-11-11
+2026-03-31,cycle_ok,LH_SPX,1,ret,Tested edge,3,6528.52,2026-11-13
 2026-03-31,ecb_hikes_priced,EURUSD,1,ret,Not enough history,3,1.146,2026-11-11
 2026-04-30,cu_au_up,UST10Y,1,chg,Context only,6,4.4,2026-11-11
 2026-04-30,r_klci_aaxj_dn,R_KLCI_AAXJ,-1,ret,Context only,6,3.981853014160123,2026-11-11
@@ -19,13 +22,20 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2026-05-31,gpu_rent_up,NVDA,1,ret,Not enough history,3,210.658,2026-11-11
 2026-06-30,cli_esp_dn_ibex,IBEX,-1,ret,Context only,3,19471.9,2026-11-12
 2026-06-30,fed_hikes_priced,SPX,-1,ret,Thin evidence,12,7499.36,2026-11-11
+2026-07-31,can_xhb_below,SPX,-1,ret,Context only,6,7489.72,2026-11-13
+2026-08-31,can_kbe_below,SPX,-1,ret,Context only,6,7686.14,2026-11-13
+2026-08-31,can_kre_below,SPX,-1,ret,Context only,12,7686.14,2026-11-13
 2026-08-31,cli_deu_up_dax,DAX,1,ret,Context only,12,26258.1,2026-11-12
 2026-08-31,cli_gbr_up_ukx,UKX,1,ret,Context only,3,10824.3,2026-11-12
+2026-08-31,my_cars_up,KLCI,1,ret,Context only,3,1725.88,2026-11-13
 2026-08-31,my_lead_klci,KLCI,1,ret,Context only,3,1725.88,2026-11-11
 2026-08-31,oil_up_myr,USDMYR,-1,ret,Context only,12,4.0233,2026-11-11
 2026-09-30,baa_tight,LH_SPX,-1,ret,Context only,12,7651.54,2026-11-11
 2026-09-30,oil_hot_in10y,IN_10Y,1,chg,Not enough history,6,7.06,2026-11-11
+2026-09-30,rnm_dn,EEM,-1,ret,Thin evidence,6,66.79,2026-11-13
+2026-10-31,can_sphb_splv_below,SPX,-1,ret,Thin evidence,3,7580.07,2026-11-13
 2026-10-31,liq_up,SPX,1,ret,Context only,12,7580.07,2026-11-11
+2026-10-31,midterm_window,LH_SPX,1,ret,Tested edge,6,7580.07,2026-11-13
 2026-10-31,r_aaxj_acwi_dn,R_AAXJ_ACWI,-1,ret,Tested edge,3,0.5188135261923378,2026-11-11
 2026-10-31,r_eem_spx_dn,R_EEM_SPX,-1,ret,Tested edge,3,0.0080526960832815,2026-11-11
 2026-10-31,r_sox_spx_dn,R_SOX_SPX,-1,ret,Tested edge,6,1.4101189039151354,2026-11-11
