@@ -1000,6 +1000,7 @@ function renderWhere(c) {
     }
   }
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  if (typeof lbSummaryEl === 'function') { const ln = lbSummaryEl(() => c.render()); if (ln) b.prepend(ln); }   // WP52: the Leading board in one line
   c.csv = csv;
   setNote(c, `Changes to ${nice(state.to)}. ${tgt === 'local' ? 'Equities in local currency, commodities and crypto in USD.' : `Equities, commodities and crypto converted to ${tgt} at daily FX (markets already priced in ${tgt} are unchanged).`} Yields and spreads in bp, VIX/MOVE in points. ▲/▼ = above/below the 200-day average. Bold σ = an unusual week (|σ| ≥ 2).`);
 }
@@ -2723,7 +2724,11 @@ function llCorrAt(A, B, k, lo = -Infinity, hi = Infinity) {
   for (const [t, v] of A) { if (t < lo || t >= hi) continue; const w = B.get(addMonths(t, k)); if (w != null) { x.push(v); y.push(w); } }
   return x.length >= 36 ? pearson(x, y) : null;
 }
-const PUB_LAG = id => /^CLI_|^BCI_|^KR_LI_XSP/.test(id) ? 2 : /^MY_LEAD/.test(id) ? 3 : S[id] && /Yahoo/.test(S[id].source || '') ? 0 : /^(UST|DXY|BRENT|SOX|COPPER)/.test(id) ? 0 : 1;
+const PUB_LAG = id => /^CLI_|^BCI_|^KR_LI_XSP/.test(id) ? 2 : /^MY_LEAD/.test(id) ? 3 : S[id] && /Yahoo/.test(S[id].source || '') ? 0 : /^(UST|DXY|BRENT|SOX|COPPER)/.test(id) ? 0
+  // WP51: canary ratios and the dashboard's own option volumes are live; regional Fed surveys come out in the survey month;
+  // JOLTS, OECD money and leading-index diffusion about two months late; Malaysian monthly data about two; BIS China credit about a year
+  : /^(CAN_|SP_PC|LB_|PHILLY|EMPIRE|LD_OI|LD_PP|MY_FPX)/.test(id) ? 0 : /^(QUITS|JOLTS|LD_CLI_DIFF|LD_RNM6|LD_RBM6|MY_CARS|MY_ARR|MY_ELEC|MY_EXP_EE|MY_EXP_VOL)/.test(id) ? 2
+  : /^(LD_CN_|CN_CREDIT)/.test(id) ? 12 : 1;
 function leadStats(a, ma, b, mb, k) {
   if (!has(a, b)) return null;
   const A = llSeries(a, ma), B = llSeries(b, mb), ts = [...A.keys()].filter(t => B.has(addMonths(t, k))).sort((p, q) => p - q);
@@ -5957,6 +5962,8 @@ function renderWeekly() {
   if (sw.length) right.append(el('section', {}, el('h3', { text: 'Signals to watch' }),
     el('ul', { class: 'op-list' }, ...sw.map(g => { const x = sigById(g.signals[0]); return el('li', {}, el('span', { text: sigHeadline(g, x.best_h) }), el('b', { text: x.tier })); })),
     el('p', { class: 'muted small no-print', text: 'Ideas to investigate from the Signals page: rules with a tested record, not recommendations.' })));
+  // leading indicators (WP52): one line from the Leading board, current week only
+  if (typeof lbSummary === 'function' && end >= latest) { const ls = lbSummary(); if (ls) { right.append(el('p', { class: 'small' }, el('b', { text: 'Leads · ' }), ls)); txt.push('LEADS: ' + ls, ''); } }
   // structures (screen only; current week)
   if (typeof spReadLines === 'function' && SPD && SPD.under && end >= latest) right.append(el('p', { class: 'small no-print' }, el('b', { text: 'Structures · ' }), spReadLines()[0]));
   // week ahead
@@ -7084,7 +7091,7 @@ function syncFilterUI() {
     cb.textContent = on ? `${sh(state.from)} – ${sh(state.to)} ▾` : 'Custom ▾'; cb.classList.toggle('on', on); }
   $('#fromDate').max = $('#toDate').max = iso(state.latest);
   $('#fromDate').min = $('#toDate').min = iso(state.earliest);
-  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], ...(OLD_SUBS[state.tab] ? { v: 2 } : {}) } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
+  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], v: 3 } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
   history.replaceState(null, '', '#' + h.toString());
 }
 // sub-tab order before 12 Nov 2026 (WP32/33), so old bookmarks land in the right place: index -> [page, sub-tab label]
@@ -7176,6 +7183,7 @@ function renderTab() {
   syncFilterUI();
   ({ overview: renderOverview, signals: renderSignals, scorecard: renderScorecardPage, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, my: () => renderCountry('my'), sg: () => renderCountry('sg'), cn: () => renderCountry('cn'), kr: () => renderCountry('kr'), tw: () => renderCountry('tw'), in: () => renderCountry('in'), de: () => renderEuroCountry('de'), fr: () => renderEuroCountry('fr'), it: () => renderEuroCountry('it'), es: () => renderEuroCountry('es'), uk: () => renderEuroCountry('uk'), us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, sp: () => renderSP(), stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
   if (typeof EXTRA_RENDER !== 'undefined') (EXTRA_RENDER[state.tab] || []).forEach(k => cards[k] && cards[k].render());   // cards added by more.js
+  if (typeof EXTRA_HOOKS !== 'undefined') (EXTRA_HOOKS[state.tab] || []).forEach(f => f());   // tiles added by leads.js
   fitTiles(state.tab);
 }
 const TAB_TITLES = { scorecard: 'Country scorecard', signals: 'Signals: ideas to investigate', overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', my: 'Malaysia', sg: 'Singapore', cn: 'China', kr: 'Korea', tw: 'Taiwan', in: 'India', de: 'Germany', fr: 'France', it: 'Italy', es: 'Spain', uk: 'United Kingdom', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',
@@ -7310,12 +7318,15 @@ async function init() {
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'cn'); h.set('sub', String(SUBTABS.cn.findIndex(x => x[0] === 'Economy'))); } }
   if (OLD_SUBS[h.get('tab')] && +h.get('sub') > 0 && !h.has('v')) {   // links made before the pages were split by asset class
     const [t, lab] = OLD_SUBS[h.get('tab')][+h.get('sub')] || [h.get('tab')];
-    h.set('tab', t); h.set('sub', String(Math.max(0, (SUBTABS[t] || []).findIndex(x => x[0] === lab))));
+    h.set('tab', t); h.set('sub', String(Math.max(0, (SUBTABS[t] || []).findIndex(x => x[0] === lab)))); h.set('v', '3');
+  }
+  if (typeof SUB_PREV !== 'undefined' && SUB_PREV[h.get('tab')] && +h.get('sub') > 0 && h.get('v') !== '3') {   // links made before WP52 inserted sub-tabs
+    const lab = SUB_PREV[h.get('tab')][+h.get('sub')]; h.set('sub', String(Math.max(0, (SUBTABS[h.get('tab')] || []).findIndex(x => x[0] === lab))));
   }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

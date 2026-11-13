@@ -805,3 +805,8 @@ input.mp-w { width: 64px; text-align: right; }
 .sp-bigs { display: flex; gap: 22px; flex-wrap: wrap; margin: 2px 0 10px; }
 .sp-big-v { font-size: 26px; font-weight: 650; color: var(--ink); line-height: 1.2; }
 .pb-list { columns: 3; margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+/* Leading indicators (WP52): rows that fail the lead test are context, in grey */
+.ld-table tr.ld-ctx td, .perf tr.ld-ctx td { color: var(--muted); }
+.ld-table tr.ld-ctx td.up, .ld-table tr.ld-ctx td.dn { color: var(--muted); }
+.lb-line { margin: 0 0 8px; color: var(--ink-2); }
+.lb-line a { margin-left: 4px; }
