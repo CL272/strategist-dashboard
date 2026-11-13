@@ -103,7 +103,7 @@ week_ending,slug,org,tokens
 2026-11-12,anthropic/claude-sonnet-5.5-20260928,anthropic,2435754702714
 2026-11-12,deepseek/deepseek-v4-flash-20260731,deepseek,3237498554160
 2026-11-12,deepseek/deepseek-v4.1-flash-20260910,deepseek,15964889945144
-2026-11-12,deepseek/deepseek-v4.1-flash-20261017,deepseek,55788461327559
+2026-11-12,deepseek/deepseek-v4.1-flash-20261017,deepseek,55788461567730
 2026-11-12,meta/muse-spark-1.3-contributor-20260902,meta,2988890639555
 2026-11-12,minimax/minimax-m3.1-flash-20261019,minimax,3602190855096
 2026-11-12,moonshotai/kimi-k3.1-pro-20261023,moonshotai,4375156940510
@@ -116,4 +116,4 @@ week_ending,slug,org,tokens
 2026-11-12,typesafe/jev-1.13-20260917,typesafe,2799677703902
 2026-11-12,xiaomi/mimo-v2.6-flash-20260921,xiaomi,3618656075231
 2026-11-12,z-ai/glm-5.3-20260816,z-ai,3880491297670
-2026-11-12,z-ai/glm-5.3-flash-20260826,z-ai,11970325112566
+2026-11-12,z-ai/glm-5.3-flash-20260826,z-ai,11970325450794
