@@ -2748,7 +2748,7 @@ function leadNote(st, aLab, bLab) {
   if (st.ok) { const lag = PUB_LAG(st.a || '');
     return `Over ${yrs} years, ${aLab} has led ${bLab} by ${st.k} months: correlation ${cF(st.rk)} against ${cF(st.r0)} in the same month, and ${cF(st.h1)} / ${cF(st.h2)} in each half of the history.`
       + (lag ? ` It is published about ${lag} month${lag === 1 ? '' : 's'} after the month, so the usable lead is about ${st.usable} month${st.usable === 1 ? '' : 's'}.` : ''); }
-  return `Not a reliable lead on this history (${yrs} years): ${cF(st.rk)} at ${st.k} months against ${cF(st.r0)} in the same month; halves ${cF(st.h1)} / ${cF(st.h2)}. Read it as ${st.verdict === 'Market leads the data' ? 'the market leading the data' : 'moving together'}, not as a signal.`;
+  return `Not a reliable lead on this history (${yrs} years): ${cF(st.rk)} at ${st.k} months against ${cF(st.r0)} in the same month; halves ${cF(st.h1)} / ${cF(st.h2)}. Read it as ${st.verdict === 'Market leads the data' ? 'the market leading the data' : st.verdict === 'Weak link' ? 'a weak link' : 'moving together'}, not as a signal.`;
 }
 const LL_CAVEAT = 'The OECD leading indices are revised after the fact, smoothed and partly built from share prices (Korea’s includes the KOSPI), so part of their lead over equity markets is circular and the real-time lead is shorter than the history suggests; year-on-year changes overlap month to month, which flatters correlations.';
 // stock-free candidates for Korea and Taiwan: the best one that passes the lead rule is shown next to the OECD index

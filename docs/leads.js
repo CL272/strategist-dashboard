@@ -76,8 +76,8 @@ const LB_ROWS = [
   { id: 'ULC', mode: 'yoy', name: 'Unit labour costs', group: 'Inflation', stage: 'Late', lead: ['CORE_CPI', 'yoy', 'core CPI', true], claim: '2–4 quarters', home: ['us', 'Inflation pipeline'] },
   { id: 'MICH', mode: 'level', name: 'Households’ 1Y inflation expectations', group: 'Inflation', stage: 'Late', lead: CPIY, claim: 'expectations feed wage demands', home: ['us', 'Inflation pipeline'] },
   // Global & Asia
-  { id: 'LD_CLI_DIFF', mode: 'level', name: 'Leading indices rising (17 economies)', group: 'Global & Asia', lead: ['ACWI', 'yoy', 'world equities', true], claim: 'breadth turns before markets', home: ['regime', 'Global business cycle'] },
-  { id: 'LD_RNM6', mode: 'level', name: 'Global real narrow money (ex-China)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: '6–9 m (Simon Ward)', home: ['regime', 'Global business cycle'] },
+  { id: 'LD_CLI_DIFF', mode: 'level', name: 'Leading indices rising (17 economies)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: 'breadth turns before industry', home: ['regime', 'Global breadth & money'] },
+  { id: 'LD_RNM6', mode: 'level', name: 'Global real narrow money (ex-China)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: '6–9 m (Simon Ward)', home: ['regime', 'Global breadth & money'] },
   { id: 'CLI_USA', mode: 'chg6', name: 'US leading index (OECD)', group: 'Global & Asia', lead: IPY, claim: '6 m', home: ['regime', 'Indicators'] },
   { id: 'CLI_CHN', mode: 'chg6', name: 'China leading index (OECD)', group: 'Global & Asia', lead: ['COPPER', 'yoy', 'copper', true], claim: '6 m', home: ['asia', 'What leads'] },
   { id: 'LD_CN_IMPULSE', mode: 'level', name: 'China credit impulse (BIS)', group: 'Global & Asia', lead: ['COPPER', 'yoy', 'copper', true], claim: '9–12 m (arrives a year late)', home: ['cn', 'Economy'] },
@@ -396,9 +396,331 @@ function usLeadTiles() {   // appended to the US tiles; TILE_SETS picks five per
   if (sub === 'Cycle sequence') csTiles(box, tile); else if (sub === 'Labour leads') labTiles(box, tile); else infTiles(box, tile);
 }
 
+// ------------------------------------------------------------------ shared: a dual-axis card drawn at the measured lead
+function ldLeadPair(c, a, b, shift, intro, fm = {}, outro = '') {   // a, b = [id, mode, name]; shift: move a forward by its measured lead (if it passes)
+  if (!has(a[0], b[0])) { setEmpty(c, 'Waiting for data.'); return null; }
+  const st = ldBestLead(a[0], a[1], b[0], b[1]), k = shift && st && st.ok ? st.k : 0;
+  leadPair(c, a, b, k, { fmtA: fm.fmtA || llFmtF(a[1]), fmtB: fm.fmtB || llFmtF(b[1]), axisA: fm.axisA || llAxF(a[1]), axisB: fm.axisB || llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
+  const short = s => s.replace(/,.*$/, '');
+  const res = !st || st.missing ? '' : st.short ? 'History too short to test a lead.' : st.thin
+    ? `On only ${Math.round(st.n / 12)} years of history it passes at ${st.k} months (${corrF(st.rk)} against ${corrF(st.r0)} in the same month), too little to count as a lead.`
+    : leadNote({ ...st, a: a[0] }, short(a[2]), short(b[2]));
+  setNote(c, [intro, res, k ? `The first series is drawn ${k} months later than measured, so its turns line up; the part past today hints at the months ahead.` : '', outro].filter(Boolean).join(' '));
+  setSource(c, srcOf([a[0], b[0]]));
+  return st;
+}
+const LEAD_SEG = key => { state[key] = '1'; return { key, options: [['0', 'As measured'], ['1', 'At its lead']] }; };
+
+// ------------------------------------------------------------------ WP56. Global breadth and money (Regime & Leading → Global breadth & money)
+const GL_DIFF_T = [['BCI_G7', 'level', 'G7 business confidence'], ['EEM', 'yoy', 'Emerging-market equities, % YoY'], ['ACWI', 'yoy', 'World equities (MSCI World), % YoY'], ['COPPER', 'yoy', 'Copper, % YoY']];
+state.glDiffT = 'BCI_G7';
+function renderGlDiff(c) {
+  if (ldWait(c)) return; if (!has('LD_CLI_DIFF')) return setEmpty(c, 'Waiting for data.');
+  const tg = GL_DIFF_T.find(x => x[0] === state.glDiffT) || GL_DIFF_T[0], a = asOf(S.LD_CLI_DIFF, state.latest), n = (LEADS._meta.cli_econ || []).length || 17;
+  ldLeadPair(c, ['LD_CLI_DIFF', 'level', `Leading indices rising, % of ${n} economies`], tg, true,
+    `${fmtNum(a.v, 0)}% of ${n} economies’ OECD leading indices are higher than six months earlier (${monthLab(a.t)}).`, { fmtA: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, 0) + '%' },
+    'Breadth matters more than any one country: when most leading indices turn up together, global manufacturing, emerging markets and commodities have tended to follow. A reading below 30% that starts rising has marked the early stage of past recoveries. The OECD indices are revised and partly built from share prices, so the real-time lead is shorter than the history suggests.');
+  setSource(c, 'OECD composite leading indices (' + (LEADS._meta.cli_econ || []).join(', ') + '); ' + srcOf([tg[0]]) + '; calculated');
+}
+state.glMoney = 'LD_RNM6';
+function renderGlMoney(c) {
+  if (ldWait(c)) return; const id = state.glMoney; if (!has(id)) return setEmpty(c, 'Waiting for data.');
+  const a = asOf(S[id], state.latest), lab = id === 'LD_RNM6' ? 'narrow' : 'broad';
+  ldLeadPair(c, [id, 'level', `Global real ${lab} money, 6M annualised, %`], ['BCI_G7', 'level', 'G7 business confidence'], false,
+    `Real ${lab} money in nine large economies is growing ${pctF1(a.v)} a year (six-month pace after inflation, ${monthLab(a.t)}).`, { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' },
+    'Simon Ward (Janus Henderson) reads real narrow money as a 6-to-9-month lead for global industry. On this broader, longer sample it does not pass the dashboard’s test, so it is context, not a counted lead. It excludes China, which publishes no money series to the OECD; the weights are GDP shares (US, euro area, Japan, India, UK, Canada, Brazil, Korea, Australia).');
+  setSource(c, 'OECD key indicators (narrow and broad money, CPI), FRED (euro-area HICP), Japan CPI via e-Stat; calculated');
+}
+function renderGlTable(c) {
+  const b = htmlBody(c), ids = Object.keys(S).filter(k => /^CLI_/.test(k) && has(k)), heads = ['Economy', 'Level', '1M', '6M change', 'Phase'], tb = el('tbody'), csv = [heads];
+  const name = id => (S[id].label || id).replace(/ leading indicator$/, ''), rows = ids.map(id => { const s = S[id], n = s.v.length - 1; return { id, v: s.v[n], d1: s.v[n] - s.v[n - 1], d6: s.v[n] - s.v[n - 6], t: s.t[n] }; })
+    .sort((x, y) => y.d6 - x.d6);
+  const phase = r => r.v >= 100 ? (r.d1 >= 0 ? 'Expansion' : 'Downturn') : (r.d1 >= 0 ? 'Recovery' : 'Slowdown');
+  for (const r of rows) {
+    const ph = phase(r);
+    tb.append(el('tr', { class: 'row' + (['CLI_G7', 'CLI_G20'].includes(r.id) ? ' sel' : ''), title: `OECD leading indicator, data to ${monthLab(r.t)}` }, el('td', { class: 'l', text: name(r.id) }), el('td', { class: 'num', text: fmtNum(r.v, 2) }),
+      el('td', { class: 'num', text: ldArrow(r.d1) }), el('td', { class: 'num ' + (r.d6 > 0 ? 'up' : 'dn'), text: (r.d6 > 0 ? '+' : '−') + fmtNum(Math.abs(r.d6), 2) }),
+      el('td', { class: 'num ' + (ph === 'Expansion' || ph === 'Recovery' ? 'up' : 'dn'), text: ph })));
+    csv.push([name(r.id), r.v, r.d1, r.d6, ph]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf watch' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  capRows(tb, 'gl_table', 14); c.csv = csv;
+  setNote(c, 'Each economy’s OECD leading indicator, strongest six-month change first. Phase uses the OECD’s own words: above 100 and rising = expansion, above 100 and falling = downturn, below 100 and falling = slowdown, below 100 and rising = recovery. 100 = the economy’s long-run trend.');
+  setSource(c, 'OECD composite leading indicators (amplitude adjusted)');
+}
+function glTiles(box, tile) {
+  if (has('LD_CLI_DIFF')) { const a = asOf(S.LD_CLI_DIFF, state.latest), b = asOf(S.LD_CLI_DIFF, addMonths(a.t, -3)); tile('Leading indices rising', fmtNum(a.v, 0) + '%', b ? `3M ago ${fmtNum(b.v, 0)}%` : '', monthLab(a.t)); }
+  if (has('LD_RNM6')) { const a = asOf(S.LD_RNM6, state.latest), b = asOf(S.LD_RNM6, addMonths(a.t, -3)); tile('Global real money', pctF1(a.v), b ? `3M ago ${pctF1(b.v)} · ex-China` : 'ex-China', monthLab(a.t)); }
+  if (has('CLI_G7')) { const s = S.CLI_G7, n = s.v.length - 1; tile('G7 leading index', fmtNum(s.v[n], 2), `6M ${sign(s.v[n] - s.v[n - 6])}${fmtNum(Math.abs(s.v[n] - s.v[n - 6]), 2)}`, monthLab(s.t[n])); }
+}
+
+// ------------------------------------------------------------------ WP56. Asian trade pulse (Asia ex-Japan → Trade pulse) and China credit (China → Economy)
+const AX_PULSE = [['KR_EXP_YOY', 'Korea exports'], ['TW_EXP_YOY', 'Taiwan exports'], ['SG_NODX_YOY', 'Singapore non-oil exports'], ['JP_EXP_YOY', 'Japan exports'], ['CN_EXP_YOY', 'China exports'],
+  ['TW_ORDERS_YOY', 'Taiwan export orders'], ['KR_CHIP_EXP', 'Korea chip exports']];
+const AX_PULSE_T = [['AAXJ', 'yoy', 'Asia ex-Japan equities, % YoY'], ['MY_EXPORTS_YOY', 'level', 'Malaysia exports, % YoY'], ['KLCI', 'yoy', 'FBM KLCI, % YoY'], ['EEM', 'yoy', 'Emerging-market equities, % YoY']];
+state.axPulseT = 'AAXJ';
+function renderAxPulse(c) {
+  if (ldWait(c)) return; if (!has('LD_ASIA_PULSE')) return setEmpty(c, 'Waiting for data.');
+  const tg = AX_PULSE_T.find(x => x[0] === state.axPulseT) || AX_PULSE_T[0], a = asOf(S.LD_ASIA_PULSE, state.latest);
+  ldLeadPair(c, ['LD_ASIA_PULSE', 'level', 'Asian trade pulse (standard deviations)'], tg, false,
+    `The pulse is ${zf(a.v)}: Asia’s early-reporting exporters are growing ${a.v > 1 ? 'far faster' : a.v > 0 ? 'faster' : a.v > -1 ? 'slower' : 'far slower'} than usual (${monthLab(a.t)}).`, { fmtA: zf, axisA: v => fmtNum(v, 1) },
+    'The pulse averages seven early trade readings (Korea, Taiwan, Singapore, Japan and China exports, Taiwan export orders, Korean chip exports), each as 3-month growth in standard deviations from its own past. Equity markets usually move first, so read the pulse as a check on what markets already price; a gap between the two is the signal worth investigating.');
+  setSource(c, 'Korea Customs and MOTIE, Taiwan MOF and MOEA, Enterprise Singapore, Japan MOF, China customs (via OECD and the dashboard’s Asia feeds); ' + srcOf([tg[0]]) + '; calculated');
+}
+function renderAxPulseTable(c) {
+  const b = htmlBody(c), heads = ['Exporter', 'Growth (3M avg)', '3M', 'vs its normal', 'Data'], tb = el('tbody'), csv = [heads];
+  for (const [id, name] of AX_PULSE) {
+    if (!has(id)) continue;
+    const y = id === 'KR_CHIP_EXP' ? yoy3(monthlyOf(id, 'level')) : avg3(monthlyOf(id, 'level')), n = y.v.length - 1; if (n < 24) continue;
+    const w = y.v.filter((_, i) => y.t[i] >= Date.UTC(2005, 0, 1)), mu = w.reduce((a, x) => a + x, 0) / w.length, sd = Math.sqrt(w.reduce((a, x) => a + (x - mu) ** 2, 0) / w.length), z = (y.v[n] - mu) / sd, d3 = y.v[n] - y.v[n - 3];
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: name }), el('td', { class: 'num strong', text: pctF1(y.v[n]) }), el('td', { class: 'num', text: ldArrow(d3) }),
+      el('td', { class: 'num ' + (z > 0 ? 'up' : 'dn'), text: zf(z) + ' sd' }), el('td', { class: 'num muted', text: monthLab(y.t[n]) })));
+    csv.push([name, y.v[n], d3, z, monthLab(y.t[n])]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf watch' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  c.csv = csv;
+  setNote(c, 'The pulse’s seven parts: growth on a year (3-month average), its direction over three months, and how far it sits from its own average since 2005 in standard deviations. Korea reports first each month (the first 20 days), so its exports are the earliest read on Asian trade.');
+  setSource(c, 'National statistics via OECD and the dashboard’s Asia feeds; calculated');
+}
+function renderAxKrw(c) {
+  if (ldWait(c)) return; ldDerived();
+  const a = has('USDKRW') ? asOf(S.USDKRW, state.latest) : null;
+  ldLeadPair(c, ['LB_KRW', 'yoy', 'Korean won against the dollar, % YoY'], ['KR_EXP_YOY', 'level', 'Korea exports, % YoY'], state.axKrw === '1',
+    a ? `USD/KRW is ${fmtNum(a.v, 0)} (${nice(a.t)}); a stronger won means more dollars flowing in for Korean goods.` : '', { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' },
+    'The won trades all day on what global buyers expect from Korean factories, so it has turned before the monthly export figures. Its lead is short and weaker in the second half of the history.');
+}
+function axTiles(box, tile) {
+  if (has('LD_ASIA_PULSE')) { const a = asOf(S.LD_ASIA_PULSE, state.latest), b = asOf(S.LD_ASIA_PULSE, addMonths(a.t, -3)); tile('Asian trade pulse', zf(a.v), b ? `3M ago ${zf(b.v)} · sd from normal` : 'sd from normal', monthLab(a.t)); }
+}
+function renderCnCredit(c) {
+  if (ldWait(c)) return; if (!has('CN_CREDIT_GDP', 'LD_CN_IMPULSE')) return setEmpty(c, 'Waiting for data.');
+  drawPair(c, { name: 'Private credit, % of GDP (BIS)', data: pts(S.CN_CREDIT_GDP, state.from, state.to) }, { name: 'Credit impulse: change in the yearly flow of new credit, % of GDP', data: pts(S.LD_CN_IMPULSE, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1) + '%', fmtB: v => sign(v) + fmtNum(Math.abs(v), 1) + 'pp', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0), zeroB: true });
+  const a = asOf(S.LD_CN_IMPULSE, state.latest), q = d => { const x = new Date(d); return `Q${Math.floor(x.getUTCMonth() / 3) + 1} ${x.getUTCFullYear()}`; }, st = ldBestLead('LD_CN_IMPULSE', 'level', 'COPPER', 'yoy');
+  setNote(c, `China’s credit impulse was ${sign(a.v)}${fmtNum(Math.abs(a.v), 1)} points of GDP in ${q(a.t)}, the latest the BIS has published: it arrives about a year late. `
+    + 'The impulse is the change in the flow of new credit, the part that adds to demand; strategists watch it as a 9-to-12-month lead for metals and Chinese imports. '
+    + `On the dashboard’s test against copper it is ${st && st.ok ? 'a lead of ' + st.k + ' months' : 'context: ' + ldWhy(st)}, and the year-long delay makes it a description of the recent past. The monthly version needs the PBoC’s total social financing, which has no free machine-readable feed.`);
+  setSource(c, 'BIS credit to the private non-financial sector via FRED (CRDQCNAPABIS, QCNPAM770A); calculated');
+}
+
+// ------------------------------------------------------------------ WP57. Market canaries (Regime & Leading → Market signals)
+const CAN_ROWS = [   // [series id (built in ldCanaries), name, numerator, denominator or 'x' (product) or 'inv', what it leads, claim]
+  ['LB_R_XHB', 'Homebuilders ÷ S&P 500', 'XHB', 'SPX', PAY, 'housing'], ['LB_R_KBE', 'Banks ÷ S&P 500', 'KBE', 'SPX', PAY, 'credit supply'],
+  ['LB_R_KRE', 'Regional banks ÷ S&P 500', 'KRE', 'SPX', PAY, 'credit to smaller firms'], ['LB_R_IYT', 'Transports ÷ utilities', 'IYT', 'XLU', ISM, 'goods moving'],
+  ['LB_R_SPHB', 'High beta ÷ low volatility', 'SPHB', 'SPLV', ISM, 'risk appetite'], ['LB_R_SOX', 'Semiconductors ÷ S&P 500', 'SOX', 'SPX', ISM, 'ISM, Asian exports'],
+  ['LB_R_RTY', 'Small ÷ large caps', 'RTY', 'SPX', ISM, 'domestic growth'], ['LB_R_XLY', 'Discretionary ÷ staples', 'XLY', 'XLP', ISM, 'consumer spending'],
+  ['LB_CUGOLD', 'Copper ÷ gold', 'COPPER', 'GOLD', ['GS10', 'chg12', 'the 10Y yield', true], 'bond yields'], ['LB_R_HYG', 'High yield ÷ Treasuries', 'HYG', 'IEF', PAY, 'credit risk appetite'],
+  ['LB_AUDJPY', 'AUD/JPY', 'AUDUSD', 'x', ['KR_EXP_YOY', 'level', 'Korea exports', true], 'global risk appetite'], ['LB_KRW', 'Korean won (vs USD)', 'USDKRW', 'inv', ['KR_EXP_YOY', 'level', 'Korea exports', true], 'the trade cycle'],
+];
+function ldCanaries() {
+  ldDerived();
+  for (const [id, , a, b] of CAN_ROWS) {
+    if (S[id] || !has(a)) continue;
+    if (b === 'inv') { S[id] = { ...S[a], id, label: id, kind: 'price', v: S[a].v.map(v => 1 / v) }; continue; }
+    const bb = b === 'x' ? 'USDJPY' : b; if (!has(bb)) continue;
+    const r = combine(S[a], S[bb], b === 'x' ? (x, y) => x * y : (x, y) => x / y, {}, 5 * DAY);
+    S[id] = { ...r, id, label: id, kind: 'price', source: `Yahoo Finance (${a} ${b === 'x' ? '×' : '÷'} ${bb})` };
+  }
+}
+function canStats(id) {   // vs 200-day average, since when, 3-month change (daily ratio)
+  const s = S[id]; if (!s || s.v.length < 260) return null;
+  const n = s.v.length, cs = [0]; for (let i = 0; i < n; i++) cs.push(cs[i] + s.v[i]);
+  const ma = (cs[n] - cs[n - 200]) / 200, vs = (s.v[n - 1] / ma - 1) * 100, above = vs > 0;
+  let since = null; for (let j = n - 2; j >= 200; j--) { const m = (cs[j + 1] - cs[j - 199]) / 200; if ((s.v[j] > m) !== above) { since = s.t[j + 1]; break; } }
+  const p = asOf(s, addMonths(s.t[n - 1], -3)), m3 = p ? (s.v[n - 1] / p.v - 1) * 100 : null;
+  return { vs, above, since, m3, t: s.t[n - 1] };
+}
+state.canSel = 0;
+function renderCanTable(c) {
+  ldCanaries();
+  const b = htmlBody(c), heads = ['Canary', 'vs 200-day', 'Trend', '3M', 'Leads', 'Measured', 'Signal'], tb = el('tbody'), csv = [heads];
+  const rows = CAN_ROWS.map((r, i) => ({ r, i, x: canStats(r[0]), st: ldBestLead(r[0], 'yoy', r[4][0], r[4][1]) })).filter(z => z.x).sort((p, q) => (!!q.st.ok - !!p.st.ok) || p.i - q.i);
+  let ctx = false;
+  for (const { r, i, x, st } of rows) {
+    if (!st.ok && !ctx) { ctx = true; tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: 'Context: no stable lead on the dashboard’s test' }))); }
+    const sig = x.above && x.m3 > 0 ? 'supportive' : !x.above && x.m3 < 0 ? 'warning' : 'mixed';
+    tb.append(el('tr', { class: 'row' + (st.ok ? '' : ' ld-ctx') + (i === state.canSel ? ' sel' : ''), style: 'cursor:pointer', title: `Rising = ${r[5]} improving. ${st.short || st.missing ? '' : leadNote({ ...st, a: r[0] }, r[1], r[4][2])} Click to chart.`,
+      onclick: () => { state.canSel = i; cards.can_table.render(); cards.can_chart.render(); } },
+      el('td', { class: 'l', text: r[1] }), el('td', { class: 'num ' + (x.above ? 'up' : 'dn'), text: pctF1(x.vs) }), el('td', { class: 'num', text: `${x.above ? '▲ above' : '▼ below'} ${sinceF(x.since)}` }),
+      el('td', { class: 'num ' + (x.m3 > 0 ? 'up' : 'dn'), text: pctF1(x.m3) }), el('td', { class: 'l', text: r[4][2] }), el('td', { class: 'l', text: ldMeasured(st) }),
+      el('td', { class: 'num ' + (sig === 'supportive' ? 'up' : sig === 'warning' ? 'dn' : ''), text: sig })));
+    csv.push([r[1], x.vs, x.above ? 'above' : 'below', x.m3, r[4][2], ldMeasured(st), sig]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table ld-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: [0, 4, 5].includes(i) ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  const up = rows.filter(z => z.x.above).length, t = rows.filter(z => z.st.ok), tu = t.filter(z => z.x.above).length;
+  setNote(c, `${up} of ${rows.length} canaries are above their 200-day average, ${tu} of the ${t.length} with a tested lead. `
+    + 'Each is a price ratio that tends to turn before the part of the economy it reflects. Signal: supportive = above its 200-day average and up over three months; warning = below and falling. Measured = the lead of its yearly change over what it leads, on the dashboard’s test (grey rows fail it). The ratio charts with their trend lines are on Markets → Trend; click a row here to compare one with what it leads.');
+  setSource(c, 'Yahoo Finance; FRED; calculated');
+}
+state.canLead = '1';
+function renderCanChart(c) {
+  ldCanaries();
+  const r = CAN_ROWS[state.canSel] || CAN_ROWS[0]; c.titleEl.textContent = r[1] + ' vs ' + r[4][2];
+  const tgName = { PAYEMS: 'Payrolls, % YoY', ISM_BAL: 'ISM manufacturing (balance)', GS10: '10Y yield, 12M change (pp)', KR_EXP_YOY: 'Korea exports, % YoY' }[r[4][0]] || r[4][2];
+  ldLeadPair(c, [r[0], 'yoy', r[1] + ', % YoY'], [r[4][0], r[4][1], tgName], state.canLead === '1', `Rising = ${r[5]} improving.`, { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' });
+}
+function canTile(box, tile) {
+  ldCanaries(); const L = CAN_ROWS.map(r => canStats(r[0])).filter(Boolean); if (!L.length) return;
+  tile('Canaries above trend', `${L.filter(x => x.above).length} of ${L.length}`, 'above their 200-day average', 'price ratios');
+}
+
+// ------------------------------------------------------------------ WP59. Malaysia pulse (Malaysia → Pulse)
+const MY_PULSE = [   // [id, name, unit formatter, daily]
+  ['MY_FPX_B2C', 'Online payments by consumers (28 days)', v => 'RM' + fmtNum(v, 1) + 'bn', true], ['MY_FPX_B2B', 'Online payments by businesses (28 days)', v => 'RM' + fmtNum(v, 1) + 'bn', true],
+  ['MY_CARS', 'New car registrations', v => fmtNum(v / 1000, 1) + 'k'], ['MY_ARR', 'Tourist arrivals', v => fmtNum(v / 1e6, 2) + 'm'], ['MY_ARR_CN', 'Arrivals from China', v => fmtNum(v / 1000, 0) + 'k'],
+  ['MY_ARR_SG', 'Arrivals from Singapore', v => fmtNum(v / 1e6, 2) + 'm'], ['MY_ELEC_COM', 'Electricity use, business', v => fmtNum(v / 1000, 1) + ' TWh'],
+  ['MY_EXP_EE', 'Machinery & electronics exports', v => 'RM' + fmtNum(v, 1) + 'bn'], ['MY_EXP_VOL', 'Export volume index', v => fmtNum(v, 1)],
+];
+const MY_PULSE_CORE = ['MY_FPX_B2C', 'MY_FPX_B2B', 'MY_CARS', 'MY_ARR', 'MY_ELEC_COM', 'MY_EXP_EE'];
+function myGrowth(id, daily) {   // year-on-year: daily 28-day totals against the same window a year earlier; monthly as 3-month averages
+  if (!has(id)) return null;
+  if (daily) { const s = S[id], t = [], v = [], ok = (i, p) => p && p.v && s.t[i] - 364 * DAY - p.t < 5 * DAY;
+    for (let i = 0; i < s.t.length; i += 7) { const p = asOf(s, s.t[i] - 364 * DAY); if (ok(i, p)) { t.push(s.t[i]); v.push((s.v[i] / p.v - 1) * 100); } }
+    const n = s.t.length - 1, p = asOf(s, s.t[n] - 364 * DAY); if (ok(n, p) && t[t.length - 1] !== s.t[n]) { t.push(s.t[n]); v.push((s.v[n] / p.v - 1) * 100); } return { t, v }; }
+  return yoy3(monthlyOf(id, 'level'));
+}
+function myPulseRows() {
+  return MY_PULSE.map(([id, name, f, daily]) => { const g = myGrowth(id, daily); if (!g || g.v.length < 4) return null;
+    const n = g.v.length - 1, back = asOf(g, addMonths(g.t[n], -3)), d3 = back ? g.v[n] - back.v : null, s = S[id], last = asOf(s, state.latest);
+    return { id, name, f, daily, g: g.v[n], d3, t: g.t[n], last, st: ldBestLead(id, 'yoy', 'MY_COINCIDENT', 'yoy') }; }).filter(Boolean);
+}
+function renderMyPulse(c) {
+  if (ldWait(c)) return;
+  const b = htmlBody(c), heads = ['Indicator', 'Latest', 'YoY', '3M', 'Data', 'Measured lead (DOSM coincident index)', 'Read'], tb = el('tbody'), csv = [heads];
+  for (const r of myPulseRows()) {
+    const read = r.d3 == null ? '–' : r.d3 > 0.5 ? 'improving' : r.d3 < -0.5 ? 'slowing' : 'steady';
+    tb.append(el('tr', { class: 'row' + (r.st && r.st.ok ? '' : ' ld-ctx'), title: (r.st && !r.st.missing && !r.st.short ? leadNote({ ...r.st, a: r.id }, r.name, 'the coincident index') : 'History too short to test a lead.') + ' YoY: ' + (r.daily ? 'latest 28 days against the same 28 days a year earlier.' : '3-month average against a year earlier.') },
+      el('td', { class: 'l', text: r.name }), el('td', { class: 'num strong', text: r.f(r.last.v) }), el('td', { class: 'num ' + (r.g > 0 ? 'up' : 'dn'), text: pctF1(r.g) }),
+      el('td', { class: 'num', text: ldArrow(r.d3 == null ? null : Math.abs(r.d3) <= 0.5 ? 0 : r.d3) }), el('td', { class: 'num muted', text: r.daily ? nice(r.last.t) : monthLab(r.last.t) }),
+      el('td', { class: 'l', text: ldMeasured(r.st) }), el('td', { class: 'num ' + (read === 'improving' ? 'up' : read === 'slowing' ? 'dn' : ''), text: read })));
+    csv.push([r.name, r.last.v, r.g, r.d3, r.daily ? iso(r.last.t) : monthLab(r.last.t), ldMeasured(r.st), read]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table ld-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: [0, 5].includes(i) ? 'l' : '' })))), tb)));
+  c.csv = csv;
+  const k = myPulseCount();
+  setNote(c, `${k.up} of ${k.n} pulse readings are improving (growth faster than three months earlier). `
+    + 'These come out weeks before DOSM’s monthly figures: online payments daily, car registrations, arrivals, electricity use and exports monthly. On the dashboard’s test none leads the economy reliably (most move with it, and payments and arrivals start in 2020), so read them as an early, real-time check on spending, tourism and factory activity rather than a forecast. Grey = context.');
+  setSource(c, 'Bank Negara Malaysia, Road Transport Department, Tourism Malaysia, Energy Commission and DOSM via data.gov.my; calculated');
+}
+function myPulseCount() { const L = myPulseRows().filter(r => MY_PULSE_CORE.includes(r.id) && r.d3 != null); return { up: L.filter(r => r.d3 > 0.5).length, n: L.length }; }
+function renderMyPay(c) {
+  if (ldWait(c)) return; const L = [['MY_FPX_B2C', 'Consumers'], ['MY_FPX_B2B', 'Businesses']].filter(([id]) => has(id)); if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L.map(([id, n]) => ({ name: `${n}, RM bn over 28 days`, data: pts(S[id], state.from, state.to) })), { fmt: v => 'RM' + fmtNum(v, 1) + 'bn', axisFmt: v => fmtNum(v, 0), endLabels: false });
+  const g = myGrowth('MY_FPX_B2C', true), a = g && g.v.length ? g.v[g.v.length - 1] : null;
+  setNote(c, `Consumers paid ${a == null ? '–' : fmtNum(Math.abs(a), 1) + '% ' + (a >= 0 ? 'more' : 'less')} online in the latest 28 days than a year earlier. FPX is Malaysia’s bank-to-bank online payment system; the 28-day total smooths out paydays and weekends. Part of the growth is the long shift from cash to online, so compare the pace with its own recent past.`);
+  setSource(c, 'Bank Negara Malaysia (PayNet FPX) via data.gov.my');
+}
+function renderMyCars(c) {
+  if (ldWait(c)) return;
+  ldLeadPair(c, ['MY_CARS', 'yoy', 'New car registrations, % YoY'], ['MY_RETAIL_YOY', 'level', 'Retail trade, % YoY'], false, 'Cars are the biggest purchase most households make, so registrations show confidence and credit early.', { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' },
+    'Registrations swing with model launches and tax changes (the 2020 sales-tax holiday), so read the trend over several months.');
+}
+function renderMyArrivals(c) {
+  if (ldWait(c)) return; const L = [['MY_ARR', 'All arrivals'], ['MY_ARR_SG', 'From Singapore'], ['MY_ARR_CN', 'From China']].filter(([id]) => has(id)); if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L.map(([id, n]) => ({ name: n + ', thousands a month', data: pts({ t: S[id].t, v: S[id].v.map(v => v / 1000) }, state.from, state.to) })), { fmt: v => fmtNum(v, 0) + 'k', axisFmt: v => fmtNum(v, 0), endLabels: false });
+  const g = myGrowth('MY_ARR'), gc = myGrowth('MY_ARR_CN'), a = asOf(S.MY_ARR, state.latest);
+  setNote(c, `${fmtNum(a.v / 1e6, 2)} million visitors in ${monthLab(a.t)}, ${g ? pctF1(g.v[g.v.length - 1]) : '–'} on a year (3-month average); from China ${gc ? pctF1(gc.v[gc.v.length - 1]) : '–'}. Tourism feeds hotels, retail and the ringgit; Singapore day-trippers are about half of all arrivals. The series starts in 2020, so it holds no full cycle yet.`);
+  setSource(c, 'Tourism Malaysia via data.gov.my (arrivals)');
+}
+function renderMyEe(c) {
+  if (ldWait(c)) return;
+  ldLeadPair(c, ['MY_EXP_EE', 'yoy', 'Machinery & electronics exports, % YoY'], ['SOX', 'yoy', 'Philadelphia semiconductor index, % YoY'], false,
+    'Malaysia assembles and tests a large share of the world’s chips, so its machinery and electronics exports (SITC 7) track the global chip cycle.', { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' });
+}
+function myPulseTile(box, tile) { const k = myPulseCount(); if (k.n) tile('Malaysia pulse', `${k.up} of ${k.n} improving`, 'payments, cars, tourists, power, exports', 'faster growth than 3 months ago'); }
+
+// ------------------------------------------------------------------ WP60. Presidential cycle (Markets → Seasonality)
+const CYC_NAMES = ['Post-election year', 'Mid-term year', 'Pre-election year', 'Election year'];
+function cycleData() {   // S&P 500 month-end levels (monthly since 1960): one 48-month path per four-year cycle starting the year after an election
+  const s = S.LH_SPX || S.SPX; if (!s) return null;
+  const me = monthEnds(s), at = (y, m) => me.get(Date.UTC(y, m, 1)), cur = new Date(state.latest).getUTCFullYear(), c0 = cur - ((cur - 1961) % 4 + 4) % 4;
+  const paths = [];
+  for (let y = 1961; y <= cur; y += 4) {
+    const base = at(y - 1, 11); if (!base) continue; const p = [0];
+    for (let m = 0; m < 48; m++) { const v = at(y + Math.floor(m / 12), m % 12); if (v == null) break; p.push((v / base - 1) * 100); }
+    paths.push({ y, p, full: p.length === 49 });
+  }
+  return { paths, full: paths.filter(x => x.full && x.y !== c0), current: paths.find(x => x.y === c0), c0, at };
+}
+function renderSeaCycle(c) {
+  const d = cycleData(); if (!d || !d.full.length) return setEmpty(c, 'Waiting for data.');
+  const avg = Array.from({ length: 49 }, (_, m) => d.full.reduce((a, x) => a + x.p[m], 0) / d.full.length);
+  const o = baseOpt(); o.legend.show = true; o.grid.top = 34;
+  o.xAxis = { type: 'category', data: Array.from({ length: 49 }, (_, m) => m === 0 ? 'Start' : `${['Y1', 'Y2', 'Y3', 'Y4'][Math.floor((m - 1) / 12)]} ${MONTHS[(m - 1) % 12]}`),
+    axisLabel: { color: tok('--ink-2'), interval: 11, formatter: (v, i) => i === 0 ? 'Start' : CYC_NAMES[Math.floor((i - 1) / 12)].replace(' year', '') }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0) + '%'); o.tooltip = { ...o.tooltip, trigger: 'axis', valueFormatter: v => v == null ? '–' : pctF1(v) };
+  o.series = [{ name: `Average of ${d.full.length} cycles since 1961`, type: 'line', data: avg.map(v => +v.toFixed(2)), showSymbol: false, lineStyle: { type: 'dashed', width: 2, color: tok('--muted') }, itemStyle: { color: tok('--muted') } }];
+  if (d.current) o.series.push({ name: `This cycle (from Jan ${d.c0})`, type: 'line', data: d.current.p.map(v => +v.toFixed(2)), showSymbol: false, lineStyle: { width: 2.5, color: col(0) }, itemStyle: { color: col(0) } });
+  inst(c).setOption(o, true);
+  const m = d.current ? d.current.p.length - 1 : 0;
+  setNote(c, `We are in month ${m} of the cycle (${CYC_NAMES[Math.floor(Math.max(0, m - 1) / 12)].toLowerCase()}): this cycle is ${d.current ? pctF1(d.current.p[m]) : '–'} so far against ${pctF1(avg[m])} for the average cycle at the same point. `
+    + 'The S&P 500 (price only, month-end) through each four-year US presidential cycle, rebased to 0 at the end of the election year. The stretch from the mid-term year’s autumn to mid way through the pre-election year has been the strongest of the four years, the pattern most often quoted; with only 16 cycles one bad year moves the average a lot, so the table beside shows how often it worked.');
+  setSource(c, 'Yahoo Finance (^GSPC, monthly since 1960); calculated');
+}
+function renderSeaCycleTbl(c) {
+  const d = cycleData(); if (!d || !d.full.length) return setEmpty(c, 'Waiting for data.');
+  const b = htmlBody(c), heads = ['Cycle year', 'Q1', 'Q2', 'Q3', 'Q4', 'Whole year'], tb = el('tbody'), csv = [heads];
+  const qret = (x, yr, q) => { const a = x.p[yr * 12 + q * 3], z = x.p[yr * 12 + q * 3 + 3]; return a == null || z == null ? null : ((100 + z) / (100 + a) - 1) * 100; };
+  const cur = d.current ? d.current.p.length - 1 : -1;
+  for (let yr = 0; yr < 4; yr++) {
+    const cells = [0, 1, 2, 3].map(q => d.full.map(x => qret(x, yr, q)).filter(v => v != null)).concat([d.full.map(x => ((100 + x.p[yr * 12 + 12]) / (100 + x.p[yr * 12]) - 1) * 100)]);
+    tb.append(el('tr', { class: 'row' + (cur > yr * 12 && cur <= yr * 12 + 12 ? ' sel' : '') }, el('td', { class: 'l', text: CYC_NAMES[yr] }),
+      ...cells.map(L => { const a = L.reduce((s, v) => s + v, 0) / L.length, h = L.filter(v => v > 0).length; return el('td', { class: 'num ' + (a > 0 ? 'up' : 'dn'), title: `${h} of ${L.length} up; worst ${pctF1(Math.min(...L))}`, text: `${pctF1(a)} (${h}/${L.length})` }); })));
+    csv.push([CYC_NAMES[yr], ...cells.map(L => L.reduce((s, v) => s + v, 0) / L.length)]);
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf watch' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
+  // the best-known window: end of September in the mid-term year to end of June in the pre-election year
+  const W = d.full.map(x => ({ y: x.y + 1, r: ((100 + x.p[30]) / (100 + x.p[21]) - 1) * 100 })), wa = W.reduce((s, x) => s + x.r, 0) / W.length, worst = W.reduce((m, x) => x.r < m.r ? x : m);
+  c.csv = csv;
+  setNote(c, `Mid-term October to pre-election June: average ${pctF1(wa)}, up in ${W.filter(x => x.r > 0).length} of ${W.length} cycles; worst ${pctF1(worst.r)} (from the ${worst.y} mid-terms). `
+    + 'Average S&P 500 price return by quarter of the cycle, with the number of cycles it rose (hover for the worst). The current cycle year is highlighted. A tendency, not a rule: valuations, the Fed and recessions matter far more in any single cycle.');
+  setSource(c, 'Yahoo Finance (^GSPC); calculated');
+}
+
+// ------------------------------------------------------------------ WP58. Options positioning (Positioning & Vol → Sentiment)
+function renderSentPc(c) {
+  if (!SPD) { loadSP().then(() => c.render()); return setEmpty(c, 'Loading…'); }
+  const L = [['SP_PC_EQUITY', 'Single shares (dashboard’s own count)'], ['SP_PC_INDEX', 'Index options: S&P 500, Nasdaq 100, Russell 2000'], ['FG_PUTCALL', 'CNN’s Cboe put/call, 5-day average']].filter(([id]) => has(id));
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  drawLines(c, L.map(([id, n]) => ({ name: n, data: pts(S[id], state.from, state.to), extra: S[id].v.length < 3 ? { showSymbol: true, symbolSize: 7 } : {} })), { fmt: v => fmtNum(v, 2), axisFmt: v => fmtNum(v, 1), hlines: [{ y: 1, label: '1 = as many puts as calls' }], endLabels: false });
+  const e = has('SP_PC_EQUITY') ? asOf(S.SP_PC_EQUITY, state.latest) : null, x = has('SP_PC_INDEX') ? asOf(S.SP_PC_INDEX, state.latest) : null, n = has('SP_PC_EQUITY') ? S.SP_PC_EQUITY.v.length : 0;
+  setNote(c, `${e ? `Puts per call traded: ${fmtNum(e.v, 2)} on single shares and ${x ? fmtNum(x.v, 2) : '–'} on index options (${nice(e.t)}).` : 'The dashboard’s own count starts with the next full run.'} `
+    + 'A very high ratio means heavy buying of protection (fear), which has often come near market lows; a very low one means complacency. Index options are mostly hedges, so they run higher than single shares. '
+    + `The dashboard began counting volumes from the Cboe option chains it already reads in November 2026 (${n} day${n === 1 ? '' : 's'} so far); a 10-day average and percentiles follow once there is enough history. Until then CNN’s 5-day average gives the longer view.`);
+  setSource(c, 'Cboe (delayed) option volumes, summed by the dashboard; CNN Business Fear & Greed (put/call component)');
+}
+
 // ------------------------------------------------------------------ build and wiring
-const EXTRA_HOOKS = { regime: [lbTiles], us: [usLeadTiles] };
-{ const R = SUBTABS.regime, i = R.findIndex(x => x[0] === 'Indicators'); R.splice(i < 0 ? R.length : i, 0, ['Leading board', ['lb_table', 'lb_breadth', 'lb_changes'], 'Leading']); }
+function ldTiles(sel, fn) {   // append tiles to a page's tile box (TILE_SETS then picks five for the open sub-tab)
+  const box = $(sel); if (!box) return;
+  fn(box, (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f }))));
+}
+const ldSub = tab => (SUBTABS[tab][state.sub[tab] || 0] || [])[0];
+function regLeadTiles() {
+  const sub = ldSub('regime');
+  if (sub === 'Market signals') ldTiles('#regKpis', canTile);
+  if (sub === 'Global breadth & money') { if (!LEADS) { loadLeads().then(() => state.tab === 'regime' && renderTab()); return; } ldTiles('#regKpis', glTiles); }
+}
+function asiaLeadTiles() { if (ldSub('asia') !== 'Trade pulse') return; if (!LEADS) { loadLeads().then(() => state.tab === 'asia' && renderTab()); return; } ldTiles('#asiaKpis', axTiles); }
+function myLeadTiles() { if (['Equities', 'Sectors'].includes(ldSub('my'))) return; if (!LEADS) { loadLeads().then(() => state.tab === 'my' && renderTab()); return; } ldTiles('#myKpis', myPulseTile); }
+const EXTRA_HOOKS = { regime: [lbTiles, regLeadTiles], us: [usLeadTiles], asia: [asiaLeadTiles], my: [myLeadTiles] };
+{ const R = SUBTABS.regime, i = R.findIndex(x => x[0] === 'Indicators'); R.splice(i < 0 ? R.length : i, 0, ['Leading board', ['lb_table', 'lb_breadth', 'lb_changes'], 'Leading']);
+  const g = R.findIndex(x => x[0] === 'Global business cycle'); R.splice(g + 1, 0, ['Global breadth & money', ['gl_diff', 'gl_money', 'gl_table'], 'Leading']);
+  R.find(x => x[0] === 'Market signals')[1].push('can_table', 'can_chart'); }
+SUBTABS.asia.push(['Trade pulse', ['#sa_asia_pulse', 'ax_pulse', 'ax_pulse_table', 'ax_krw']]);
+SUBTABS.cn.find(x => x[0] === 'Economy')[1].push('cn_credit');
+{ const M = SUBTABS.my, i = M.findIndex(x => x[0] === 'Economy'); M.splice(i + 1, 0, ['Pulse', ['my_pulse', 'my_pay', 'my_cars', 'my_arrivals', 'my_ee']]); }
+SUBTABS.posvol.find(x => x[0] === 'Sentiment')[1].push('sent_pc');
+SUBTABS.markets.find(x => x[0] === 'Seasonality')[1].push('sea_cycle', 'sea_cycle_tbl');
+EXTRA_RENDER.posvol = ['sent_pc'];
+EXTRA_RENDER.markets.push('sea_cycle', 'sea_cycle_tbl');
+ASIA_KPI['Trade pulse'] = ['Korea exports', 'Taiwan exports', 'KOSPI', 'Taiwan Weighted', 'USD/KRW'];
+Object.assign(TILE_SETS.asia, { 'Trade pulse': ['Asian trade pulse', 'Korea exports', 'Taiwan exports', 'KOSPI', 'USD/KRW'] });
+Object.assign(TILE_SETS.my, { 'Pulse': ['Malaysia pulse', 'FBM KLCI', 'USD/MYR', 'Malaysia OPR', 'Malaysia leading index'] });
+TILE_SETS.my['*'] = [...TILE_SETS.my['*'].filter(x => x !== 'Malaysia pulse'), 'Malaysia pulse'];
+Object.assign(TILE_SETS.regime, { 'Global breadth & money': ['Leading indices rising', 'Global real money', 'G7 leading index', 'Confirmed regime', 'Growth momentum'],
+  'Market signals': ['Canaries above trend', 'Confirmed regime', 'Growth momentum', 'Inflation momentum'] });
 { const U = SUBTABS.us, i = U.findIndex(x => x[0] === 'Growth & jobs') + 1;
   U.splice(i, 0, ['Cycle sequence', ['cs_baskets', 'cs_table', 'cs_housing', 'cs_orders', 'cs_freight'], 'Economy'], ['Labour leads', ['lab_temp', 'lab_hours', 'lab_postings', 'lab_quits'], 'Economy']);
   const j = U.findIndex(x => x[0] === 'Inflation'); U[j][1].push('inf_core');
@@ -407,7 +729,7 @@ Object.assign(TILE_SETS.regime, { 'Leading board': ['Tested leads improving', 'U
 Object.assign(TILE_SETS.us, { 'Cycle sequence': ['Leading basket', 'Cyclical basket', 'Aggregate basket', 'Single-family permits', 'Months’ supply'],
   'Labour leads': ['Overtime hours', 'Quits rate', 'Temp help jobs', 'Job postings', 'Continuing claims'], 'Inflation pipeline': ['Prices paid', 'Asking rents', 'Wage tracker', 'CPI', 'Core PCE'] });
 function buildLeads() {
-  setTimeout(() => loadLeads().then(() => { if (['weekly', 'overview', 'regime', 'us'].includes(state.tab)) renderTab(); }), 500);   // small file (~200 KB): loaded after the first page is drawn
+  setTimeout(() => loadLeads().then(() => { if (['weekly', 'overview', 'regime', 'us', 'asia', 'my', 'cn'].includes(state.tab)) renderTab(); }), 500);   // small file (~200 KB): loaded after the first page is drawn
   const rg = $('#regGrid');
   makeCard(rg, { key: 'lb_table', title: 'Leading board', wide: true, range: false, seg: { key: 'lbView', options: LB_GROUPS.map(g => [g, g]) }, render: renderLbTable });
   makeCard(rg, { key: 'lb_breadth', title: 'Breadth of the leads', defaultRange: '10Y', seg: { key: 'lbBreadth', options: [['groups', 'By group'], ['spx', 'vs S&P 500']] }, render: renderLbBreadth });
@@ -436,4 +758,32 @@ function buildLeads() {
   makeCard(ug, { key: 'inf_paid', title: 'Factory prices paid vs CPI', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1),
     ...leadCard('infPaidLead', ['PHILLY_PP', 'level', 'Philadelphia Fed prices paid'], ['CPI', 'yoy', 'CPI, % YoY'], 5, 'Factories report the prices they pay for materials before those costs reach shop prices.') });
   makeCard(ug, { key: 'inf_core', title: 'Underlying inflation', defaultRange: '10Y', render: renderInfCore });
+  // Run 2: global breadth and money, canaries, Asian trade pulse, China credit, Malaysia pulse, presidential cycle, put/call
+  makeCard(rg, { key: 'gl_diff', title: 'Breadth of the leading indices', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1),
+    seg: { key: 'glDiffT', select: true, label: 'Compare with', prefix: 'vs', options: GL_DIFF_T.map(x => [x[0], x[2].replace(/,.*$/, '')]) }, render: renderGlDiff });
+  makeCard(rg, { key: 'gl_money', title: 'Global real money (ex-China)', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), seg: { key: 'glMoney', options: [['LD_RNM6', 'Narrow'], ['LD_RBM6', 'Broad']] }, render: renderGlMoney });
+  makeCard(rg, { key: 'gl_table', title: 'Leading indices by economy', range: false, render: renderGlTable });
+  makeCard(rg, { key: 'can_table', title: 'Market canaries', wide: true, range: false, render: renderCanTable });
+  makeCard(rg, { key: 'can_chart', title: 'Canary vs what it leads', defaultRange: '10Y', seg: LEAD_SEG('canLead'), render: renderCanChart });
+  for (const k of ['gl_table', 'can_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  const ag = $('#asiaGrid');
+  seeAlso('sa_asia_pulse', ag, [['China credit impulse', 'cn', 'Economy'], ['Korea: exports and chips', 'kr', 'Economy'], ['Exports across Asia-Pacific', 'asia', 'Across Asia'], ['Leading board', 'regime', 'Leading board']]);
+  makeCard(ag, { key: 'ax_pulse', title: 'Asian trade pulse', wide: true, defaultRange: '10Y',
+    seg: { key: 'axPulseT', select: true, label: 'Compare with', prefix: 'vs', options: AX_PULSE_T.map(x => [x[0], x[2].replace(/,.*$/, '')]) }, render: renderAxPulse });
+  makeCard(ag, { key: 'ax_pulse_table', title: 'The pulse’s parts', range: false, render: c => { if (ldWait(c)) return; renderAxPulseTable(c); } });
+  makeCard(ag, { key: 'ax_krw', title: 'Korean won vs Korea’s exports', defaultRange: '10Y', seg: LEAD_SEG('axKrw'), render: renderAxKrw });
+  { const r = cards.ax_pulse_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard($('#cnGrid'), { key: 'cn_credit', title: 'China credit impulse (BIS)', defaultRange: 'MAX', earliest: Date.UTC(2000, 0, 1), render: renderCnCredit });
+  const mg = $('#myGrid');
+  makeCard(mg, { key: 'my_pulse', title: 'Malaysia pulse', wide: true, range: false, render: renderMyPulse });
+  makeCard(mg, { key: 'my_pay', title: 'Online payments (FPX)', defaultRange: '3Y', render: renderMyPay });
+  makeCard(mg, { key: 'my_cars', title: 'Car registrations vs retail', defaultRange: '10Y', render: renderMyCars });
+  makeCard(mg, { key: 'my_arrivals', title: 'Tourist arrivals', defaultRange: 'MAX', render: renderMyArrivals });
+  makeCard(mg, { key: 'my_ee', title: 'Electronics exports vs chips', defaultRange: '10Y', render: renderMyEe });
+  { const r = cards.my_pulse.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  const sg = $('#seaGrid');
+  makeCard(sg, { key: 'sea_cycle', title: 'US presidential cycle', range: false, render: renderSeaCycle });
+  makeCard(sg, { key: 'sea_cycle_tbl', title: 'Presidential cycle by quarter', range: false, render: renderSeaCycleTbl });
+  { const r = cards.sea_cycle_tbl.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  makeCard($('#pvGrid'), { key: 'sent_pc', title: 'Put/call ratios', defaultRange: '1Y', render: renderSentPc });
 }
