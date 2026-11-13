@@ -598,9 +598,11 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ## Planned, not built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go" and names the packages.** Follow
+**Status: decisions taken on 13 Nov 2026 (owner: "plan based on your recommended one"); ready to build. Nothing below
+is built yet. Build all twelve packages in the three runs under "Order of work" when the owner says "Go".** Follow
 `CLAUDE.md` (sub-tabs, 2,300 px, ≤ 5 tiles, ≤ 16 rows, one home per card) and run `node tools/design-check.js` before
-each push. One commit per package.
+each push. One commit per package. Read "Decisions taken", "Pre-test" and "Build brief" (end of this section) first;
+where they differ from a package description, they win.
 
 **The request:** look through the dashboard, plan what is still worth adding, and add the leading indicators that
 strategists use online.
@@ -646,7 +648,7 @@ is quoted as the claim and the measured result is shown beside it.
 | OECD (host allowed) | Leading indices for 18 economies plus G7, G20 (22 areas current, against 12 loaded). Narrow money (`MANM`) and broad money (`MABM`) in the key-indicators feed for the US, euro area, Japan, UK, Canada, Australia, Korea, India, Brazil. | Works. No China money series. |
 | data.gov.my (host allowed) | `trnsc_daily_fpx` (online payments, daily, business and consumer), `registrations_type_fuel` (vehicle registrations, monthly), `arrivals` (tourist arrivals by country, monthly), `electricity_consumption` (by sector, monthly), `trade_sitc_1d` section 7 (machinery and electronics exports), `tradeidx` (trade volumes) | All work. |
 | Cboe option chains (already downloaded by `pipeline/structured.py`) | Put and call volume per chain → an equity put/call ratio | Volume is in the chains; history builds from the first day (Cboe's own ratio file stops in 2019; its daily statistics are access-denied). |
-| Yahoo (host allowed) | ETFs for canaries not yet loaded: XHB, KBE, KRE, IYT, SPHB, SPLV (check the list first; XLU and others may already be there) | Standard tickers; not individually tested. |
+| Yahoo (host allowed) | ETFs for canaries: XHB, KBE, KRE, IYT, SPHB, SPLV are **not** loaded yet (add to `YAHOO` in `pipeline/config.py`); XLU, XLY, XLP, HYG, IEF, COPPER are in `config.py`; SOXX and IWM are in `tickers.py` | All six return prices (checked 13 Nov 2026). XHB from 2006, KBE 2005, IYT 2004, SPHB and SPLV from May 2011. |
 
 **No free source** (stated on the pages where a reader would expect them): the Conference Board's leading index and
 ISM's sub-indices (licensed; the regional Fed surveys stand in for new orders, inventories and prices paid), global
@@ -715,7 +717,10 @@ deviations) and cool at the back (asking rents +2.7%, wage tracker 3.9%).
 - `lab_postings`: Indeed job postings (daily) against JOLTS openings.
 - `lab_quits`: quits rate against the Atlanta Fed wage tracker with a lead toggle (claim: quits lead wages by about
   nine months; show the measured figure).
-- Tiles: temp help, quits rate, postings, weekly hours, continuing claims.
+- Tiles: overtime hours (the tested lead), quits rate, temp help, postings, continuing claims.
+- Pre-test: overtime and weekly hours pass (6 to 7 months ahead of payrolls); quits pass (11 months ahead of wages,
+  0.92); temp help, full-time jobs and job openings move in the same month as payrolls, so they are drawn in grey as
+  context with that sentence on the card.
 
 ### WP55. Inflation pipeline (US → Inflation, which has one card today)
 
@@ -725,7 +730,9 @@ deviations) and cool at the back (asking rents +2.7%, wage tracker 3.9%).
   three-month direction, percentile, what it leads and by how long (measured), read. Colour by stage so "warm at the
   front, cool at the back" is visible.
 - **Card `inf_rents` (half):** Zillow asking rents against CPI shelter, year on year, with a 12-month lead toggle
-  (San Francisco Fed research: asking rents lead CPI shelter by about a year).
+  (San Francisco Fed research: asking rents lead CPI shelter by about a year). Pre-test: best at 13 months with a
+  correlation of 0.82, but the history starts in 2016 and the first half shows no link, so the rule grades it
+  "context: thin evidence". Say exactly that on the card; do not call it a tested lead.
 - **Card `inf_paid` (half):** prices paid and GSCPI against core goods inflation.
 - **Card `inf_core` (half):** sticky, median and trimmed-mean measures against core CPI.
 - Tiles keep CPI and core PCE and add asking rents, prices paid and the wage tracker.
@@ -794,11 +801,14 @@ deviations) and cool at the back (asking rents +2.7%, wage tracker 3.9%).
 - README, PLAN status, Calendar (JOLTS, building permits, durable goods and the regional Fed surveys via the FRED
   release calendar already used), search check, design check.
 
-### Suggested order
+### Order of work (decided)
 
 1. **Run 1 (the core): WP51 + WP52 + WP55 + WP53 + WP54.** Data, the Leading board, and the three US pages.
 2. **Run 2: WP56 + WP57 + WP59 + WP60 + WP58.** Global, canaries, Malaysia pulse, presidential cycle, put/call.
 3. **Run 3: WP61 + WP62.** Signals and housekeeping (needs the series from Runs 1 and 2).
+
+If one session cannot finish all three, stop at the end of a run (never mid-package), record the stopping point in
+the status line above, and carry on from there next time.
 
 ### Risks and how the build handles them
 
@@ -812,15 +822,145 @@ deviations) and cool at the back (asking rents +2.7%, wage tracker 3.9%).
   Leading board uses view chips to stay within 16 rows.
 - **Run time.** One more module (five small downloads); the FRED batch grows by about 40 series (roughly 20 seconds).
 
-### Decisions for the owner
+### Decisions taken (owner, 13 Nov 2026: all as recommended)
 
-1. **Which packages, in which order?** Recommended: Run 1 first.
-2. **Failed leads:** show them greyed as "context" (recommended), or hide them?
-3. **The Leading board on the Strategist View:** add the one-line summary there and in the Weekly brief
-   (recommended), or keep it only on its own page?
-4. **China credit impulse:** include the BIS quarterly version with its one-year delay stated (recommended: it is
-   still the standard chart), or leave China credit out until a monthly source exists?
-5. **Malaysia pulse:** include (recommended) or skip?
+1. **Packages and order:** all twelve, in the three runs above, Run 1 first.
+2. **Failed leads are shown, in grey, as "context"** with the reason ("moves in the same month", "no stable link",
+   "history too short"). Nothing is hidden, and only leads that pass count towards "x of y improving".
+3. **One-line summary** of the Leading board on the Strategist View ("Where we are") and in the Weekly brief.
+4. **China credit impulse** is included from the BIS quarterly series, with "arrives about a year late" in the
+   takeaway sentence, not buried in "How to read".
+5. **Malaysia pulse** is included.
+
+### Pre-test of the lead rule (13 Nov 2026, full history, the dashboard's own rule)
+
+Run before the build so the pages are designed around what holds up. Same rule as `leadStats` in `docs/app.js`,
+best lead searched over 1 to 18 months. The build must still compute every figure live with `leadStats`; these
+numbers are a guide to layout and wording, and are never typed into the code.
+
+| Indicator → what it leads | Result | Best lead | Corr. | Same month | Two halves | Since |
+|---|---|---|---|---|---|---|
+| Single-family permits (yoy) → payrolls (yoy) | **Leads** | 15 m | +0.46 | −0.04 | 0.55 / 0.42 | 1961 |
+| Single-family permits (yoy) → unemployment (12 m change) | **Leads** | 10 m | −0.47 | −0.07 | −0.61 / −0.39 | 1961 |
+| New-home months' supply → unemployment (12 m change) | **Leads** | 10 m | +0.45 | +0.16 | 0.64 / 0.35 | 1963 |
+| New home sales (yoy) → payrolls (yoy) | **Leads** | 18 m | +0.43 | −0.10 | 0.51 / 0.40 | 1964 |
+| Philadelphia Fed new orders − inventories → industrial production (yoy) | **Leads** | 9 m | +0.47 | +0.17 | 0.51 / 0.34 | 1968 |
+| Philadelphia Fed new orders − inventories → ISM | Context: weak | 8 m | +0.35 | +0.31 | 0.40 / 0.28 | 1968 |
+| Philadelphia + New York average, same → ISM | Context: same month | 1 m | +0.50 | +0.50 | 0.52 / 0.58 | 2001 |
+| Factory overtime (6 m change) → payrolls (yoy) | **Leads** | 7 m | +0.52 | +0.12 | 0.63 / 0.43 | 1956 |
+| Factory weekly hours (6 m change) → payrolls (yoy) | **Leads** | 6 m | +0.49 | +0.34 | 0.53 / 0.42 | 1940 |
+| Quits rate → Atlanta Fed wage tracker | **Leads** | 11 m | +0.92 | +0.72 | 0.95 / 0.86 | 2000 |
+| Philadelphia Fed prices paid → CPI (yoy) | **Leads** | 5 m | +0.69 | +0.62 | 0.77 / 0.68 | 1968 |
+| Homebuilders ÷ S&P 500 (yoy) → payrolls (yoy) | **Leads** | 18 m | +0.45 | +0.06 | 0.67 / 0.36 | 2007 |
+| Banks ÷ S&P 500 (yoy) → payrolls (yoy) | **Leads** | 2 m | +0.50 | +0.43 | 0.42 / 0.55 | 2006 |
+| Semiconductors ÷ S&P 500 (yoy) → ISM | **Leads** | 6 m | +0.47 | +0.25 | 0.51 / 0.56 | 2002 |
+| Discretionary ÷ staples (yoy) → ISM | **Leads** | 3 m | +0.59 | +0.48 | 0.75 / 0.44 | 2002 |
+| High beta ÷ low volatility (yoy) → ISM | **Leads** | 3 m | +0.49 | +0.42 | 0.65 / 0.61 | 2012 |
+| Temporary help (yoy) → payrolls (yoy) | Context: same month | 1 m | +0.70 | +0.72 | 0.84 / 0.66 | 1991 |
+| Heavy trucks, residential construction jobs, durable-goods jobs, core capital-goods orders, job openings, full-time jobs | Context: same month | 1 m | 0.6 to 0.9 | about equal | stable | – |
+| Real M2 (6 m annualised) → industrial production (yoy) | Context: not stable | 12 m | +0.39 | −0.13 | 0.71 / 0.16 | 1959 |
+| Real M1 (6 m annualised) → ISM | Context: weak | 9 m | +0.13 | 0.00 | 0.41 / 0.23 | 1959 |
+| Zillow asking rents (yoy) → CPI shelter (yoy) | Context: thin evidence | 13 m | +0.82 | +0.23 | −0.32 / 0.95 | 2016 |
+| Supply-chain pressure (GSCPI) → core goods inflation (yoy) | Context: not stable | 4 m | +0.73 | +0.66 | 0.20 / 0.81 | 1998 |
+| Import prices (yoy) → core goods inflation | Context: weak | 1 m | +0.35 | +0.34 | 0.23 / 0.40 | 1985 |
+| Oil (yoy) → CPI (yoy); wage tracker → sticky CPI | Context: same month | 2 m | 0.5 to 0.8 | about equal | stable | – |
+| Transports ÷ utilities (yoy) → ISM | Context: same month | 1 m | +0.44 | +0.43 | 0.35 / 0.53 | 2005 |
+| S&P 500 (yoy) → ISM | Context: same month | 1 m | +0.61 | +0.59 | 0.77 / 0.40 | 2002 |
+
+Not pre-tested (need the new pipeline series; test at build and grade the same way): leading-index diffusion →
+world equities; real narrow money for nine economies → G7 business confidence; the Asian trade pulse → Asia
+ex-Japan equities; every Malaysia pulse series; cycle baskets (Leading basket → Aggregate basket).
+
+**What the pre-test changes:**
+
+- **Housing really does lead** (10 to 18 months, stable since the 1960s). It is the headline of the Cycle sequence
+  page and the first rows of the Growth view on the board.
+- **The "cyclical" basket is coincident in year-on-year terms** (trucks, construction and durable-goods jobs move in
+  the same month as payrolls). Keep the four baskets (the value is the sequence and the size of the swings), but the
+  note must say so: "the Leading basket is the tested lead; Cyclical confirms". Test Leading basket → Aggregate basket
+  live and print the figure.
+- **Orders minus inventories leads output, not the ISM** (the ISM is itself a survey taken the same month). On
+  `cs_orders` draw it against industrial production growth with the lead toggle; show the ISM as a second view.
+- **Use the Philadelphia series alone for every lead test** (history from 1968). The Philadelphia + New York average
+  starts in 2001 and is shown only as the latest level.
+- **Temp help is context, not a lead** (same month as payrolls since 1991). Hours and overtime are the tested labour
+  leads; quits → wages is the strongest relationship on the whole list.
+- **The inflation pipeline is mostly context.** Only prices paid passes. The table still shows every stage in order,
+  but with one tested lead (prices paid), one "thin evidence" (asking rents) and the rest grey. The takeaway reads
+  "front of the pipeline warm or cool", not "inflation will rise in N months".
+- **US real money growth fails** (strong before the 1990s, weak since). Expect the global version in WP56 to grade
+  "context"; build it anyway (it is the most quoted money signal) and print the result.
+- **Five market canaries pass** (homebuilders, banks, semiconductors, discretionary ÷ staples, high beta ÷ low
+  volatility); transports ÷ utilities does not. `can_table` sorts the tested ones first.
+- **Board arithmetic:** about 45 rows, of which roughly 15 to 20 will be tested leads. Tiles read "x of y tested
+  leads improving", and the grey rows never enter the count.
+
+### Build brief (for the executing session)
+
+**Files**
+
+- `pipeline/config.py`: add the FRED series in the data table (skip ids already present: check with a search for the
+  FRED code first; `PERMIT`, `HOUST`, `AWHMAN`, `INDPRO`, `PAYEMS`, `GS10` are there). Also add `CUSR0000SACL1E` (core
+  goods prices; current to Oct 2026) for `inf_paid`. Long-history ones take `MACRO_START`. Add XHB, KBE, KRE, IYT, SPHB,
+  SPLV to `YAHOO` (group "Equities · US sectors" or a new "Equities · Canaries").
+- `pipeline/leads.py` (new; pattern: copy the shape of `pipeline/banks.py`: one function per source, each wrapped so a
+  failure keeps the previous series; `build(status)`; writes `leads.json`). Add `"leads"` to the module loop in
+  `pipeline/fetch.py`, `leads.json` to the carry-over list in `.github/workflows/update.yml` and to `FILES` in
+  `pipeline/health.py`. `openpyxl` is needed for the NY Fed file: add to `requirements.txt` if missing.
+- Derived series are written by the pipeline (so `signals.py` can use them), ids:
+  `LD_OI_PHI` (Philadelphia new orders − inventories), `LD_OI_AVG`, `LD_PP_PHI`, `LD_PP_AVG` (prices paid),
+  `LD_CLI_DIFF` (leading-index diffusion, %), `LD_RNM6` and `LD_RBM6` (real narrow and broad money, 6-month annualised,
+  GDP-weighted, ex-China), `LD_BASKET_LEAD/CYC/AGG/LAG` (cycle baskets), `LD_ASIA_PULSE`, and the canary ratios as
+  month-end series `CAN_XHB`, `CAN_KBE`, `CAN_KRE`, `CAN_IYT_XLU`, `CAN_SPHB_SPLV`, `CAN_SOX`, `CAN_XLY_XLP` (the
+  ratio charts themselves stay on Markets → Trend; these exist only so the lead test and the signal engine can read
+  them). Malaysia pulse: `MY_FPX_B2C`, `MY_FPX_B2B` (28-day sums), `MY_CARS`, `MY_ARR`, `MY_ARR_CN`, `MY_ARR_SG`,
+  `MY_ELEC_IND`, `MY_ELEC_COM`, `MY_EXP_EE`, `MY_EXP_VOL`. Put/call: `SP_PC_EQUITY`, `SP_PC_INDEX` from
+  `pipeline/structured.py` (archive daily in `archive/structured_pc.csv`).
+- `docs/leads.js` (new; loaded after `more.js` in `docs/index.html`): all new cards, a `buildLeads()` called in `init`
+  right after `buildMore()`, and a `loadLeads()` beside the other loaders. Scripts share one top-level scope, so prefix
+  every new top-level name with `LB_` or `ld` and search `app.js`, `sp.js` and `more.js` for a clash before using it
+  (`leadCard`, `leadStats`, `leadNote`, `LL_PAIRS`, `RS_PAIRS` already exist).
+- Sub-tabs (push from `leads.js`, as `more.js` does):
+  - `regime`: insert `['Leading board', ['#lbKpis', 'lb_table', 'lb_breadth', 'lb_changes'], 'Leading']` as the first
+    entry of the Leading group (before "Indicators"); add `regime` to `OLD_SUBS` with the old order because the
+    positions shift. "Global business cycle" gains `gl_diff`, `gl_money` (split into "Global cycle" and "Global money &
+    breadth" if over 2,300 px). "Market signals" gains `can_table`, `can_chart`.
+  - `us`: "Cycle sequence" (`cs_baskets`, `cs_table`, `cs_housing`, `cs_orders`, `cs_freight`) and "Labour leads"
+    (`lab_temp`, `lab_hours`, `lab_postings`, `lab_quits`) in the Economy group, placed after "Growth & jobs";
+    "Inflation" becomes `infl`, `inf_pipe`, `inf_rents`, `inf_paid`, `inf_core`. Add `us` to `OLD_SUBS`.
+  - `asia`: "Trade pulse" (`ax_pulse`, `ax_pulse_table`, `cn_credit`) as the fourth sub-tab. `cn_credit` is about one
+    place, so its home is China → Economy; the Trade pulse sub-tab gets a "See also" link to it instead.
+  - `my`: "Pulse" (`my_pulse`, `my_pay`, `my_cars`, `my_arrivals`, `my_ee`) after "Economy" and before "Credit".
+  - `posvol` → Sentiment gains `sent_pc`; `markets` → Seasonality gains `sea_cycle` (both pages list their own
+    cards: add the keys to `EXTRA_RENDER` in `more.js` where needed).
+- Lead figures: always from `leadStats(a, modeA, b, modeB, k)` over k = 1…18, keeping the best that passes, cached per
+  session. Modes are `'level'`, `'yoy'`, `'chg6'`, and anything else for the 12-month change. Extend `PUB_LAG` for the
+  new ids: `CAN_` and Yahoo ids 0; regional Fed surveys (`LD_OI_`, `LD_PP_`) 0 (published in the survey month);
+  permits, home sales, hours, payroll-report series 1; JOLTS quits 2; `LD_CLI_DIFF` 2; OECD money 2; Zillow 1; GSCPI 1;
+  Malaysia monthly series 2, FPX 0; BIS credit 12. Show "usable lead" (lead minus delay), as Asia → What leads does.
+- One registry drives the board: `LB_ROWS = [{ id, mode, name, group, leads: [targetId, targetMode], claim, home:
+  [tab, sub] }, …]` in `leads.js`. `lb_table`, the tiles, `lb_breadth`, `lb_changes`, the Strategist View line and the
+  WP61 lead-lag pairs all read from it, so adding a lead later is one line.
+- "Improving" for a row: its three-month change has the sign that is good for what it leads (months' supply and
+  prices paid are inverted: mark `invert: true`). Inflation rows read "rising / easing", never "improving".
+
+**Checks before each push**
+
+- Refresh `docs/data/*.json` from the live site first (stale local data makes cards look empty), then run the new
+  module locally so `leads.json` exists.
+- Serve `docs/` and run `node tools/design-check.js`; run `node tools/sp-check.js` after touching
+  `pipeline/structured.py` output or the model.
+- Open every new sub-tab once in the browser check and confirm: no script errors, no card stuck on "No data", every
+  lead row shows either a measured lead or the word "context", height under 2,300 px.
+- Compare three live figures with the pre-test table (single-family permits → unemployment, quits → wages, prices
+  paid → CPI). They should be close, not identical (the site carries quarterly gaps forward and uses the loaded
+  history). A large gap means a wrong series or mode: fix before pushing.
+- `git checkout -- archive/` before committing; on a rejected push, `git pull --rebase` and push again.
+- After the last push, watch one full pipeline run and confirm data-health shows no new stale series.
+
+**Rules that still apply:** public data only; no secrets in code; the Idea log, watchlist and notes stay in the
+browser; no bank names or logos; Zillow and NY Fed are credited on their cards; Cboe figures are derived only and
+credited "Cboe (delayed)"; signal wording stays "ideas to check", never advice.
 
 ---
 
