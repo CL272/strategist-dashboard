@@ -1,0 +1,67 @@
+/* Planning mock-up for WP63-WP69 (14 Nov 2026). Not loaded by the site. Injected over the live pages to produce the
+   before/after pictures; the build should fold these rules into docs/style.css properly (tokens, dark mode, no !important). */
+:root { --shadow: none; --page: #f6f7f9; --border: #e6e9ef; }
+/* one compact header row: title left, range right */
+.content { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.page-head { grid-column: 1; padding: 12px 28px 10px; align-items: center; }
+.page-head .eyebrow { display: inline; font-size: 11px; color: var(--muted); letter-spacing: .06em; margin: 0 10px 0 0; }
+.page-head > div:first-child { display: flex; align-items: baseline; flex-direction: row-reverse; justify-content: flex-end; gap: 0; }
+.page-head h1 { font-size: 19px; padding-bottom: 0; margin-right: 12px; }
+.page-head h1::after { display: none; }
+.page-head .greet { display: none; }
+.filters { grid-column: 2; position: static; background: transparent; border: 0; padding: 10px 28px 10px 0; backdrop-filter: none; }
+.filters > .muted { display: none; }
+.presets { border-radius: 8px; padding: 2px; box-shadow: none; }
+.presets button { padding: 3px 9px; font-size: 12.5px; }
+.filters .custom-chip { padding: 4px 9px; }
+main { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 0; }
+/* sub-tabs: one line of underlined text, never wraps */
+.subtabs { flex-wrap: nowrap; overflow-x: auto; gap: 2px; padding: 0; margin: 0 0 14px; border-bottom: 1px solid var(--border); background: var(--page); scrollbar-width: none; top: 0; }
+.subtabs button { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 11px 12px 10px; font-weight: 500; white-space: nowrap; border-bottom: 2px solid transparent; color: var(--ink-2); }
+.subtabs button:hover { background: transparent; color: var(--ink); border-color: transparent; }
+.subtabs button[aria-selected="true"] { background: transparent; color: var(--ink); font-weight: 650; border-bottom-color: var(--brand); }
+.subtab-group { border-left: 1px solid var(--border); margin: 0 4px 0 8px; padding-left: 12px; font-size: 10.5px; white-space: nowrap; }
+/* tiles: one slim strip */
+.kpis { order: 2; display: flex; gap: 0; margin: 0 0 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+.kpi { flex: 1 1 0; min-width: 150px; border: 0; border-radius: 0; box-shadow: none; padding: 9px 14px 8px; border-left: 1px solid var(--border); background: transparent; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; }
+.kpi:first-child { border-left: 0; }
+.kpi::before { display: none; }
+.kpi .k-label { grid-column: 1 / -1; font-size: 10.5px; }
+.kpi .k-value { font-size: 17px; margin: 1px 0 0; }
+.kpi .k-delta { font-size: 11.5px; -webkit-line-clamp: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.kpi .k-asof { display: none; }
+.tab-panel { display: flex; flex-direction: column; }
+.tab-panel > .subtabs { order: 1; } .tab-panel > .grid, .tab-panel > div:not(.kpis):not(.subtabs) { order: 3; }
+/* cards: flat, quieter */
+.card { box-shadow: none; border-radius: 10px; padding: 14px 16px; }
+.card-head h2 { font-size: 14.5px; }
+.card .src { display: none; }
+.card .note { font-size: 12px; color: var(--muted); }
+.note-lead { color: var(--ink-2); }
+.card-actions > button.ghost, .card .kebab { opacity: 0; transition: opacity .12s; }
+.card:hover .card-actions > button.ghost, .card:hover .kebab { opacity: 1; }
+table.perf thead th { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+/* sidebar: light, no icons */
+.side { background: var(--surface) !important; border-right: 1px solid var(--border); color: var(--ink) !important; }
+.side .name { color: var(--ink) !important; } .side .logo { background: var(--brand) !important; box-shadow: inset 0 -4px 0 var(--brand-red) !important; }
+.side .logo::after { border-left-color: #fff !important; border-bottom-color: #fff !important; }
+.side-head { border-bottom-color: var(--border) !important; }
+.side .tabs button { color: var(--ink-2) !important; padding: 6px 10px; font-size: 13px; border-radius: 7px; }
+.side .tabs button .ic { display: none; }
+.side .tabs button:hover { background: var(--wash) !important; color: var(--ink) !important; }
+.side .tabs button[aria-selected="true"] { background: var(--wash) !important; color: var(--brand) !important; box-shadow: inset 2px 0 0 var(--brand) !important; }
+.side .tabs button.nav-child { padding-left: 22px; }
+.side .nav-group { color: var(--muted) !important; margin: 14px 10px 4px; }
+.side .side-search { background: var(--surface-2) !important; border: 1px solid var(--border) !important; color: var(--muted) !important; }
+.side .side-search kbd { color: var(--muted) !important; border-color: var(--border) !important; }
+.side-foot { border-top-color: var(--border) !important; } .side-foot #asof { color: var(--muted) !important; }
+.side-foot .ghost, .side-foot .status-pill { color: var(--ink-2) !important; border-color: var(--border) !important; }
+.side .menu-btn { color: var(--ink) !important; border-color: var(--border) !important; }
+@media (max-width: 900px) {
+  .content { grid-template-columns: minmax(0, 1fr); } .filters { grid-column: 1; padding: 0 16px 8px; } .page-head { padding: 10px 16px 6px; }
+  .presets { flex-wrap: nowrap; overflow-x: auto; } .side-search { display: none; } .side { padding-bottom: 6px; }
+  .kpi { min-width: 128px; flex: 0 0 auto; }
+}
+.side { --ink: #0f1b33 !important; --ink-2: #47536b !important; --muted: #7f8aa0 !important; --border: #e6e9ef !important; --wash: #eef2f8 !important; }
+.side .tabs button { color: #47536b !important; } .side .name { color: #0f1b33 !important; }
+.side .tabs button[aria-selected="true"] { color: #0a2b66 !important; }

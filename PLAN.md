@@ -596,6 +596,200 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
+## Planned, not built (owner's request, 14 Nov 2026): WP63 to WP73, cleaner design and private notes
+
+**Status: plan only. Nothing below is built. Build when the owner says "Go".** The owner asked for (1) a cleaner-looking
+site and (2) a login so that only they can enter and keep notes. Follow `CLAUDE.md`; run `node tools/design-check.js`
+(and `node tools/sp-check.js` if `sp.js` is touched) before each push; one commit per package.
+
+### What the review found (measured on all 137 sub-tabs, 14 Nov 2026)
+
+| Finding | Desktop (1440×900) | Phone (390×844) |
+|---|---|---|
+| Where the first chart or table starts | 408 px on the median page (45% of the screen), up to 614 px | 1,023 px: more than a full screen of header, date buttons and tiles before any content |
+| Sub-tab bars that wrap onto a second or third row | 20 (all of US, with 12 sub-tabs, and Regime, with 8) | 112 of 137 |
+| Tables cut off on the right | 9, including the Leading board (its "Read" column is hidden) and the structures matrix | 60 |
+| Always-visible small print | 388 source lines and 295 notes | same |
+| Menu | 35 entries in a dark navy panel, each with a decorative symbol | same, behind ☰ |
+
+What makes it look busy is not the charts but the frame around them: a tall page header with a greeting, a separate
+row of date buttons, five large tile cards, pill-shaped sub-tabs, then cards with shadows, a source line each, and
+three kinds of rounded pills (dates, sub-tabs, chips) that all look alike. Red is used for four different things
+(section label, title underline, active marker, falling prices).
+
+### The direction: "quiet frame, loud data"
+
+A mock-up was made by restyling the live pages (`tools/redesign-proto.css`, not loaded by the site). With it the first
+content starts at 185 px instead of 408 px on Regime → Leading board, the US sub-tabs fit one line, and on the phone
+content starts at about 340 px instead of 1,023 px. Pictures were sent to the owner on 14 Nov 2026.
+
+Principles: one compact header row; one style per kind of control (underlined text = sub-tabs, small segmented
+buttons = toggles, outlined chips = filters); flat cards with hairline borders; colour reserved for data (blue up, red
+down) and one navy accent for "selected"; small print one click away instead of always on screen.
+
+### WP63. Tokens, type and colour roles (`docs/style.css`)
+
+- Flatten: no card or tile shadows (`--shadow: none`), 1 px `--border`, radius 10 px, page background `#f6f7f9`.
+- Type scale 11 / 12 / 13 / 14.5 / 19 px only (labels, small print, body, card titles, page title); numbers tabular.
+- Colour roles: navy `--brand` = selected and links to pages; red only for negative numbers, alerts and the logo; the
+  section label above the title turns grey; remove the red underline under titles and the gradient bar on tiles.
+- Table headers in sentence case, 12 px, muted (no capitals, no letter-spacing). Group rows stay small capitals.
+- Mirror every change in both dark-mode blocks; re-run the dataviz palette check only if a series colour changes
+  (none should).
+
+### WP64. One compact header row
+
+- Title and date range share one row: `[Page title  SECTION]` on the left, the range buttons and "Custom" on the right
+  (smaller: 12.5 px). The "All charts" label goes into the buttons' tooltip.
+- The greeting line ("Good afternoon · date · markets to …") shows on the Strategist View only; elsewhere "markets to
+  13 Nov" moves to the sidebar foot, where the data time already is.
+- The header row is sticky (48 px); the sub-tab bar sticks under it (`--filters-h` is already measured in code).
+- Order inside each page becomes: sub-tabs, then tiles, then cards (today tiles come first), so the sub-tabs never
+  move when tiles change.
+- Phone: a 48 px top bar (logo, page title, search, ☰); the range buttons become one scrolling line; the search box
+  leaves the header (it is in the menu and on the bar).
+
+### WP65. Sub-tabs on one line
+
+- Underlined text tabs, never wrapping: the bar scrolls sideways with a fade at the cut edge and keeps the selected tab
+  in view (`scrollIntoView({ inline: 'center' })` in `syncSub`). Group labels (ECONOMY, LEADING) stay as small dividers.
+- Keyboard: left and right arrows move between sub-tabs.
+- `design-check`: fail if any sub-tab bar is taller than 48 px at 1440 or 390.
+
+### WP66. Tiles become one slim strip
+
+- One bordered row with five cells divided by hairlines: label (10.5 px), value (17 px) and the change on the same
+  line; the "as of" date moves to the tooltip. Height about 64 px instead of 135 px.
+- Phone: the strip scrolls sideways (one row), instead of three rows of cards.
+- `fitTiles` and `TILE_SETS` are unchanged (still five per sub-tab).
+
+### WP67. Lighter menu
+
+- Light panel (white, hairline border), navy text for the selected page with a thin navy bar; no symbols before the
+  names; 13 px rows, so all six groups fit a 900 px screen without scrolling when Europe and Asia are closed.
+- Groups can be folded (the code already remembers `sd-folded-groups`); a "Pinned" group at the top holds up to five
+  pages the owner pins (pin from a page's header; kept in the browser).
+- Dark mode keeps a dark panel. The logo keeps navy and red.
+
+### WP68. Tables that fit
+
+- Fix the nine desktop overflows by design, not by scrolling: Leading board (drop "Claimed" into the row tooltip and the
+  detail line, keep Measured and Read), structures matrix (merge "Fits a client who…" and "Main risk" into one column
+  with two short lines), DCI yields, Lead-lag table, GPU table, Playbook table, cycle components, presidential-cycle
+  quarters, Coming up.
+- Phone: first column sticky, the rest scrolls sideways with a fade hint; columns marked low priority (`data-pri="2"`)
+  hide below 640 px. Start with the 15 most-used tables (Where we are, Cross-asset performance, Leading board, Policy
+  monitor, Trend, Canaries, Income menu, Underlyings, scorecard …).
+- `design-check`: fail on any table wider than its card at 1440; at 390 fail only if the first column is not sticky.
+
+### WP69. Quieter cards
+
+- The source line leaves the card face: it moves into the "⋯" menu as "Source and method" and into the CSV and PNG
+  exports (it must stay one click away: the dashboard's credibility rests on it). Cards with a licence credit that
+  must be visible (Cboe, Vast.ai, GetDeploying, Zillow) keep a short credit in the note.
+- Focus and "⋯" buttons appear on hover or keyboard focus on desktop (always visible on touch screens); the range pill
+  stays visible.
+- Notes: one takeaway sentence in 12 px muted ink, "How to read" as now.
+- "Signals for this market" collapses to one line ("4 ideas and 6 rules on for this market ▸") that opens on click;
+  today it takes about 190 px above every Equities sub-tab.
+- Height budget stays 2,300 px; most sub-tabs will get shorter. New rule in `design-check`: the first card must start
+  within 260 px at 1440 and within 380 px at 390.
+
+Order: WP63 → WP64 → WP65 → WP66 (these four change every page together: one run), then WP67, WP68, WP69. Screenshots
+of ten pages before and after each run; the owner's bookmarks and all behaviour stay the same (styling and layout only).
+
+---
+
+### The login question, answered plainly
+
+**A password screen on this site would be a curtain, not a lock.** The site is hosted on GitHub Pages from a public
+repository: every page and data file can be fetched directly, and the code that would check the password is itself
+public. Anyone who wanted to could walk around it. It would also protect nothing that matters: the charts are built
+from public data.
+
+What needs protecting is what the owner writes: notes, ideas, house views, the model portfolio, live structured notes.
+Today these sit unencrypted in one browser (lost if that browser's data is cleared, not available on the phone). So the
+plan locks the notes, properly, instead of pretending to lock the charts:
+
+### WP70. Private vault (a real lock for everything the owner writes)
+
+- One passphrase, chosen by the owner. The browser derives a key from it (PBKDF2-SHA-256, 600,000 rounds, random salt)
+  and encrypts with AES-256-GCM, using the browser's built-in Web Crypto (no library). Nothing readable is stored:
+  `sd-vault-v1` holds only salt, a fresh nonce per save and the ciphertext. The passphrase is never stored or sent.
+- Inside the vault: Idea log, house views, model portfolio, starred watchlist, signal watch and dismiss state, the
+  structured-products notes book, and the new Notebook (WP72). On first set-up the existing unencrypted entries are
+  moved in and the old copies deleted.
+- Locked by default when the page opens. The public pages work as now; private areas show "Locked · enter passphrase".
+  A lock button sits in the menu foot; auto-lock after 30 minutes without activity (adjustable); closing the tab locks.
+- No back door: a forgotten passphrase cannot be recovered by anyone. So: minimum 12 characters, a strength hint, an
+  encrypted backup file the owner can download (and re-import), and a reminder to keep the passphrase in a password
+  manager.
+- Honest limits, stated on the settings card: it protects against anyone opening the site, anyone using the owner's
+  browser while locked, and anyone who obtains the stored or synced file. It does not protect against malware on the
+  device. The bank's rules on client information still apply: the warning becomes "Encrypted on your devices. Follow
+  your employer's policy on client information."
+- Checks: `tools/vault-check.js` (encrypt → decrypt round trip, wrong passphrase fails, tampered ciphertext fails,
+  migration keeps every item) must pass before pushing.
+
+### WP71. The same notes on laptop and phone (optional, recommended)
+
+- A **private** GitHub repository owned by the owner (for example `strategist-private`) holds one file, `vault.json`:
+  the already-encrypted vault. GitHub's access control is the first lock, the passphrase the second.
+- The page reads and writes that file through GitHub's API using an access token that works only for that one
+  repository (fine-grained token: Contents read and write, nothing else, one-year expiry). The token is typed once per
+  device and stored encrypted with the vault key; it never enters this public repository.
+- Sync on unlock, a few seconds after each change, and on "Sync now". If both devices changed, items merge by id and
+  latest edit; the file's version tag prevents overwriting.
+- Owner's part (about five minutes, with step-by-step instructions on the settings card): create the private
+  repository, create the token, paste it once on each device. Without this step the vault still works on one device,
+  with the backup file for safety.
+
+### WP72. Notebook
+
+- New page **Notebook** (Overview group, after Idea log): notes with a title, text, tags, date, and the page they were
+  written on; search, filter by tag or page, pin. Stored only in the vault.
+- "＋ Note" in every page header and in each card's "⋯" menu: opens a small panel, pre-filled with that page or chart;
+  pages and cards that have notes show a small dot when unlocked, and the notes for the open page are one click away.
+- Ctrl+K search includes notes when unlocked. Export: the Idea log export gains the notebook (version 4, encrypted).
+
+### WP73. Hiding the whole site behind a real login (optional; not recommended now)
+
+Possible, but it means moving the hosting: publish the same files to Cloudflare Pages and put Cloudflare Access in
+front (free for one user; login by a code emailed to the owner or a Google account). The owner would create a
+Cloudflare account and add a deploy token to the repository's secrets; the pipeline's "carry over yesterday's data"
+step would switch from the public site to a build cache. The code repository would stay public (making it private
+needs a paid plan for the frequent data refreshes), so this hides the pages, not how they are made. Worth doing only if
+the owner's employer asks for the site not to be publicly viewable; it is independent of WP70 to WP72 and can be added
+later without redoing them.
+
+### Suggested order
+
+1. **Run 1: WP63 to WP66** (tokens, header, sub-tabs, tile strip): the visible change.
+2. **Run 2: WP67 to WP69** (menu, tables, cards) and the new design-check rules.
+3. **Run 3: WP70 and WP72** (vault and Notebook), then **WP71** once the owner has made the private repository and token.
+
+### Risks and how the build handles them
+
+- **Sources out of sight.** They stay one click away on every card and in every export; licence credits stay visible.
+- **Hover-only buttons** are invisible on touch screens: always shown there, and on keyboard focus.
+- **A lost passphrase loses the notes.** Backup file, password-manager reminder, and sync make this unlikely; the
+  set-up screen says it in one plain sentence before the owner chooses a passphrase.
+- **Token handling.** One-repository token, encrypted at rest, revocable from GitHub at any time; instructions say to
+  revoke it if a device is lost. The owner's GitHub account should have two-step login on (it controls the site).
+- **Regression.** Styling touches every page: design-check on all 35 pages, ten before/after screenshots, old links
+  re-tested, both themes, and the phone width.
+
+### Decisions for the owner
+
+1. **Menu:** light panel as in the mock-up (recommended), or keep the navy panel, just slimmer?
+2. **Tiles:** slim strip (recommended), or keep the tile cards?
+3. **Source lines:** move behind "⋯" (recommended), or keep them visible under every chart?
+4. **Privacy:** vault with sync through a private repository (recommended) · vault on one device only · or also hide
+   the whole site through Cloudflare (WP73)?
+5. **Auto-lock:** 30 minutes (recommended), or another time?
+
+---
+
 ## Built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
 
 **Status: all twelve packages built on 13 Nov 2026** (owner: "Go", all recommended decisions). Three commits: WP51 (data),
