@@ -790,6 +790,112 @@ later without redoing them.
 
 ---
 
+## Planned, not built (owner's request, 16 Nov 2026): WP74 to WP76, Australia: what drives the RBA
+
+**Status: plan only. Build with or after WP63 to WP73 when the owner says "Go".** The owner asked whether Australia has
+data on housing and spending (the things, with jobs, that move rate-hike and rate-cut expectations) and what
+unemployment rate the RBA is comfortable with. Follow `CLAUDE.md`; design check before each push.
+
+### What the data says today (checked 16 Nov 2026; the page must show this, not the folklore)
+
+- The RBA raised the cash rate to 4.85% on 3 Nov 2026 by six votes to three: the fifth rise of 2026 (3.60% in January).
+  The stated reason is **inflation** (trimmed mean 3.7%, headline 3.9% in Q3; monthly CPI 4.3% in September; fuel
+  prices from the Middle East conflict; "capacity pressures a little tighter than thought"), not a hot housing market.
+- **Housing is falling, not hot.** The RBA: national prices were 4.7% below their March peak by September, "one of
+  the steepest downturns in 50 years". New home loans fell 18% on a year in Q3 (investors −38%, after tax changes).
+  The official quarterly price series still shows +6.8% on a year at Q2 because it lags: the page must say so.
+- **Spending is mixed.** Household spending is up 6.8% on a year in September (discretionary 6.9%), but that is in
+  dollars with prices rising about 4%; national-accounts consumption grew 1.8% (Q2), which the RBA calls below trend,
+  and consumer sentiment is 78 (100 = neutral).
+- **Jobs are easing.** Unemployment rose to 4.7% in September (4.6% for Q3), mostly because more people are looking
+  for work (participation 66.8%); employment still grows 1.2% a year.
+- **The RBA's comfort level:** its estimate of the unemployment rate consistent with stable inflation (the NAIRU) was
+  raised in November to **about 4¾%**; its models average about 5%. So unemployment of 4.7% is at the line, and the
+  RBA still calls the labour market "a little tight" (underemployment 6.3%, low by history). It forecasts 5.1% by
+  end-2028: it expects unemployment to go above its line as the price of getting inflation down.
+
+### Data (all tested 16 Nov 2026)
+
+| Source | Series | Result |
+|---|---|---|
+| RBA statistical tables (`www.rba.gov.au/statistics/tables/csv/<t>-data.csv`, already used by `pipeline/rba.py`) | **H5** participation `GLFSPRSA`, hours worked growth `GLFMHWTRYP`, vacancies ÷ labour force `GLFOSVTLF`, employment ÷ population `GLFSEPTPOP`. **H4** wage price index `GWPIYP`, unit labour costs `GNFULCYP`. **H3** private dwelling approvals `GISPSDA` (from 1965), Westpac consumer sentiment `GICWMICS`, NAB business conditions `GICNBC`. **H2** household consumption growth `GGDPECCVPSHY`, dwelling investment growth `GGDPECCVPSDY`, saving ratio `GGDPICHDISR`, real disposable income growth `GGDPICHRDIY`. **G4** monthly CPI `GCPIAGYPM`. **G3** inflation expectations (consumers `GCONEXP`, market economists `GMAREXPY`, break-even `GBONYLD`). **E2** household debt to income `BHFDDIT`. **E13** scheduled mortgage payments to income `LPHTSPRI`, interest to income `LPHTICRI`. **F6** mortgage rates (outstanding variable `FLRHOOVA`, new loans `FLRHOFTA`, from 2019). **D2** owner-occupier and investor housing credit `DLCACOHS`, `DLCACIHS`. | All work; monthly to Sep 2026, quarterly to Q2 or Q3. |
+| ABS Data API (`data.api.abs.gov.au/rest/data/ABS,<flow>/<key>`, no key; host added to this environment for testing) | `HSI_M` Monthly Household Spending Indicator: total `9.TOT.CUR.20.AUS.M` and discretionary `9.3.CUR.20.AUS.M` (% on a year, from 2018; levels from 2012). `LF_UNDER` underemployment `M23.3.1599.20.AUS.M` and underutilisation `M24…` (from 1978). `LEND_HOUSING` new loan commitments `FIN_VAL.NEWCOMMITS.DV8368.TOTDWELL.TOT.<TOT · DV5167 owner-occupier · DV5168 investor>.20.AUS.Q` (from 2002; quarterly since the ABS changed frequency). `RES_DWELL_ST` mean dwelling price `5.AUS.Q` (from 2011). | All work. Request with `Accept: application/vnd.sdmx.data+csv`; CSV has trailing empty columns: parse with a CSV reader. |
+| FRED | BIS house prices for Australia: real `QAUR628BIS`, nominal `QAUN628BIS` (quarterly, long history, to Q1 2026) | Works. |
+| RBA Statement on Monetary Policy (quarterly: Feb, May, Aug, Nov) | NAIRU assessment (about 4¾%, model average about 5%) and the forecast table (unemployment 5.1% by end-2028; trimmed mean back to the top of the 2–3% band late 2027) | No data feed: kept by hand in `pipeline/config.py` as `RBA_SMP = {"asof": "2026-11", "nairu": 4.75, "nairu_models": 5.0, "forecasts": […]}`, read from the Statement's forecast table at build. Data health flags it when older than 100 days so it is refreshed each quarter. |
+
+Not free: the monthly home value index the RBA quotes (Cotality), auction clearance rates, job advertisements (SEEK,
+ANZ-Indeed), bank card-spending trackers. The page names them where a reader would expect them.
+
+### WP74. Data (`pipeline/rba.py` and a new ABS reader)
+
+- Add the RBA table series above to `pipeline/rba.py` (same pattern; ids `AU_PART`, `AU_HOURS_YOY`, `AU_VAC_LF`,
+  `AU_WPI_YOY`, `AU_ULC_YOY`, `AU_APPROVALS`, `AU_CONS_SENT`, `AU_NAB_COND`, `AU_CONS_YOY`, `AU_DWELL_INV_YOY`,
+  `AU_SAVING`, `AU_CPI_M_YOY`, `AU_INFEXP_CONS`, `AU_INFEXP_MKT`, `AU_DEBT_INC`, `AU_MORT_PAY`, `AU_MORT_RATE`,
+  `AU_MORT_RATE_NEW`, `AU_CREDIT_OO`, `AU_CREDIT_INV`).
+- New `pipeline/abs_au.py` (isolated like `banks.py`; a failure keeps the previous series): `AU_HSI_YOY`,
+  `AU_HSI_DISC_YOY`, `AU_UNDEREMP`, `AU_UNDERUTIL`, `AU_LOANS`, `AU_LOANS_OO`, `AU_LOANS_INV`, `AU_HOUSE_PX`. Written into
+  `asia.json` with the other Australian series (or `au.json` if simpler; then add it to the carry-over list, `health.py`
+  and the page loader).
+- FRED: `AU_HPI_REAL`, `AU_HPI_NOM`. `RBA_SMP` in config, published in `meta` so the page can draw the line.
+- `PUB_LAG` and `lag_of`: monthly ABS and RBA series 1 month; quarterly 2.
+
+### WP75. Australia page: two new Economy sub-tabs and the RBA checklist
+
+Australia becomes Equities · Rates & bonds · Currency │ Economy: Inflation & growth (today's Economy) · **Labour
+market** · **Housing & households**. Add `australia` to `SUB_PREV` so old links land correctly.
+
+- **Rates & bonds → card `au_drivers` (wide table, first after the "See also" row): "What the RBA is watching".** One
+  row per driver: trimmed-mean inflation against the 2–3% band; monthly CPI; unemployment against the RBA's 4¾% line;
+  underemployment; wages; household spending; home loans; house prices; consumer sentiment; inflation expectations.
+  Columns: latest, three-month direction, 10-year percentile, the RBA's own forecast where it publishes one, and a
+  plain lean (**toward a rise · neutral · toward a cut**) from fixed rules written in the note (for example:
+  unemployment more than ¼ point below the line = toward a rise, more than ¼ above and rising = toward a cut). The
+  last row is the market: the 3-month bank bill against the cash rate (the gauge the Central banks page already uses).
+  Takeaway sentence counts the leans ("6 of 10 lean toward a rise; the market prices about +10bp"). It is a reading
+  aid: the note says the Board decides on its forecasts and judgement, not on a count.
+- **Labour market:**
+  - `au_nairu` (wide): unemployment rate since 1978 with the RBA's 4¾% line, the 5% model average as a faint second
+    line, and the RBA's forecast path as dots. Takeaway: where unemployment sits against the line and what the RBA
+    says about it. States that the line is the RBA's November 2026 estimate, that it has been revised before and is
+    uncertain by about half a point either way.
+  - `au_tight` (half, table): the gauges the RBA lists: underemployment, underutilisation, vacancies ÷ labour force,
+    participation, employment ÷ population, hours worked growth: latest, a year ago, 10-year percentile, tight or loose.
+  - `au_wages` (half): wage price index and unit labour costs against trimmed-mean inflation.
+  - `au_lf` (half): participation against unemployment (a rise in unemployment from more job-seekers is different
+    from one caused by job losses: the September rise was the former).
+- **Housing & households:**
+  - `au_house_px` (half): mean dwelling price, % on a year (ABS, quarterly) with BIS real prices on the long view. The
+    takeaway states the lag and quotes the RBA's latest description of monthly prices.
+  - `au_loans` (half): new home loans, owner-occupiers and investors, with a lead toggle against house prices (measured
+    live by `ldBestLead`; shown as context if it fails).
+  - `au_hcredit` (half): housing credit growth (owner-occupier, investor) against the mortgage rate.
+  - `au_build` (half): dwelling approvals against dwelling investment growth, with the lead measured.
+  - `au_spend` (half): household spending, total and discretionary, % on a year, against consumer sentiment; the note
+    subtracts inflation so nominal strength is not mistaken for real strength.
+  - `au_buffers` (half): saving ratio, scheduled mortgage payments as a share of income, debt to income.
+- Tiles: Labour market: unemployment, RBA line (4¾%), underemployment, wages, participation. Housing & households: home
+  loans (% on a year), house prices, household spending, consumer sentiment, mortgage rate.
+- Country scorecard: Australia's row gains nothing new; "See also" from Central banks → RBA to `au_drivers`.
+
+### WP76. Signals, lead tests and calendar
+
+- Lead-lag pairs (Correlation → Lead-lag): home loans → house prices; dwelling approvals → dwelling investment;
+  consumer sentiment → household spending; vacancies ÷ labour force → unemployment; unemployment gap (rate minus the
+  RBA line) → wage growth. Each shows its measured lead or the word "context".
+- Signal rules (same tests and tiers): unemployment more than ¼ point above the RBA line and rising → Australian
+  dollar; home loans down more than 15% on a year → ASX 200; trimmed mean above 3% and rising → Australia 2Y yield.
+- Calendar: ABS labour force, monthly CPI, Household Spending Indicator, wage price index and lending indicators
+  (estimated windows, like the other Asian releases); the RBA's Statement dates as reminders to refresh `RBA_SMP`.
+
+### Decisions for the owner
+
+1. **Build this with the redesign (one "Go") or separately?** Recommended: after Run 1 of the redesign, so the new
+   cards are built in the new style once.
+2. **The "lean" column on the RBA checklist:** include it (recommended, with the rules written out), or show the
+   numbers only and leave the reading to you?
+
+---
+
 ## Built (owner's request, 13 Nov 2026): WP51 to WP62, leading indicators
 
 **Status: all twelve packages built on 13 Nov 2026** (owner: "Go", all recommended decisions). Three commits: WP51 (data),
