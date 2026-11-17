@@ -6626,7 +6626,14 @@ function buildSubtabs() {
     // section headings are replaced by the sub-tab bar
     panel.querySelectorAll('.grid > h3.section').forEach(h => h.remove());
     const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Sections' });
-    (first.parentElement.classList.contains('grid') ? first.parentElement : first).before(nav);
+    panel.prepend(nav);   // sub-tabs first, then tiles, then cards (WP64): the bar never moves when tiles change
+    const edge = () => nav.classList.toggle('at-end', nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 4);
+    nav.addEventListener('scroll', edge, { passive: true }); addEventListener('resize', edge); setTimeout(edge, 0);
+    nav.addEventListener('keydown', e => {   // left and right arrows move between sub-tabs
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const n = groups.length, i = ((state.sub[tab] || 0) + (e.key === 'ArrowRight' ? 1 : n - 1)) % n;
+      e.preventDefault(); setSub(tab, i); const b = nav.querySelector(`button[data-i="${i}"]`); if (b) b.focus();
+    });
     groups.forEach(([label, , grp], i) => {
       if (grp && grp !== (groups[i - 1] || [])[2]) nav.append(el('span', { class: 'subtab-group', text: grp }));
       else if (!grp && i && groups[i - 1][2]) nav.append(el('span', { class: 'subtab-group', text: '' }));
@@ -6641,7 +6648,8 @@ function buildSubtabs() {
 }
 function syncSub(tab) {
   const panel = $('#tab-' + tab), cur = state.sub[tab] || 0;
-  panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
+  panel.querySelectorAll('.subtabs button').forEach(b => { const on = +b.dataset.i === cur; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1;
+    if (on && !panel.hidden) { const nav = b.parentElement, l = b.offsetLeft - nav.offsetLeft; if (l < nav.scrollLeft || l + b.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = l - (nav.clientWidth - b.offsetWidth) / 2; } });
   panel.querySelectorAll('[data-sub]').forEach(n => { if (n.dataset.subtab === tab) n.hidden = +n.dataset.sub !== cur; });
 }
 function setSub(tab, i) {
@@ -7179,7 +7187,9 @@ function fitTiles(tab) {
     for (const k of live) if (!keep.includes(k)) { k.hidden = true; k.dataset.fit = '1'; }
     keep.forEach((k, i) => { k.style.order = i; });
     // the date line is kept, but on one line; its full text shows on hover
-    for (const k of keep) { const a = k.querySelector('.k-asof'); if (a && a.textContent) a.title = a.textContent; }
+    // the strip shows label, value and change; the full change and the date go into the tooltip (WP66)
+    for (const k of keep) { const t = c => ((k.querySelector(c) || {}).textContent || '').trim(); k.title = [t('.k-label'), t('.k-value'), t('.k-delta'), t('.k-asof')].filter(Boolean).join(' · ');
+      k.classList.toggle('first', k === keep[0]); }
   }
 }
 function renderTab() {
@@ -7221,15 +7231,16 @@ function setGreeting() {   // friendly line in Singapore/Malaysia time
   const hello = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const day = `${WEEKDAYS[n.getUTCDay()]} ${n.getUTCDate()} ${MONTHS[n.getUTCMonth()]} · ${String(h).padStart(2, '0')}:${String(n.getUTCMinutes()).padStart(2, '0')} SGT`;
   const el_ = $('#greet'); if (!el_) return;
+  el_.hidden = state.tab !== 'overview';   // the greeting lives on the Strategist View only; the data date is in the menu foot
   el_.replaceChildren(el('b', { text: hello }), ` · ${day}` + (state.latest ? ` · markets to ${nice(state.latest)}` : ''));
 }
 function isDark() {
   const t = document.documentElement.dataset.theme;
   return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 }
-function setFiltersHeight() {   // the sub-tab bar sticks just under the date bar
-  const f = $('.filters'), sticky = f && getComputedStyle(f).position === 'sticky';
-  document.documentElement.style.setProperty('--filters-h', (sticky && !f.hidden ? f.offsetHeight : 0) + 'px');
+function setFiltersHeight() {   // the sub-tab bar sticks just under the page header row
+  const f = $('.pagebar'), sticky = f && getComputedStyle(f).position === 'sticky';
+  document.documentElement.style.setProperty('--filters-h', (sticky ? f.offsetHeight : 0) + 'px');
 }
 function wire() {
   window.addEventListener('resize', setFiltersHeight);

@@ -4,7 +4,7 @@
 const { chromium } = require('playwright');
 
 const URL = process.argv[2] || 'http://localhost:8765/';
-const LIMITS = { height: 2300, tiles: 5, rows: 16, titleLines: 2, controls: 4 };
+const LIMITS = { height: 2300, tiles: 5, rows: 16, titleLines: 2, controls: 4, subtabBar: 48 };
 // deliberate exceptions: [page, sub-tab label, rule]
 const ALLOW = [
   ['overview', 'Where we are', 'rows'],          // the one-screen cross-asset snapshot is meant to show every asset class at once
@@ -44,6 +44,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
         const lines = e => { const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.25; return Math.round(e.getBoundingClientRect().height / lh); };
         return {
           height: document.documentElement.scrollHeight,
+          subtabBar: (P.querySelector('.subtabs') || { offsetHeight: 0 }).offsetHeight,
           tiles: [...P.querySelectorAll('.kpi')].filter(vis).length,
           tables: [...P.querySelectorAll('table')].filter(vis).map(tb => [...tb.querySelectorAll('tbody tr.row')].filter(vis).length),
           titles: cards.map(c => { const h = c.querySelector('.card-head h2'); return h ? [h.textContent, lines(h)] : null; }).filter(Boolean),
@@ -54,6 +55,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       const where = `${t} › ${subs[i]}`;
       if (m.height > LIMITS.height) problems.push(`${where}: page is ${m.height}px tall (limit ${LIMITS.height})`);
       if (m.tiles > LIMITS.tiles) problems.push(`${where}: ${m.tiles} tiles (limit ${LIMITS.tiles})`);
+      if (m.subtabBar > LIMITS.subtabBar) problems.push(`${where}: the sub-tab bar wraps (${m.subtabBar}px; it must stay on one line)`);
       const maxRows = Math.max(0, ...m.tables);
       if (maxRows > LIMITS.rows && !allowed(t, subs[i], 'rows')) problems.push(`${where}: a table shows ${maxRows} rows at rest (limit ${LIMITS.rows}; add "Show all")`);
       for (const [title, n] of m.titles) if (n > LIMITS.titleLines) problems.push(`${where}: card title "${title}" wraps to ${n} lines`);

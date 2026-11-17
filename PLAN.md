@@ -598,7 +598,9 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ## Planned, not built (owner's request, 14 Nov 2026): WP63 to WP73, cleaner design and private notes
 
-**Status: plan only. Nothing below is built. Build when the owner says "Go".** The owner asked for (1) a cleaner-looking
+**Status: decisions taken 17 Nov 2026 (owner: all recommended, then "go"): light menu; slim tile strip; sources behind
+"⋯"; vault with sync through a private repository; auto-lock after 30 minutes. Build order: WP63–66, then WP74–76
+(Australia, in the new style), then WP67–69, then WP70, WP72 and WP71.** The owner asked for (1) a cleaner-looking
 site and (2) a login so that only they can enter and keep notes. Follow `CLAUDE.md`; run `node tools/design-check.js`
 (and `node tools/sp-check.js` if `sp.js` is touched) before each push; one commit per package.
 
@@ -792,7 +794,7 @@ later without redoing them.
 
 ## Planned, not built (owner's request, 16 Nov 2026): WP74 to WP76, Australia: what drives the RBA
 
-**Status: plan only. Build with or after WP63 to WP73 when the owner says "Go".** The owner asked whether Australia has
+**Status: decisions taken 17 Nov 2026 (build after the first redesign run; include the "lean" column with its rules).** The owner asked whether Australia has
 data on housing and spending (the things, with jobs, that move rate-hike and rate-cut expectations) and what
 unemployment rate the RBA is comfortable with. Follow `CLAUDE.md`; design check before each push.
 
