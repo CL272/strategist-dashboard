@@ -51,6 +51,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `leadStats` rule searched over 2 to 18 months, plus at least 12 years of overlap); never type a lead into a note.
   Add publication delays for new series to `PUB_LAG` (app.js) and `lag_of` (signals.py). Tiles for app.js pages are added
   through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
+- **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
+  from `pipeline/rba.py` (RBA tables) and `pipeline/abs_au.py` (ABS Data API). The RBA's NAIRU and forecasts have no feed:
+  after each Statement on Monetary Policy (Feb, May, Aug, Nov) update `RBA_SMP` in `pipeline/config.py`, including
+  `asof`; data health flags it after 100 days. The lean rules in `AU_DRIVERS` are printed in the card's note: change both together.
 - New cards, sections and markets are found by search (Ctrl+K) automatically; give cards a real title at build time.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
   wrapping, header controls and script errors; deliberate exceptions are listed in its `ALLOW` table.

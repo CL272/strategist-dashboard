@@ -175,6 +175,11 @@ def build_asia(status: dict) -> dict[str, pd.Series]:
     import rba
     got = cnjp.build(status)
     got.update(rba.build(status))
+    try:   # ABS Data API (WP74): isolated, a failure keeps the previous Australian series
+        import abs_au
+        got.update(abs_au.build(status))
+    except Exception as e:
+        print(f"ABS failed: {type(e).__name__}")
     expected = set(got) | {k for k in old if k.startswith(("CN_", "JP_", "CLI_", "KR_", "IN_", "ID_", "AU_"))}
     for sid in sorted(expected):
         s, meta = got.get(sid, (None, None))

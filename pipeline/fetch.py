@@ -21,7 +21,7 @@ import pandas as pd
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import ARCHIVE, FRED, LONG_YAHOO, START_DATE, YAHOO  # noqa: E402
+from config import ARCHIVE, FRED, LONG_YAHOO, RBA_SMP, START_DATE, YAHOO  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "data"
@@ -682,7 +682,7 @@ def main() -> int:
     ok = sum(v == "ok" for v in status.values())
     write("meta.json", {"updated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                         "ok": ok, "total": len(status), "status": status,
-                        "fred_key_found": bool(fred_key), "errors": DIAG, "timings_s": TIMINGS})
+                        "fred_key_found": bool(fred_key), "errors": DIAG, "timings_s": TIMINGS, "rba_smp": RBA_SMP})
     print("Seconds per step: " + ", ".join(f"{k} {v}" for k, v in TIMINGS.items()))
     print(f"Done: {ok}/{len(status)} series refreshed")
     return 0 if ok > len(status) * 0.5 else 1

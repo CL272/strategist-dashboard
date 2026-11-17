@@ -74,6 +74,14 @@ def build_health(status: dict) -> dict:
             state = "stale" if age > allowed else ("kept previous" if st.startswith("stale") else ("missing" if st == "missing" else "ok"))
             rows.append({"id": sid, "label": s.get("label", sid), "source": s.get("source", ""), "file": fname, "freq": freq,
                          "last": last.isoformat(), "age_days": age, "allowed_days": allowed, "state": state})
+    # the RBA Statement figures kept by hand in config.RBA_SMP (NAIRU, forecasts): refresh after each quarterly Statement
+    try:
+        from config import RBA_SMP
+        last = datetime.strptime(RBA_SMP["asof"], "%Y-%m-%d").date(); age = (today - last).days
+        rows.append({"id": "RBA_SMP", "label": "RBA Statement figures (NAIRU, forecasts), entered by hand", "source": "pipeline/config.py RBA_SMP",
+                     "file": "meta.json", "freq": "quarterly", "last": last.isoformat(), "age_days": age, "allowed_days": 100, "state": "stale" if age > 100 else "ok"})
+    except Exception:
+        pass
     # sources that are not time series
     for k, v in status.items():
         if v == "missing" and not any(r["id"] == k for r in rows):

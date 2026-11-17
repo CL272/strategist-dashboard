@@ -36,18 +36,19 @@ NAMES = {"TWSE": "Taiwan Weighted", "KOSPI": "KOSPI", "JCI": "Jakarta Composite"
          "R_KLCI_AAXJ": "KLCI (USD) vs Asia ex-Japan", "NVDA": "Nvidia", "KR_CPI_YOY": "Korea CPI", "TLT": "Long Treasuries (TLT)",
          "USDMYR": "USD/MYR", "AUDUSD": "Australian dollar (AUD/USD)", "EURUSD": "Euro (EUR/USD)",
          "DAX": "DAX", "CAC": "CAC 40", "FTSEMIB": "FTSE MIB", "IBEX": "IBEX 35", "UKX": "FTSE 100",
-         "EEM": "Emerging-market equities", "WAGE_ATL": "US wage growth (Atlanta Fed)"}
+         "EEM": "Emerging-market equities", "WAGE_ATL": "US wage growth (Atlanta Fed)", "AS51": "ASX 200", "AU_2Y": "Australia 2Y yield"}
 REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY": ["India"], "IN_10Y": ["India"], "COPPER": ["China"], "AAXJ": ["China", "US"],
           "LH_SPX": ["US"], "SPX": ["US"], "UST10Y": ["US"], "GOLD": ["US"], "KLCI": ["Malaysia"], "R_KLCI_AAXJ": ["Malaysia"], "R_AAXJ_ACWI": ["China", "US"],
           "R_EEM_SPX": ["US", "China"], "R_SOX_SPX": ["Korea", "Taiwan", "US"], "NVDA": ["US"], "TLT": ["US"],
           "USDMYR": ["Malaysia", "US"], "AUDUSD": ["Australia"], "EURUSD": ["Euro area"],
           "DAX": ["Euro area"], "CAC": ["Euro area"], "FTSEMIB": ["Euro area"], "IBEX": ["Euro area"], "UKX": ["UK"],
-          "EEM": ["China", "Korea", "Taiwan", "India"], "WAGE_ATL": ["US"]}
+          "EEM": ["China", "Korea", "Taiwan", "India"], "WAGE_ATL": ["US"], "AS51": ["Australia"], "AU_2Y": ["Australia"]}
 # WP61 publication delays: JOLTS, OECD money and leading-index breadth, Malaysian monthly data about 2 months; US monthly macro about 1;
 # BIS China credit about a year; regional Fed surveys, canary ratios and online payments none
-LAG2 = ("QUITS", "JOLTS", "LD_CLI_DIFF", "LD_RNM6", "LD_RBM6", "MY_CARS", "MY_ARR", "MY_ELEC", "MY_EXP_EE", "MY_EXP_VOL")
+LAG2 = ("QUITS", "JOLTS", "LD_CLI_DIFF", "LD_RNM6", "LD_RBM6", "MY_CARS", "MY_ARR", "MY_ELEC", "MY_EXP_EE", "MY_EXP_VOL",
+        "AU_TRIM_YOY", "AU_LOANS", "AU_HOUSE_PX", "AU_WPI_YOY")   # Australian quarterly data: published about 4 to 8 weeks after the quarter
 LAG1 = ("PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
-        "IMPORT_PX", "PPI_FD", "CPI_SHELTER", "CPI_GOODS", "STICKY_CPI")
+        "IMPORT_PX", "PPI_FD", "CPI_SHELTER", "CPI_GOODS", "STICKY_CPI", "AU_UNEMP", "AU_HSI", "AU_CPI_M")
 
 
 def lag_of(sid: str) -> int:
@@ -302,6 +303,16 @@ def rules():
         return pd.Series(((k == 1) & (ix.month >= 10)) | ((k == 2) & (ix.month <= 6)), index=ix)
     add("midterm_window", "Seasonality", "Mid-term to pre-election window → S&P 500", "October of a US mid-term year to June of the pre-election year",
         ["LH_SPX"], midterm, "LH_SPX", 1, gap=12)
+    # ---- Australia (WP76): the RBA's drivers. The full-employment line is the RBA's own estimate (config.RBA_SMP).
+    from config import RBA_SMP
+    nairu = RBA_SMP["nairu"]
+    add("au_unemp_above_line", "Policy", "Australian unemployment above the RBA's line and rising → Australian dollar",
+        f"Unemployment more than 0.25 points above the RBA's full-employment line ({nairu}%, today's estimate applied to all history) and higher than 3 months earlier",
+        ["AU_UNEMP"], lambda M: (M["AU_UNEMP"] > nairu + 0.25) & (chg(M["AU_UNEMP"], 3) > 0), "AUDUSD", -1)
+    add("au_loans_slump", "Policy", "Australian home loans down 15% on a year → ASX 200", "New home loans (ABS, quarterly) more than 15% lower than a year earlier",
+        ["AU_LOANS"], lambda M: yoy(M["AU_LOANS"]) < -15, "AS51", -1, gap=12)
+    add("au_trim_hot", "Policy", "Australian underlying inflation above 3% and rising → Australia 2Y yield up", "Trimmed-mean inflation above 3% and higher than 3 months earlier",
+        ["AU_TRIM_YOY"], lambda M: (M["AU_TRIM_YOY"] > 3) & (chg(M["AU_TRIM_YOY"], 3) > 0), "AU_2Y", 1, "chg")
     # AI theme (short histories: shown, graded honestly)
     add("gpu_rent_up", "AI theme", "GPU rents rising → Nvidia", "H100 on-demand rent more than 5% higher than 3 months earlier",
         ["GPU_H100_OD"], lambda M: (M["GPU_H100_OD"] / M["GPU_H100_OD"].shift(3) - 1) * 100 > 5, "NVDA", 1, gap=3)

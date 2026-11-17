@@ -335,6 +335,9 @@ FRED = [
     ("CONS_CREDIT", "TOTALSL",     "Consumer credit outstanding", "Macro · Cycle", "level", "USD bn", MACRO_START),
     ("CN_CREDIT",   "CRDQCNAPABIS", "China credit to the private non-financial sector (BIS)", "Macro · China", "level", "CNY bn", "1990-01-01"),
     ("CN_CREDIT_GDP", "QCNPAM770A", "China private credit, % of GDP (BIS)", "Macro · China", "level", "%", "1990-01-01"),
+    # Australia (WP74): BIS residential property prices, long history
+    ("AU_HPI_REAL", "QAUR628BIS", "Australia real house prices (BIS, 2010 = 100)", "Macro · Australia", "level", "idx", "1970-01-01"),
+    ("AU_HPI_NOM",  "QAUN628BIS", "Australia nominal house prices (BIS, 2010 = 100)", "Macro · Australia", "level", "idx", "1970-01-01"),
 ]
 
 # FRED cut the ICE BofA spread family to a rolling 3-year window in April 2026.
@@ -346,3 +349,15 @@ ARCHIVE = {"IG_EY", "HY_EY", "EM_CORP_EY", "ASIA_CORP_EY", "HY_OAS", "IG_OAS", "
 # Long daily histories from Yahoo (for regime statistics back to the 1970s), stored monthly
 LONG_YAHOO = [("LH_SPX", "^GSPC", "S&P 500 (price, since 1960)"), ("LH_USD", "DX-Y.NYB", "US Dollar Index (since 1971)"),
               ("LH_GSCI", "^SPGSCI", "S&P GSCI commodities (since 1984)")]
+
+
+# RBA Statement on Monetary Policy (WP74). No data feed: copy from each Statement (Feb, May, Aug, Nov) and update "asof";
+# data health flags it once it is more than 100 days old. Forecasts are year-end (Dec quarter) values from the forecast table.
+RBA_SMP = {
+    "asof": "2026-11-07",   # November 2026 Statement
+    "nairu": 4.75,          # "we have raised our assessment of the NAIRU a little ... around 4 3/4 per cent"
+    "nairu_models": 5.0,    # model-based estimates average "around 5 per cent"
+    "target": [2.0, 3.0],
+    "unemp_fc": [["2026-12-01", 4.7], ["2027-06-01", 4.8], ["2027-12-01", 4.9], ["2028-06-01", 5.0], ["2028-12-01", 5.1]],
+    "trim_fc_note": "trimmed-mean inflation back to the top of the 2-3% band in late 2027",
+}

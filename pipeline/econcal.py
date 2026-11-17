@@ -99,10 +99,17 @@ EVENTS = [
     ev("Singapore", "GDP advance estimate (YoY)", ("asia", "SG_GDP", "yoy"), "%", ("win", 1, 14, Q_NEXT, "previous quarter"), ("SGT", "08:00"), True, src="MTI"),
     ev("Singapore", "GDP final (YoY)", ("asia", "SG_GDP", "yoy"), "%", ("win", 18, 25, Q_MID, "previous quarter"), ("SGT", "08:00"), src="MTI"),
     # ---- Australia
-    ev("Australia", "CPI (monthly)", None, "%", ("win", 24, 31, None, "previous month"), ("SYD", "11:30"), True,
-       "Monthly CPI; this dashboard carries the quarterly series only, so no number here", "ABS"),
+    ev("Australia", "CPI (monthly, YoY)", ("asia", "AU_CPI_M_YOY", "level"), "%", ("win", 24, 31, None, "previous month"), ("SYD", "11:30"), True,
+       "Monthly CPI (RBA table G4)", "ABS"),
     ev("Australia", "Labour force: unemployment", ("asia", "AU_UNEMP", "level"), "%", ("win", 12, 20, None, "previous month"), ("SYD", "11:30"), True, src="ABS"),
     ev("Australia", "GDP (YoY)", ("asia", "AU_GDP_YOY", "level"), "%", ("win", 1, 8, (3, 6, 9, 12), "previous quarter"), ("SYD", "11:30"), True, src="ABS"),
+    # WP76: the other things the RBA watches (estimated windows from the ABS release pattern)
+    ev("Australia", "Household spending (YoY)", ("asia", "AU_HSI_YOY", "level"), "%", ("win", 4, 12, None, "two months back"), ("SYD", "11:30"), False, "Monthly Household Spending Indicator", src="ABS"),
+    ev("Australia", "Wage price index (YoY)", ("asia", "AU_WPI_YOY", "level"), "%", ("win", 12, 20, Q_MID, "previous quarter"), ("SYD", "11:30"), True, src="ABS"),
+    ev("Australia", "New home loans (lending indicators)", ("asia", "AU_LOANS", "yoy"), "%", ("win", 6, 14, Q_MID, "previous quarter"), ("SYD", "11:30"), False, "Quarterly", src="ABS"),
+    ev("Australia", "Building approvals", ("asia", "AU_APPROVALS", "level"), "k", ("win", 1, 8, None, "two months back"), ("SYD", "11:30"), False, src="ABS"),
+    ev("Australia", "Consumer sentiment (Westpac)", ("asia", "AU_CONS_SENT", "level"), "idx", ("win", 8, 14, None, "current month"), ("SYD", "10:30"), False, src="Westpac-Melbourne Institute"),
+    ev("Australia", "RBA Statement on Monetary Policy", None, "", ("win", 1, 10, (2, 5, 8, 11), "current quarter"), ("SYD", "14:30"), True, "Refresh the NAIRU and forecasts in config.RBA_SMP", src="RBA"),
     # ---- China
     ev("China", "CPI (YoY)", ("asia", "CN_CPI_YOY", "level"), "%", ("win", 9, 12, None, "previous month"), ("CST", "09:30"), True, src="NBS"),
     ev("China", "Exports (YoY)", ("asia", "CN_EXP_YOY", "level"), "%", ("win", 7, 10, None, "previous month"), ("CST", "11:00"), True,
