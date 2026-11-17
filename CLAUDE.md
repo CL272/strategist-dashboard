@@ -13,8 +13,15 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Pair half-width cards** side by side; use `wide` only for charts that need it, and avoid `tall`.
 - **Long lists are capped**: a table shows at most 16 rows at rest. Ranked tables use `capRows(tb, key)` ("Show all");
   lists people browse use view chips (Markets → Performance, Watchlist). Never dump hundreds of rows open.
-- **Tiles: at most 5 per sub-tab, one row.** Pick them per sub-tab in `TILE_SETS` (label prefixes); `fitTiles` runs
-  after every render and falls back to the first five.
+- **Tiles: at most 5 per sub-tab, one slim strip.** Pick them per sub-tab in `TILE_SETS` (label prefixes); `fitTiles` runs
+  after every render, falls back to the first five, and puts the full change and date in each tile's tooltip.
+- **Page frame (redesign, Nov 2026):** one sticky header row (`.pagebar`: title and section left, date range right; the
+  greeting only on the Strategist View); then the sub-tab bar (underlined text on one line, scrolls sideways, never
+  wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
+  "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages).
+- **Sources live in the card's "⋯" menu** (`setSource` fills it) and in CSV and PNG downloads; only licence credits
+  (Cboe, Vast.ai, GetDeploying, Zillow: `SRC_KEEP`) stay on the card face. Text columns in tables use class `l` so they
+  wrap; numbers never wrap. On phones the first table column stays put while the rest scrolls.
 - **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
@@ -57,7 +64,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `asof`; data health flags it after 100 days. The lean rules in `AU_DRIVERS` are printed in the card's note: change both together.
 - New cards, sections and markets are found by search (Ctrl+K) automatically; give cards a real title at build time.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
-  wrapping, header controls and script errors; deliberate exceptions are listed in its `ALLOW` table.
+  wrapping, header controls, a wrapping sub-tab bar, the first card starting more than 260px down, and script errors;
+  then repeats at phone width (390px: bar, first card within 380px, no sideways scroll, no squeezed titles).
+  Deliberate exceptions are listed in its `ALLOW` table.
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.
 - Dual-axis charts are the owner's preference for two-series comparisons (`drawPair`).

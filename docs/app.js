@@ -136,7 +136,8 @@ function makeCard(parent, o) {
   c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
   c.menuEl = el('div', { class: 'card-menu pop', hidden: true, role: 'menu' }, c.yBtn,
     el('button', { class: 'menu-item', type: 'button', text: '⤓ Download PNG', title: 'Download chart as image', onclick: () => { closePops(); exportPNG(c); } }),
-    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.csv, c.title); } }));
+    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.source ? [...c.csv, [], ['Source: ' + c.source]] : c.csv, c.title); } }),
+    el('div', { class: 'menu-src-wrap', hidden: true }, el('div', { class: 'pop-label', text: 'Source' }), c.srcMenu = el('div', { class: 'menu-src' })));
   const kebab = el('button', { class: 'ghost kebab', type: 'button', text: '⋯', title: 'More: y-axis range, downloads', 'aria-haspopup': 'menu', onclick: e => { e.stopPropagation(); togglePop(c.menuEl); } });
   const actions = el('div', { class: 'card-actions' });
   c.rangeEl = o.range === false ? null : buildCardRange(c);
@@ -283,7 +284,12 @@ function toggleYPanel(c) {
     el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range. Tip: you can also drag the axis numbers on the chart (double-click the axis to reset).' }));
   c.yPanel.hidden = false;
 }
-function setSource(c, txt) { c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; c.srcEl.title = txt ? 'Source: ' + txt + ' (click to show in full)' : ''; }
+const SRC_KEEP = /Cboe|Vast\.ai|GetDeploying|Zillow/i;   // credits the data licences ask to show beside the chart
+function setSource(c, txt) {
+  c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; c.srcEl.title = txt ? 'Source: ' + txt + ' (click to show in full)' : '';
+  if (c.srcMenu) { c.srcMenu.textContent = txt || ''; c.srcMenu.parentElement.hidden = !txt; }
+  if (c.root) c.root.classList.toggle('src-keep', !!txt && SRC_KEEP.test(txt));
+}
 function srcOf(ids) {   // merge "Provider (detail)" sources: Yahoo Finance (A), Yahoo Finance (B) -> Yahoo Finance (A, B)
   const by = new Map();
   for (const id of ids) {
@@ -6841,6 +6847,13 @@ function sigStrip(tab) {
   if (on.length > cap) ul.append(el('li', { class: 'muted', text: `${on.length - cap} more switched on: see the Signals page.` }));
   if (!ideas.length && !on.length) ul.append(el('li', { class: 'muted', text: SIG ? 'No rule for this market is switched on right now.' : 'Signals arrive with the next data run.' }));
   box.append(ul);
+  // one line at rest: "2 ideas and 5 rules on for this market ▸"; the list opens on click (remembered in this browser)
+  const n = ideas.length, m = on.length, sum = !SIG ? 'Signals arrive with the next data run' : n || m ? [n ? `${n} idea${n > 1 ? 's' : ''} to investigate` : '', m ? `${m} rule${m > 1 ? 's' : ''} switched on` : ''].filter(Boolean).join(' and ') : 'No rule switched on';
+  const openNow = () => { try { return localStorage.getItem('sd-sigstrip-open') === '1'; } catch (e) { return false; } };
+  const tog = el('button', { type: 'button', class: 'sig-strip-tog', 'aria-expanded': String(openNow()), text: sum + ' for this market' });
+  tog.addEventListener('click', () => { const o = !box.classList.contains('open'); document.querySelectorAll('.sig-strip').forEach(x => { x.classList.toggle('open', o); const t = x.querySelector('.sig-strip-tog'); if (t) t.setAttribute('aria-expanded', String(o)); });
+    try { localStorage.setItem('sd-sigstrip-open', o ? '1' : '0'); } catch (e) { /* this visit only */ } });
+  box.querySelector('.sig-strip-h b').replaceWith(tog); box.classList.toggle('open', openNow());
   return box;
 }
 function buildGapCards() {
@@ -7205,7 +7218,7 @@ function setTab(t) {
   state.tab = t;
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
   // section label above the title: the sidebar group the page sits in
-  const btn = document.querySelector(`.tabs button[data-tab="${t}"]`), par = btn && btn.dataset.parent;
+  const btn = document.querySelector(`.tabs button[data-tab="${t}"]:not([data-pin])`), par = btn && btn.dataset.parent;
   let g = btn; while (g && !g.classList.contains('nav-group')) g = g.previousElementSibling;
   $('#pageGroup').textContent = (g ? g.textContent : '') + (par ? ' · ' + TAB_TITLES[par] : '');
   if (par || t in NAV_OPEN) navOpen(par || t, true);
@@ -7340,7 +7353,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildAu === 'function') buildAu(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

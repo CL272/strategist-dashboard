@@ -4,7 +4,7 @@
 const { chromium } = require('playwright');
 
 const URL = process.argv[2] || 'http://localhost:8765/';
-const LIMITS = { height: 2300, tiles: 5, rows: 16, titleLines: 2, controls: 4, subtabBar: 48 };
+const LIMITS = { height: 2300, tiles: 5, rows: 16, titleLines: 2, controls: 4, subtabBar: 48, firstCard: 260, phoneFirstCard: 380 };
 // deliberate exceptions: [page, sub-tab label, rule]
 const ALLOW = [
   ['overview', 'Where we are', 'rows'],          // the one-screen cross-asset snapshot is meant to show every asset class at once
@@ -27,7 +27,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(URL + '#tab=overview');
   await page.waitForTimeout(6000);
-  const tabs = await page.evaluate(() => [...document.querySelectorAll('.tabs button')].map(b => b.dataset.tab));
+  const tabs = await page.evaluate(() => [...new Set([...document.querySelectorAll('.tabs button:not([data-pin])')].map(b => b.dataset.tab))]);
   const problems = [];
   for (const t of tabs) {
     await page.evaluate(t => setTab(t), t);
@@ -45,6 +45,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
         return {
           height: document.documentElement.scrollHeight,
           subtabBar: (P.querySelector('.subtabs') || { offsetHeight: 0 }).offsetHeight,
+          firstCard: cards.length ? Math.round(cards[0].getBoundingClientRect().top + scrollY) : 0,
           tiles: [...P.querySelectorAll('.kpi')].filter(vis).length,
           tables: [...P.querySelectorAll('table')].filter(vis).map(tb => [...tb.querySelectorAll('tbody tr.row')].filter(vis).length),
           titles: cards.map(c => { const h = c.querySelector('.card-head h2'); return h ? [h.textContent, lines(h)] : null; }).filter(Boolean),
@@ -56,10 +57,30 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       if (m.height > LIMITS.height) problems.push(`${where}: page is ${m.height}px tall (limit ${LIMITS.height})`);
       if (m.tiles > LIMITS.tiles) problems.push(`${where}: ${m.tiles} tiles (limit ${LIMITS.tiles})`);
       if (m.subtabBar > LIMITS.subtabBar) problems.push(`${where}: the sub-tab bar wraps (${m.subtabBar}px; it must stay on one line)`);
+      if (m.firstCard > LIMITS.firstCard && !allowed(t, subs[i], 'first')) problems.push(`${where}: the first card starts ${m.firstCard}px down (limit ${LIMITS.firstCard})`);
       const maxRows = Math.max(0, ...m.tables);
       if (maxRows > LIMITS.rows && !allowed(t, subs[i], 'rows')) problems.push(`${where}: a table shows ${maxRows} rows at rest (limit ${LIMITS.rows}; add "Show all")`);
       for (const [title, n] of m.titles) if (n > LIMITS.titleLines) problems.push(`${where}: card title "${title}" wraps to ${n} lines`);
       for (const [title, n] of m.controls) if (n > LIMITS.controls) problems.push(`${where}: card "${title}" shows ${n} controls in its header (limit ${LIMITS.controls})`);
+    }
+  }
+  // phone width (390px): sub-tab bars on one line, first card within reach, nothing scrolls the page sideways
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  phone.on('pageerror', e => errors.push(e.message));
+  await phone.goto(URL + '#tab=overview'); await phone.waitForTimeout(5000);
+  for (const t of tabs) {
+    const n = await phone.evaluate(t => Math.max(1, (SUBTABS[t] || []).length), t);
+    for (let i = 0; i < n; i++) {
+      await phone.evaluate(([t, i]) => { setTab(t); if (SUBTABS[t]) setSub(t, i); }, [t, i]); await phone.waitForTimeout(350);
+      const m = await phone.evaluate(t => { const P = document.querySelector('#tab-' + t), c = [...P.querySelectorAll('.card')].find(e => e.offsetParent);
+        const lines = e => { const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.25; return Math.round(e.getBoundingClientRect().height / lh); };
+        const squeezed = [...P.querySelectorAll('.card')].filter(e => e.offsetParent).map(e => e.querySelector('.card-head h2')).filter(h => h && lines(h) > 3).map(h => h.textContent);
+        return { squeezed, bar: (P.querySelector('.subtabs') || { offsetHeight: 0 }).offsetHeight, first: c ? Math.round(c.getBoundingClientRect().top + scrollY) : 0, wide: document.documentElement.scrollWidth > innerWidth + 2, sub: SUBTABS[t] ? SUBTABS[t][state.sub[t] || 0][0] : t }; }, t);
+      const where = `${t} › ${m.sub} (phone)`;
+      if (m.bar > LIMITS.subtabBar) problems.push(`${where}: the sub-tab bar wraps (${m.bar}px)`);
+      if (m.first > LIMITS.phoneFirstCard && !allowed(t, m.sub, 'first')) problems.push(`${where}: the first card starts ${m.first}px down (limit ${LIMITS.phoneFirstCard})`);
+      if (m.wide) problems.push(`${where}: the page scrolls sideways`);
+      for (const h of m.squeezed) problems.push(`${where}: card title "${h}" is squeezed onto more than 3 lines`);
     }
   }
   await browser.close();

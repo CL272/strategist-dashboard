@@ -667,7 +667,8 @@ function renderSeaCycleTbl(c) {
   for (let yr = 0; yr < 4; yr++) {
     const cells = [0, 1, 2, 3].map(q => d.full.map(x => qret(x, yr, q)).filter(v => v != null)).concat([d.full.map(x => ((100 + x.p[yr * 12 + 12]) / (100 + x.p[yr * 12]) - 1) * 100)]);
     tb.append(el('tr', { class: 'row' + (cur > yr * 12 && cur <= yr * 12 + 12 ? ' sel' : '') }, el('td', { class: 'l', text: CYC_NAMES[yr] }),
-      ...cells.map(L => { const a = L.reduce((s, v) => s + v, 0) / L.length, h = L.filter(v => v > 0).length; return el('td', { class: 'num ' + (a > 0 ? 'up' : 'dn'), title: `${h} of ${L.length} up; worst ${pctF1(Math.min(...L))}`, text: `${pctF1(a)} (${h}/${L.length})` }); })));
+      ...cells.map(L => { const a = L.reduce((s, v) => s + v, 0) / L.length, h = L.filter(v => v > 0).length;
+        return el('td', { class: 'num ' + (a > 0 ? 'up' : 'dn'), title: `${h} of ${L.length} up; worst ${pctF1(Math.min(...L))}` }, pctF1(a), el('span', { class: 'cell-sub', text: `${h} of ${L.length} up` })); })));
     csv.push([CYC_NAMES[yr], ...cells.map(L => L.reduce((s, v) => s + v, 0) / L.length)]);
   }
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf watch' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
