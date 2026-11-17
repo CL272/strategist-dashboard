@@ -4548,11 +4548,19 @@ function styTable(c, rows, heads0, note, src) {
   const b = htmlBody(c), tbl = el('table', { class: 'perf watch' }), pos = tok('--pos'), neg = tok('--neg'), SC = [4, 8, 12, 15];
   const heat = (v, sc) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(v) / sc) * 0.42)}`;
   const pc = v => v == null ? '–' : sign(v) + fmtNum(Math.abs(v), 1) + '%', heads = [heads0, ...STY_P.map(p => p[0])];
-  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h + (i === 2 ? ' ▼' : ''), class: i === 0 ? 'l' : '' })))));
-  const tb = el('tbody'); rows.sort((x, y) => (y.r[1] ?? -1e9) - (x.r[1] ?? -1e9));
-  for (const r of rows) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: r.name }), ...r.r.map((v, i) => el('td', { class: 'heat', style: heat(v, SC[i]), text: pc(v) }))));
-  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
-  c.csv = [heads, ...rows.map(r => [r.name, ...r.r.map(v => v == null ? '' : v.toFixed(2))])];
+  // click a heading to sort by it (again to reverse); the choice is kept while the page is open. Default: 3 months, best first.
+  const srt = c.stySort || (c.stySort = { k: 2, dir: -1 }), thead = el('thead'), tb = el('tbody');
+  const draw = () => {
+    const k = srt.k, val = r => k === 0 ? null : r.r[k - 1];
+    rows.sort((x, y) => k === 0 ? srt.dir * x.name.localeCompare(y.name) : ((val(y) ?? -1e9) - (val(x) ?? -1e9)) * -srt.dir);
+    thead.replaceChildren(el('tr', {}, ...heads.map((h, i) => el('th', { class: i === 0 ? 'l' : '', title: 'Click to sort', 'aria-sort': i === k ? (srt.dir > 0 ? 'ascending' : 'descending') : 'none',
+      text: h + (i === k ? (srt.dir > 0 ? ' ▲' : ' ▼') : ''),
+      onclick: () => { if (srt.k === i) srt.dir = -srt.dir; else { srt.k = i; srt.dir = i === 0 ? 1 : -1; } draw(); } }))));
+    tb.replaceChildren(...rows.map(r => el('tr', { class: 'row' }, el('td', { class: 'l', text: r.name }), ...r.r.map((v, i) => el('td', { class: 'heat', style: heat(v, SC[i]), text: pc(v) })))));
+    c.csv = [heads, ...rows.map(r => [r.name, ...r.r.map(v => v == null ? '' : v.toFixed(2))])];
+  };
+  draw(); tbl.append(thead, tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  note = note.replace(/, sorted by 3 months\./, '.') + ' Click a column heading to sort by it; click again to reverse.';
   setNote(c, note); setSource(c, src);
 }
 function renderStySect(c) {

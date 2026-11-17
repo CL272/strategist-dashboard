@@ -156,7 +156,9 @@ main { padding: 16px 24px 8px; }
 .table-wrap { overflow-x: auto; }
 table.perf { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.perf th, table.perf td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
-table.perf th { font-weight: 600; color: var(--ink-2); font-size: 12px; position: sticky; top: 0; background: var(--surface); cursor: pointer; }
+table.perf th { font-weight: 600; color: var(--ink-2); font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+table.perf th[title="Click to sort"] { cursor: pointer; user-select: none; }
+table.perf th[title="Click to sort"]:hover { color: var(--ink); }
 table.perf th:first-child, table.perf td:first-child { text-align: left; }
 table.perf td { font-variant-numeric: tabular-nums; }
 table.perf tr.grp td { font-weight: 650; color: var(--ink); background: var(--wash); text-align: left; font-size: 12px; }
