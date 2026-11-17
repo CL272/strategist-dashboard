@@ -31,7 +31,8 @@ SLOW["UK_UNEMP"] = 170   # ONS labour data reach the OECD feed about four months
 SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})
 # WP51: BIS China credit is quarterly and about a year late; Malaysian electricity use reaches data.gov.my about 5 months late
 SLOW.update({k: 500 for k in ("CN_CREDIT", "CN_CREDIT_GDP", "LD_CN_FLOW", "LD_CN_IMPULSE")})
-SLOW.update({k: 200 for k in ("MY_ELEC_COM", "MY_ELEC_TOT")})   # weekly, but the Fed publishes it about a month late (H.6)
+SLOW.update({k: 200 for k in ("MY_ELEC_COM", "MY_ELEC_TOT")})
+SLOW["INDEED"] = 21   # Indeed's daily postings index reaches FRED once a week, about a week late   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")
 IGNORE = {"USREC", "SH_FWD10"}     # recession flag only changes at NBER announcements; forward returns end 10 years back

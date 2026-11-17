@@ -30,6 +30,7 @@
     <button role="tab" data-tab="signals" aria-selected="false"><span class="ic">✧</span>Signals</button>
     <button role="tab" data-tab="weekly" aria-selected="false"><span class="ic">▣</span>Weekly brief</button>
     <button role="tab" data-tab="ideas" aria-selected="false"><span class="ic">✎</span>Idea log</button>
+    <button role="tab" data-tab="notebook" aria-selected="false"><span class="ic">✐</span>Notebook</button>
     <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
     <button role="tab" data-tab="calendar" aria-selected="false"><span class="ic">◷</span>Calendar</button>
     <div class="nav-group">Macro</div>
@@ -110,6 +111,9 @@
   <section id="tab-weekly" class="tab-panel" hidden></section>
 
   <section id="tab-ideas" class="tab-panel" hidden></section>
+  <section id="tab-notebook" class="tab-panel" hidden>
+    <div class="grid" id="nbkGrid"></div>
+  </section>
 
   <section id="tab-cbwatch" class="tab-panel" hidden>
     <div class="kpis" id="cbKpis"></div>
@@ -312,5 +316,6 @@
 <script src="leads.js"></script>
 <script src="au.js"></script>
 <script src="ui.js"></script>
+<script src="vault.js"></script>
 </body>
 </html>

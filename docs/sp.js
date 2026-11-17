@@ -715,8 +715,8 @@ function buildSPProt() {
 
 // ------------------------------------------------------------------ WP43. My notes: the owner's live notes, in this browser only
 const NOTES_KEY = 'sd-notes-v1';
-function nbLoad() { try { const j = JSON.parse(localStorage.getItem(NOTES_KEY) || '[]'); return Array.isArray(j) ? j : []; } catch (e) { return []; } }
-function nbSave(L) { try { localStorage.setItem(NOTES_KEY, JSON.stringify(L)); } catch (e) {} }
+function nbLoad() { try { const j = JSON.parse(pstore().getItem(NOTES_KEY) || '[]'); return Array.isArray(j) ? j : []; } catch (e) { return []; } }
+function nbSave(L) { try { pstore().setItem(NOTES_KEY, JSON.stringify(L)); } catch (e) {} }
 function nbSeries(id) {   // daily where the dashboard has it (indices, ticker list), weekly history otherwise
   if (has(id)) return S[id];
   const t = typeof tickId === 'function' ? tickId(id) : null; if (t && has(t)) return S[t];
@@ -750,6 +750,7 @@ function nbStatus(n) {
 const NB_TONE = { 'Knocked in': '--critical', 'Below knock-in': '--critical', 'Near knock-in': '--serious', 'Coupon at risk': '--warning', 'Likely to call': '--good', 'On track': '--muted', Matured: '--muted' };
 state.nbSel = null; state.nbEdit = null;
 function renderNbTable(c) {
+  if (typeof vaultLockedCard === 'function' && vaultLockedCard(c)) return;
   const b = htmlBody(c), L = nbLoad();
   if (!L.length) { b.append(el('div', { class: 'empty', text: 'No notes yet. Add one with the form: it stays in this browser only.' })); return; }
   if (!SPH) { loadSPH().then(() => c.render()); b.append(el('div', { class: 'empty', text: 'Loading prices…' })); return; }
@@ -772,6 +773,7 @@ function renderNbTable(c) {
   setSource(c, 'Yahoo Finance prices; your note terms');
 }
 function renderNbChart(c) {
+  if (typeof vaultLockedCard === 'function' && vaultLockedCard(c)) return;
   const L = nbLoad(), n = L.find(x => x.id === state.nbSel) || L[0]; if (!n) return setEmpty(c, 'Add a note to see its chart.');
   if (!SPH) { loadSPH().then(() => c.render()); return setEmpty(c, 'Loading prices…'); }
   const t0 = Date.parse(n.trade), list = n.ids.map((id, i) => { const s = nbSeries(id); const init = +n.init[i] || (s && asOf(s, t0) ? asOf(s, t0).v : null); return s && init ? { name: SP_SHORT(id), data: pts(s, t0, state.latest).map(([t, v]) => [t, v / init * 100]) } : null; }).filter(Boolean);
@@ -785,6 +787,7 @@ function renderNbChart(c) {
   setSource(c, 'Yahoo Finance');
 }
 function renderNbForm(c) {
+  if (typeof vaultLockedCard === 'function' && vaultLockedCard(c)) return;
   const b = htmlBody(c); if (!SPD || !SPD.under) { b.append(el('div', { class: 'empty', text: 'Loading…' })); return; }
   const L = nbLoad(), ed = L.find(x => x.id === state.nbEdit);
   const n = ed ? { ...ed, ids: [...ed.ids, '', '', ''].slice(0, 3), init: [...(ed.init || []), '', '', ''].slice(0, 3) } : { id: '', label: '', kind: 'fcn', ids: ['', '', ''], init: ['', '', ''], trade: iso(state.latest), maturity: iso(addMonths(state.latest, 12)), strike: 100, ki: 70, kiType: 'maturity', ac: 100, freq: 1, coupon: 8, cb: 70 };

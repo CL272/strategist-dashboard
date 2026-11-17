@@ -46,7 +46,7 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `docs/sp-worker.js`) and `pipeline/structured.py` (data). Generic structure names only, never issuer or product brand
   names; every figure says "indicative … not a quote". Run `node tools/sp-check.js` after any change to the model or the
   surfaces: it checks identities and listed put prices (within 15%) and must pass before pushing. The owner's notes stay
-  in localStorage (`sd-notes-v1`), never in the repository.
+  in the private vault (`sd-notes-v1`), never in the repository.
 - **Later packages** (Income menu, Playbook, earnings, model stress, credit cycle, gold, country funds) live in
   `docs/more.js`. Pages whose render function lists its own cards (Fixed Income, Stress, Markets) also render the keys
   in `EXTRA_RENDER`; add new cards there.
@@ -74,4 +74,14 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 ## Data and privacy
 
 - Public data only; secrets (`FRED_API_KEY`, `ESTAT_API_KEY`) live in GitHub repository secrets, never in code.
-- The repository and site are public: the idea log and starred watchlist stay in the browser (localStorage) only.
+- The repository and site are public. Everything the owner writes (ideas, watchlist, house views, model portfolio,
+  signal watch and dismiss, structured notes, the Notebook) goes through `pstore()`, which is the **private vault**
+  (`docs/vault.js`) once it is set up: AES-256-GCM with a key derived from the owner's passphrase (PBKDF2-SHA-256,
+  600,000 rounds) in the browser; only ciphertext is stored or synced. A new private item must use a key listed in
+  `VAULT_ITEMS` and read and write through `pstore()`, never `localStorage` directly. Sync (optional) writes the same
+  encrypted file to the owner's own private GitHub repository with a fine-grained token kept inside the vault; the
+  token and the passphrase never enter this repository. A forgotten passphrase cannot be recovered: never add a back door.
+- After any change to `docs/vault.js` or to how private data is stored, run `node tools/vault-check.js` and
+  `node tools/vault-sync-check.js` (local server up); both must pass before pushing.
+- A login screen in front of the public site would only be cosmetic (the files are public); hiding the whole site needs
+  other hosting (Cloudflare Access), described as WP73 in PLAN.md and not built.

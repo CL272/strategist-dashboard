@@ -13,6 +13,8 @@ const state = {
   corrA: 'SPX', corrB: 'UST10Y',
 };
 const cards = {};
+// private data (ideas, watchlist, house views, model portfolio, signal watch, notes) goes through the vault when it is set up (vault.js, WP70)
+const pstore = () => (typeof VAULT_STORE !== 'undefined' ? VAULT_STORE : localStorage);
 
 // ------------------------------------------------------------------ utils
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -5117,8 +5119,8 @@ function buildScorecard() {
 // What the owner does with them (watch, dismiss) stays in this browser (localStorage), never published.
 let SIG = null;
 const SIG_KEY = 'sd-signals-v1';
-function sigStore() { try { return JSON.parse(localStorage.getItem(SIG_KEY) || '{}'); } catch (e) { return state.sigMem || {}; } }
-function sigSave(o) { state.sigMem = o; try { localStorage.setItem(SIG_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+function sigStore() { try { return JSON.parse(pstore().getItem(SIG_KEY) || '{}'); } catch (e) { return state.sigMem || {}; } }
+function sigSave(o) { state.sigMem = o; try { pstore().setItem(SIG_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
 const sigById = id => SIG && SIG.signals.find(x => x.id === id);
 const isRatio = id => /^R_/.test(id);
 const TIER_CLS = { 'Tested edge': 'up', 'Thin evidence': 'warn', 'Context only': '', 'Not enough history': '' };
@@ -5313,11 +5315,11 @@ const IDEA_KEY = 'sd-ideas-v1';
 const IDEA_VIEWS = [['Open ideas', 'open'], ['Watchlist', 'watch'], ['Closed', 'closed'], ['Scorecard', 'score'], ['House views', 'views'], ['Model portfolio', 'model']];
 let IDEAS = [], ideaStoreOk = true;
 function loadIdeas() {
-  try { const raw = localStorage.getItem(IDEA_KEY); IDEAS = raw ? JSON.parse(raw) : []; ideaStoreOk = true; }
+  try { const raw = pstore().getItem(IDEA_KEY); IDEAS = raw ? JSON.parse(raw) : []; ideaStoreOk = true; }
   catch (e) { IDEAS = IDEAS || []; ideaStoreOk = false; }
 }
 function saveIdeas() {
-  try { localStorage.setItem(IDEA_KEY, JSON.stringify(IDEAS)); ideaStoreOk = true; } catch (e) { ideaStoreOk = false; }
+  try { pstore().setItem(IDEA_KEY, JSON.stringify(IDEAS)); ideaStoreOk = true; } catch (e) { ideaStoreOk = false; }
 }
 const ideaDirs = id => S[id] && S[id].kind === 'yield' ? [['down', 'Yield/spread falls (long bonds, receive)'], ['up', 'Yield/spread rises (short bonds, pay)']]
   : [['up', 'Long / rises'], ['down', 'Short / falls']];
@@ -5371,8 +5373,8 @@ function tickerFromText(txt) {   // "$AAPL", "aapl", "1155.KL", "MYX:1155", "May
   return t.length >= 3 && hits.length === 1 ? hits[0] : null;
 }
 const WATCH_KEY = 'sd-watch-v1';
-function getWatch() { try { return JSON.parse(localStorage.getItem(WATCH_KEY) || '[]'); } catch (e) { return state.watchMem || []; } }
-function setWatch(list) { state.watchMem = list; try { localStorage.setItem(WATCH_KEY, JSON.stringify(list)); } catch (e) { /* kept for this session only */ } }
+function getWatch() { try { return JSON.parse(pstore().getItem(WATCH_KEY) || '[]'); } catch (e) { return state.watchMem || []; } }
+function setWatch(list) { state.watchMem = list; try { pstore().setItem(WATCH_KEY, JSON.stringify(list)); } catch (e) { /* kept for this session only */ } }
 function tickMarket(id) {
   const x = S[id], sym = x.sym;
   if (x.mine) return 'Added in watchlist.txt';
@@ -5446,8 +5448,9 @@ function buildIdeas() {
   loadIdeas();
   const panel = $('#tab-ideas');
   const newBtn = el('button', { type: 'button', class: 'primary', text: '＋ New idea', onclick: () => openIdeaForm() });
-  const exp = el('button', { type: 'button', class: 'ghost', text: 'Export', title: 'Download all ideas as a file (back-up, or to move to another laptop)', onclick: () => {
-    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 3, exported: new Date().toISOString(), ideas: IDEAS, views: hvLoad(), model: mpLoad(), notes: typeof nbLoad === 'function' ? nbLoad() : [] }, null, 2)], { type: 'application/json' });
+  const exp = el('button', { type: 'button', class: 'ghost', text: 'Export', title: 'Download a back-up file (encrypted once the private vault is set up)', onclick: () => {
+    if (typeof vaultOn === 'function' && vaultOn()) return vaultBackup();   // the encrypted vault backup (version 4)
+    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', version: 3, exported: new Date().toISOString(), ideas: IDEAS, views: hvLoad(), model: mpLoad(), notes: typeof nbLoad === 'function' ? nbLoad() : [], notebook: typeof nbkLoad === 'function' ? nbkLoad() : [] }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); download(url, `idea-log_${iso(Date.now())}.json`); setTimeout(() => URL.revokeObjectURL(url), 2000); } });
   const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true });
   file.addEventListener('change', async () => {
@@ -5497,8 +5500,8 @@ const HV_ROWS = [
   ['cm_gold', 'Commodities', 'Gold', 'GOLD', null], ['cm_oil', 'Commodities', 'Oil (Brent)', 'BRENT', null],
 ];
 const HV_STANCES = [['OW', 'Overweight'], ['N', 'Neutral'], ['UW', 'Underweight']];
-function hvLoad() { try { return JSON.parse(localStorage.getItem(VIEWS_KEY) || '{"hist":[]}'); } catch (e) { return state.hvMem || { hist: [] }; } }
-function hvSave(o) { state.hvMem = o; try { localStorage.setItem(VIEWS_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+function hvLoad() { try { return JSON.parse(pstore().getItem(VIEWS_KEY) || '{"hist":[]}'); } catch (e) { return state.hvMem || { hist: [] }; } }
+function hvSave(o) { state.hvMem = o; try { pstore().setItem(VIEWS_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
 function hvCurrent() { const cur = {}; for (const h of hvLoad().hist) cur[h.key] = h; return cur; }
 function hvSign(key, st) { const inv = key === 'fx_myr'; const v = st === 'OW' ? 1 : st === 'UW' ? -1 : 0; return inv ? -v : v; }   // ringgit OW = USD/MYR falls
 function hvPerf(row, since) {   // series (in USD for equities) vs benchmark since the date, %
@@ -5548,8 +5551,8 @@ const MP_ASSETS = [['ACWI', 'World equities (ACWI)'], ['SPX', 'S&P 500'], ['AAXJ
   ['IEF', 'US Treasuries 7-10Y (IEF)'], ['TLT', 'US Treasuries 20Y+ (TLT)'], ['LQD', 'US investment grade (LQD)'], ['HYG', 'US high yield (HYG)'], ['EMB', 'EM USD bonds (EMB)'], ['GOLD', 'Gold'], ['BTC', 'Bitcoin'], ['CASH', 'Cash (local short rate)']];
 const MP_PRESETS = { '60/40 global': [['ACWI', 60], ['IEF', 40]], 'Malaysian balanced': [['KLCI', 35], ['AAXJ', 15], ['ACWI', 15], ['IEF', 20], ['GOLD', 5], ['CASH', 10]] };
 const CASH_RATE = { MYR: 'MY_OPR', SGD: 'SORA3M', USD: 'UST3M' };
-function mpLoad() { try { return JSON.parse(localStorage.getItem(MODEL_KEY) || 'null') || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } catch (e) { return state.mpMem || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } }
-function mpSave(o) { state.mpMem = o; try { localStorage.setItem(MODEL_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
+function mpLoad() { try { return JSON.parse(pstore().getItem(MODEL_KEY) || 'null') || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } catch (e) { return state.mpMem || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } }
+function mpSave(o) { state.mpMem = o; try { pstore().setItem(MODEL_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
 function mpSeries(o, from, to) {   // weekly, rebalanced weekly; returns [[t, value]] and the per-asset weekly returns used
   const ccy = o.ccy, rows = o.rows.filter(([id, w]) => w > 0 && (id === 'CASH' || has(id))); const tot = rows.reduce((a, [, w]) => a + w, 0); if (!tot) return null;
   const fr = []; for (let t = lastFriday(from); t <= to; t += 7 * DAY) fr.push(t);
@@ -5611,10 +5614,12 @@ function renderModelChart(c) {
 }
 
 function renderIdeas() {
+  if (typeof vaultGate === 'function' && vaultGate($('#tab-ideas'), 'The Idea log')) return;
   const panel = $('#tab-ideas'), cur = state.sub.ideas || 0, view = IDEA_VIEWS[cur][1];
   panel.querySelectorAll('.subtabs button').forEach(b => b.setAttribute('aria-selected', +b.dataset.i === cur));
   $('#ideaStoreNote').textContent = ideaStoreOk
-    ? `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, stored only in this browser on this computer. Nothing is uploaded. Use Export to back up or move them to another laptop.`
+    ? (typeof vaultOn === 'function' && vaultOn() ? `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, encrypted in your private vault. Export downloads an encrypted back-up.`
+      : `${IDEAS.length} idea${IDEAS.length === 1 ? '' : 's'}, stored only in this browser on this computer, not yet encrypted (set up the private vault from the menu). Use Export to back up.`)
     : '⚠ This browser is blocking storage (private window or a work policy?), so ideas will be lost when you close the page. Use Export before leaving.';
   const own = view === 'views' || view === 'model';
   cards.idea_table.root.hidden = view === 'score' || view === 'watch' || own;
@@ -7044,12 +7049,13 @@ function searchIndex() {
     out.push({ kind: 'Chart', label, where: (TAB_TITLES[t] || t) + (sub != null && SUBTABS[t] ? ' → ' + SUBTABS[t][sub][0] : ''), tab: t, sub, card: c,
       hay: [label, c.title, c.subEl.textContent, c.source].join(' ') });
   }
+  if (typeof vaultSearch === 'function') out.push(...vaultSearch());
   for (const r of perfRows()) if (!seen.has(r.id)) { seen.add(r.id); out.push({ kind: 'Market', label: r.s.label, where: 'Markets → Performance', tab: 'markets', sub: 0, asset: r, hay: [r.s.label, r.id, r.s.group, r.s.source].join(' ') }); }
   return out;
 }
 function searchFind(q, idx) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
-  const rank = { Market: 0, Chart: 1, Section: 2, Page: 3 };
+  const rank = { Market: 0, Note: 1, Chart: 1, Section: 2, Page: 3 };
   return idx.map(x => { const h = x.hay.toLowerCase(), l = x.label.toLowerCase();
       if (!words.every(w => h.includes(w))) return null;
       const score = (l.startsWith(words[0]) ? 0 : l.includes(words[0]) ? 1 : 2) * 10 + rank[x.kind];
@@ -7059,6 +7065,7 @@ function searchGo(x) {
   closeSearch();
   setTab(x.tab);
   if (x.sub != null && SUBTABS[x.tab]) setSub(x.tab, x.sub);
+  if (x.note) { state.nbkSel = x.note; goSub('notebook', 'Notes'); }
   if (x.asset) { state.perfClass = 'All'; state.perfQuery = x.asset.s.label; const box = $('#perfCard .perf-search'); if (box) box.value = x.asset.s.label; renderPerfTable(); }
   const target = x.card ? x.card.root : x.asset ? $('#perfCard') : null;
   if (target) setTimeout(() => { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); }, 120);
@@ -7207,10 +7214,11 @@ function fitTiles(tab) {
 }
 function renderTab() {
   syncFilterUI();
-  ({ overview: renderOverview, signals: renderSignals, scorecard: renderScorecardPage, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, my: () => renderCountry('my'), sg: () => renderCountry('sg'), cn: () => renderCountry('cn'), kr: () => renderCountry('kr'), tw: () => renderCountry('tw'), in: () => renderCountry('in'), de: () => renderEuroCountry('de'), fr: () => renderEuroCountry('fr'), it: () => renderEuroCountry('it'), es: () => renderEuroCountry('es'), uk: () => renderEuroCountry('uk'), us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, sp: () => renderSP(), stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
+  ({ overview: renderOverview, signals: renderSignals, scorecard: renderScorecardPage, news: renderNews, calendar: renderCalendar, cbwatch: renderCbWatch, ideas: renderIdeas, notebook: () => renderPanel('notebook'), weekly: renderWeekly, liquidity: renderLiquidity, regime: renderRegime, fixed: renderFixedIncome, asia: renderAsia, my: () => renderCountry('my'), sg: () => renderCountry('sg'), cn: () => renderCountry('cn'), kr: () => renderCountry('kr'), tw: () => renderCountry('tw'), in: () => renderCountry('in'), de: () => renderEuroCountry('de'), fr: () => renderEuroCountry('fr'), it: () => renderEuroCountry('it'), es: () => renderEuroCountry('es'), uk: () => renderEuroCountry('uk'), us: () => renderRegion('us'), europe: () => renderRegion('europe'), japan: () => renderRegion('japan'), australia: () => renderRegion('australia'), ai: renderAI, valuation: renderValuation, health: renderHealth, posvol: renderPosVol, sp: () => renderSP(), stress: renderStress, markets: renderMarkets, correlation: renderCorrelation })[state.tab]();
   if (typeof EXTRA_RENDER !== 'undefined') (EXTRA_RENDER[state.tab] || []).forEach(k => cards[k] && cards[k].render());   // cards added by more.js
   if (typeof EXTRA_HOOKS !== 'undefined') (EXTRA_HOOKS[state.tab] || []).forEach(f => f());   // tiles added by leads.js
   fitTiles(state.tab);
+  if (typeof afterRenderNotes === 'function') afterRenderNotes();   // "+ Note" count and dots on cards with notes (vault.js)
 }
 const TAB_TITLES = { scorecard: 'Country scorecard', signals: 'Signals: ideas to investigate', overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', my: 'Malaysia', sg: 'Singapore', cn: 'China', kr: 'Korea', tw: 'Taiwan', in: 'India', de: 'Germany', fr: 'France', it: 'Italy', es: 'Spain', uk: 'United Kingdom', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',
   markets: 'Markets', fixed: 'Fixed Income', correlation: 'Correlation', ai: 'AI: adoption, prices & capex', valuation: 'Valuation', health: 'Data health', posvol: 'Positioning & Volatility', stress: 'Stress & Peak Signposts' };
@@ -7353,12 +7361,12 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
   setTimeout(loadTickers, 50);
   setTimeout(() => loadSP().then(() => { spStripLines(); addEarningsToCal(); if (['sp', 'calendar', 'weekly'].includes(state.tab)) renderTab(); }), 400);   // structured products data (WP37)   // ~2 MB of ticker history: loaded after the first page is drawn
-  setTab(['overview', 'signals', 'scorecard', 'news', 'calendar', 'weekly', 'ideas', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'my', 'sg', 'cn', 'kr', 'tw', 'in', 'de', 'fr', 'it', 'es', 'uk', 'us', 'europe', 'japan', 'australia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'sp', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
+  setTab(['overview', 'signals', 'scorecard', 'news', 'calendar', 'weekly', 'ideas', 'notebook', 'cbwatch', 'liquidity', 'regime', 'fixed', 'asia', 'my', 'sg', 'cn', 'kr', 'tw', 'in', 'de', 'fr', 'it', 'es', 'uk', 'us', 'europe', 'japan', 'australia', 'markets', 'correlation', 'ai', 'valuation', 'health', 'posvol', 'sp', 'stress'].includes(h.get('tab')) ? h.get('tab') : 'overview');
 }
 init();

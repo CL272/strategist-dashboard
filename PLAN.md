@@ -596,7 +596,21 @@ data source. Still not possible with free data: earnings revisions and forward P
 
 ---
 
-## Planned, not built (owner's request, 14 Nov 2026): WP63 to WP73, cleaner design and private notes
+## Built (owner's request, 14 Nov 2026; built 17 Nov 2026): WP63 to WP72, cleaner design and private notes (WP73 not built)
+
+**Built 17 Nov 2026**, in four pushes: WP63–66, WP74–76 (Australia), WP67–69, WP70–72. Measured result: the first card
+starts about 200 px down on desktop (was 408) and within 380 px on a phone (was 1,023); no sub-tab bar wraps (20 on
+desktop and 112 on phones did); no table is cut off on desktop (9 were) and no page scrolls sideways on a phone (6 did).
+design-check now enforces all four at both widths. Notes from the build: tile dates moved into each tile's tooltip;
+the "Signals for this market" strip folds to one line and shares a row with "See also"; pinned pages sit at the top of
+the menu (☆ next to the page title); the Idea log's Export downloads the encrypted vault backup once the vault is set up.
+Vault: `docs/vault.js` with `tools/vault-check.js` (encryption, wrong passphrase, tampering, migration, locking,
+passphrase change, merge rules) and `tools/vault-sync-check.js` (laptop and phone through a simulated GitHub: public
+repository refused, ciphertext only, joining edits from both devices, bad token, auto-lock); both pass. **Waiting for
+the owner (WP71):** create a private repository and a fine-grained token, then turn on sync in Notebook → Vault & sync
+(steps on that page). WP73 (hiding the whole site) stays unbuilt, as recommended.
+
+### Original plan
 
 **Status: decisions taken 17 Nov 2026 (owner: all recommended, then "go"): light menu; slim tile strip; sources behind
 "⋯"; vault with sync through a private repository; auto-lock after 30 minutes. Build order: WP63–66, then WP74–76
@@ -792,7 +806,16 @@ later without redoing them.
 
 ---
 
-## Planned, not built (owner's request, 16 Nov 2026): WP74 to WP76, Australia: what drives the RBA
+## Built (owner's request, 16 Nov 2026; built 17 Nov 2026): WP74 to WP76, Australia: what drives the RBA
+
+**Built 17 Nov 2026** in the new style. The live pipeline fetches the ABS Data API from GitHub's runners; the RBA's
+NAIRU and forecasts are in `pipeline/config.py` (`RBA_SMP`): refresh after each Statement (next: early February 2027;
+data health reminds after 100 days). Readings on the first build: 2 of 10 drivers lean toward a rise (trimmed-mean
+and monthly CPI), 2 toward a cut (home loans, consumer sentiment), the market prices about +8bp; unemployment 4.7% sits
+at the RBA's 4¾% line; new home loans lead house prices by 3 months on the dashboard's test (0.86, from 2012).
+The three signal rules grade "context only" or "not enough history".
+
+### Original plan
 
 **Status: decisions taken 17 Nov 2026 (build after the first redesign run; include the "lean" column with its rules).** The owner asked whether Australia has
 data on housing and spending (the things, with jobs, that move rate-hike and rate-cut expectations) and what
