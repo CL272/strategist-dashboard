@@ -29,6 +29,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
+- **Axis labels never repeat a rounded number**: when an axis's ticks fall between whole numbers, `valAxis` and
+  `fixAxisDecimals` relabel that whole axis with 2 decimals (owner's request). Keep axis formatters on `fmtNum`.
+  A series moved forward to show a lead carries `_src` (the unshifted series) so its card's date stays true.
 - **Charts: at most 5 coloured lines.** `drawLines` greys the rest (home markets first) and shortens legend names;
   give series full names and let it shorten them.
 - **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`).

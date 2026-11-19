@@ -44,8 +44,11 @@ function addMonths(t, m) {
   const last = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
   return Date.UTC(y, mo, Math.min(day, last));
 }
+let AX_FMT = null;   // set while a y-axis label is being formatted (see valAxis)
 function fmtNum(v, dec) {
   if (v == null || !isFinite(v)) return '–';
+  // axis labels: when the ticks fall between whole numbers (2.2, 2.4 …) show 2 decimals instead of a row of "2"s (owner's request)
+  if (AX_FMT && dec < 2) { const p = 10 ** dec, x = v * p; if (Math.abs(x - Math.round(x)) > 1e-6 * Math.max(1, Math.abs(x))) AX_FMT.frac = true; if (AX_FMT.frac) dec = 2; }
   return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 function autoDec(v) { const a = Math.abs(v); return a >= 1000 ? 0 : a >= 100 ? 1 : a >= 10 ? 2 : a >= 1 ? 3 : 4; }
@@ -328,7 +331,8 @@ function showAsOf(c) {
   if (!c.emptyEl.hidden) { c.srcDate.textContent = ''; c.srcEl.hidden = !c.source; c.asOfText = ''; return; }
   // series whose values were read; if none (a render that works on raw arrays), every series it looked up
   const list = c.read && c.read.size ? [...c.read] : [...(c.used || [])].map(id => S_RAW[id]), seen = new Set();
-  for (const s of list) { if (!s || !s.t || !s.t.length || seen.has(s)) continue; seen.add(s); const i = idxLE(s, to == null ? Infinity : to); if (i >= 0) rows.push({ id: s.id, s, t: s.t[i], f: freqOf(s) }); }
+  for (let s of list) { if (s && s._src) s = s._src;   /* a series moved forward to show a lead: date it by the data itself */
+    if (!s || !s.t || !s.t.length || seen.has(s)) continue; seen.add(s); const i = idxLE(s, to == null ? Infinity : to); if (i >= 0) rows.push({ id: s.id, s, t: s.t[i], f: freqOf(s) }); }
   const best = {};
   for (const r of rows) if (!best[r.f] || r.t > best[r.f]) best[r.f] = r.t;
   if (c.asOf && !isNaN(c.asOf.t) && (!best[c.asOf.f] || c.asOf.t > best[c.asOf.f])) best[c.asOf.f] = c.asOf.t;
@@ -394,9 +398,23 @@ function syncCardRange(c) {
 }
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
-  if (!c.inst) { c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' }); attachAxisDrag(c); }
+  if (!c.inst) { c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' }); attachAxisDrag(c); c.inst.on('finished', () => fixAxisDecimals(c)); }
   else if (c.chartEl.clientWidth && Math.abs(c.inst.getWidth() - c.chartEl.clientWidth) > 2) c.inst.resize();   // was drawn while hidden
   return c.inst;
+}
+// After a chart is drawn: if an axis's ticks fall between whole numbers, relabel the whole axis with 2 decimals,
+// so the whole-number ticks on it read "2.00" too rather than "2" beside "2.20".
+function fixAxisDecimals(c) {
+  let opt; try { opt = c.inst.getOption(); } catch (e) { return; }
+  const n = (opt.yAxis || []).length; let patch = null;
+  for (let i = 0; i < n; i++) {
+    const f = opt.yAxis[i].axisLabel && opt.yAxis[i].axisLabel.formatter;
+    if (typeof f !== 'function' || !f._st || f._st.frac) continue;
+    let ticks; try { ticks = c.inst.getModel().getComponent('yAxis', i).axis.scale.getTicks().map(t => (t && t.value != null ? t.value : t)); } catch (e) { continue; }
+    for (const v of ticks) f(v);
+    if (f._st.frac) { patch = patch || Array.from({ length: n }, () => ({})); patch[i] = { axisLabel: { formatter: f } }; }
+  }
+  if (patch) c.inst.setOption({ yAxis: patch });
 }
 function setEmpty(c, msg) {
   c.chartEl.hidden = true; c.emptyEl.hidden = false; c.emptyEl.textContent = msg; c.csv = null;
@@ -454,8 +472,10 @@ function timeAxis(extra = {}) {
   };
 }
 function valAxis(fmt, extra = {}) {
+  let f = fmt;
+  if (typeof fmt === 'function') { const st = { frac: false }; f = (v, i) => { const prev = AX_FMT; AX_FMT = st; try { return fmt(v, i); } finally { AX_FMT = prev; } }; f._st = st; }
   return {
-    type: 'value', scale: true, axisLabel: { color: tok('--muted'), formatter: fmt, fontSize: 11 },
+    type: 'value', scale: true, axisLabel: { color: tok('--muted'), formatter: f, fontSize: 11 },
     splitLine: { lineStyle: { color: tok('--grid') } }, axisLine: { show: false }, ...extra,
   };
 }
@@ -801,7 +821,7 @@ function renderM2(c) {
   const base = has('LH_SPX') ? S.LH_SPX : S.SPX;
   spxYoY = spxYoY || { ...monthlyYoY(base), label: 'S&P 500 YoY', unit: '%', kind: 'level' };
   const lag = state.m2Mode === 'lead' ? 6 : 0;
-  const m2 = S.M2_YOY, shifted = lag ? { t: m2.t.map(t => addMonths(t, lag)), v: m2.v } : m2;
+  const m2 = S.M2_YOY, shifted = lag ? { t: m2.t.map(t => addMonths(t, lag)), v: m2.v, _src: m2 } : m2;
   drawPair(c, { name: lag ? 'M2 YoY, moved forward 6 months' : 'M2 YoY', data: pts(shifted, state.from, state.to + lag * 31 * DAY) },
     { name: 'S&P 500 YoY (price)', data: pts(spxYoY, state.from, state.to) }, { fmtA: pct, fmtB: pct, axisA: pct, axisB: pct, zeroA: true, zeroB: true });
   if (lag) inst(c).setOption({ xAxis: c.pairMode === 'stack' ? [{ max: state.to + lag * 31 * DAY }, { max: state.to + lag * 31 * DAY }] : { max: state.to + lag * 31 * DAY } });
@@ -1696,7 +1716,7 @@ state.krLead = '0';
 
 // ------------------------------------------------------------------ CHIP CYCLE (AI → Chip cycle)
 const CHIP_MY = ['0166.KL', '0097.KL', '3867.KL'];   // Inari, ViTrox, MPI
-function monthlyOf(id, mode) { const m = llSeries(id, mode), t = [...m.keys()].sort((a, b) => a - b); return { t, v: t.map(x => m.get(x)) }; }
+function monthlyOf(id, mode) { const m = llSeries(id, mode), t = [...m.keys()].sort((a, b) => a - b); return { t, v: t.map(x => m.get(x)), id, label: S_RAW[id] && S_RAW[id].label }; }
 function renderChipRS(c) {
   if (!has('SOX', 'SPX')) return setEmpty(c, 'Waiting for data (next daily run).');
   const r = ratioSeries(['SOX'], ['SPX']), x = pts(S.SOX, state.from - 400 * DAY, state.to), yoy = [];
@@ -1711,7 +1731,7 @@ function renderChipRS(c) {
 function renderChipKr(c) {
   if (!has('SOX', 'KR_EXP_YOY')) return setEmpty(c, 'Waiting for data.');
   const k = +state.chipLead || 0, sx = monthlyOf('SOX', 'yoy'), kr = monthlyOf('KR_EXP_YOY', 'level');
-  const lead = k ? { t: sx.t.map(t => addMonths(t, k)), v: sx.v } : sx, xmax = k ? addMonths(state.to, k) : state.to;
+  const lead = k ? { t: sx.t.map(t => addMonths(t, k)), v: sx.v, _src: sx } : sx, xmax = k ? addMonths(state.to, k) : state.to;
   drawPair(c, { name: k ? `SOX % YoY, moved forward ${k} months` : 'SOX % YoY (month-end)', data: pts(lead, state.from, xmax) }, { name: 'Korea exports % YoY', data: pts(kr, state.from, state.to) },
     { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true, zeroB: true });
   if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
@@ -1886,7 +1906,7 @@ function renderBcTable(c) {
 }
 function leadPair(c, a, b, k, o) {   // monthly dual-axis chart; series a drawn k months later than measured
   const A = monthlyOf(a[0], a[1]), B = monthlyOf(b[0], b[1]);
-  const lead = k ? { t: A.t.map(t => addMonths(t, k)), v: A.v } : A, xmax = k ? addMonths(state.to, k) : state.to;
+  const lead = k ? { t: A.t.map(t => addMonths(t, k)), v: A.v, _src: A } : A, xmax = k ? addMonths(state.to, k) : state.to;
   drawPair(c, { name: k ? `${a[2]}, moved forward ${k} months` : a[2], data: pts(lead, state.from, xmax) }, { name: b[2], data: pts(B, state.from, state.to) }, o);
   if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
   const cc = laggedCorr(A, B).filter(x => x[1] != null), best = cc.reduce((m, x) => x[1] > m[1] ? x : m, [0, -2]), c0 = cc.find(x => x[0] === 0);
@@ -1932,7 +1952,7 @@ function bcKpis() {   // tiles for the Global business cycle sub-tab
 
 function renderLeadLag(c) {
   if (!has('LEI_6M', 'REG_GM')) return setEmpty(c, 'Waiting for the leading-index inputs (next daily run).');
-  const k = +state.llShift || 0, L = S.LEI_6M, lead = k ? { t: L.t.map(t => addMonths(t, k)), v: L.v } : L, xmax = k ? addMonths(state.to, k) : state.to;
+  const k = +state.llShift || 0, L = S.LEI_6M, lead = k ? { t: L.t.map(t => addMonths(t, k)), v: L.v, _src: L } : L, xmax = k ? addMonths(state.to, k) : state.to;
   drawPair(c, { name: k ? `Leading index, moved forward ${k} months` : 'Leading index, 6m annualised', data: pts(lead, state.from, xmax) }, { name: 'Growth momentum (regime model)', data: pts(S.REG_GM, state.from, state.to) },
     { fmtA: v => sign(v) + fmtNum(Math.abs(v), 1) + '%', fmtB: v => zf(v), axisA: v => fmtNum(v, 0) + '%', axisB: v => v.toFixed(1), zeroA: true, zeroB: true });
   if (k) c.inst.setOption({ xAxis: c.pairMode === 'stack' ? [{ max: xmax }, { max: xmax }] : { max: xmax } });
@@ -2835,7 +2855,7 @@ function leadCard(key, a, b, k, intro) {   // a, b = [id, mode, name]
     let xspLine = '';
     if (a[0] === 'CLI_KOR' && has('KR_LI_XSP') && c.pairMode !== 'stack') {
       const X = monthlyOf('KR_LI_XSP', 'chg6'), sh = +state[key] || 0, xmax = sh ? addMonths(state.to, sh) : state.to;
-      const data = pts(sh ? { t: X.t.map(t => addMonths(t, sh)), v: X.v } : X, state.from, xmax);
+      const data = pts(sh ? { t: X.t.map(t => addMonths(t, sh)), v: X.v, _src: X } : X, state.from, xmax);
       const o = c.inst.getOption();
       o.series.push({ name: 'Same index without share prices' + (sh ? `, moved forward ${sh} months` : ''), type: 'line', yAxisIndex: 0, data, showSymbol: false,
         lineStyle: { type: 'dashed', width: 2, color: tok('--muted') }, itemStyle: { color: tok('--muted') } });
