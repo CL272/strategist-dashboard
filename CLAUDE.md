@@ -51,6 +51,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   tickers. If a page's sub-tab order changes, add its old order to `OLD_SUBS` so bookmarks still land correctly.
 - Each Equities sub-tab starts with the "Signals for this market" strip (`SIG_TARGETS`); `eqCard` and `fxCard` build
   the standard equity and currency views.
+- **Signals show both directions alike**: bullish and bearish (sell-side) rules are tested the same way; label them with
+  `sigDirLab`/`sigSide` (a rising yield reads as bearish for bonds) and state bearish odds as "down X%". `signals.py` writes
+  `off_since` (first month off); rules with a record that ended in the last three months are the exit prompts in
+  "Signals that just ended". Signals are research prompts, never recommendations.
 - **Structured products** live in `docs/sp.js` (page), `docs/sp-model.js` (pricing maths, shared with the Monte Carlo worker
   `docs/sp-worker.js`) and `pipeline/structured.py` (data). Generic structure names only, never issuer or product brand
   names; every figure says "indicative … not a quote". Run `node tools/sp-check.js` after any change to the model or the

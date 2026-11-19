@@ -5218,17 +5218,29 @@ function sigHeadline(g, h) {
   const n = g.target_name;
   if (isRatio(g.target)) return `${n}: ${g.dir > 0 ? 'outperformance' : 'underperformance'} has tended to continue (${h} months)`;
   if (g.kind === 'chg') return `${n}: has tended to ${g.dir > 0 ? 'rise' : 'fall'} over the next ${h} months`;
-  return `${n}: ${g.dir > 0 ? 'positive' : 'caution'} over the next ${h} months`;
+  return `${n}: ${g.dir > 0 ? 'stronger' : 'weaker'} than usual over the next ${h} months`;
 }
+// direction, as someone holding the asset reads it: +1 bullish, -1 bearish (a rising yield is bearish for bonds)
+const sigYield = g => g.kind === 'chg' && ((S[g.target] && S[g.target].kind === 'yield') || /(_\d+Y|YIELD)$/.test(g.target));
+const sigSide = g => sigYield(g) ? -g.dir : g.dir;
+function sigDirLab(g) {
+  if (isRatio(g.target)) return g.dir > 0 ? '▲ Outperform' : '▼ Underperform';
+  if (sigYield(g)) return g.dir > 0 ? '▼ Yields up · bonds bearish' : '▲ Yields down · bonds bullish';
+  if (g.kind === 'chg') return g.dir > 0 ? '▲ Rising' : '▼ Falling';
+  return g.dir > 0 ? '▲ Bullish' : '▼ Bearish';
+}
+const sigDirChip = g => el('span', { class: 'chip dchip ' + (sigSide(g) > 0 ? 'up' : 'dn'), text: sigDirLab(g), title: sigSide(g) > 0 ? 'Bullish: the rule has pointed to a better-than-usual outcome' : 'Bearish (sell side): the rule has pointed to a worse-than-usual outcome' });
 function sigEvidence(x) {
   const h = x.best_h, st = x.stats[String(h)]; if (!st) return 'No usable history yet.';
   const yr = x.history_from ? x.history_from.slice(0, 4) : '';
   const what = isRatio(x.target) ? 'relative move' : x.kind === 'ret' ? 'move' : 'change';
-  return `${st.n} time${st.n === 1 ? '' : 's'} since ${yr}: median ${what} ${sigMove(x.kind, st.med)} over ${h} months, up ${fmtNum(st.hit, 0)}% of the time; in all months ${sigMove(x.kind, st.base_med)}, up ${fmtNum(st.base_hit, 0)}%.`;
+  const way = x.dir > 0 ? 'up' : 'down', pc = v => fmtNum(x.dir > 0 ? v : 100 - v, 0);   // bearish rules: how often it fell
+  return `${st.n} time${st.n === 1 ? '' : 's'} since ${yr}: median ${what} ${sigMove(x.kind, st.med)} over ${h} months, ${way} ${pc(st.hit)}% of the time; in all months ${sigMove(x.kind, st.base_med)}, ${way} ${pc(st.base_hit)}%.`;
 }
 function sigOos(x) {   // one line on the out-of-sample check
   const w = x.wf; if (!w) return '';
-  if (w.verdict === 'held up') return `Out of sample (after ${w.split.slice(0, 4)}): held up, ${w.n_oos} events, up ${fmtNum(w.hit_oos, 0)}% of the time vs ${fmtNum(w.base_hit_oos, 0)}% normally.`;
+  const way = x.dir > 0 ? 'up' : 'down', pc = v => fmtNum(x.dir > 0 ? v : 100 - v, 0);
+  if (w.verdict === 'held up') return `Out of sample (after ${w.split.slice(0, 4)}): held up, ${w.n_oos} events, ${way} ${pc(w.hit_oos)}% of the time vs ${pc(w.base_hit_oos)}% normally.`;
   if (w.verdict === 'failed') return `Out of sample (after ${w.split.slice(0, 4)}): did not hold up (${w.n_oos} events), so graded down.`;
   return `Out of sample: not testable yet (${w.verdict}).`;
 }
@@ -5237,21 +5249,25 @@ function sigChip(t) { return el('span', { class: 'chip tchip ' + (TIER_CLS[t] ||
 function renderSigIdeas(c) {
   const b = htmlBody(c); if (!SIG) { b.append(el('div', { class: 'empty', text: 'The signal engine runs with the next full data refresh.' })); return; }
   const st = sigStore(), dis = st.dismissed || {}, watch = st.watched || {};
-  const ideas = SIG.ideas.filter(g => g.net > 0), shown = ideas.filter(g => !dis[g.target + '|' + g.dir] || state.sigShowDis);
-  if (!ideas.length) b.append(el('div', { class: 'muted', text: 'No signal with a tested or thin edge is active right now. Context-only signals are listed below; check back after the next refresh.' }));
+  const all = SIG.ideas.filter(g => g.net > 0), side = state.sigSide || 'all';
+  const ideas = all.filter(g => side === 'all' || (side === 'up') === (sigSide(g) > 0)), shown = ideas.filter(g => !dis[g.target + '|' + g.dir] || state.sigShowDis);
+  const nUp = all.filter(g => sigSide(g) > 0).length;
+  b.append(el('div', { class: 'muted small', text: `${nUp} bullish · ${all.length - nUp} bearish (sell-side) ideas active.` }));
+  if (!ideas.length) b.append(el('div', { class: 'muted', text: side === 'all' ? 'No signal with a tested or thin edge is active right now. Context-only signals are listed below; check back after the next refresh.' : `No ${side === 'up' ? 'bullish' : 'bearish'} idea with a tested or thin edge is active right now.` }));
   const wrap = el('div', { class: 'sig-ideas' });
   for (const g of shown.slice(0, state.sigIdeasAll ? 12 : 3)) {
     const key = g.target + '|' + g.dir, sigs = g.signals.map(sigById).filter(Boolean).sort((p, q) => (TIER_W[q.tier] - TIER_W[p.tier]));
     const lead = sigs[0], h = lead.best_h, ls = lead.stats[String(h)];
     const moved = lead.moved, typ = ls ? ls.med : null, frac = moved != null && typ ? Math.max(0, Math.min(1.5, (moved * lead.dir) / Math.abs(typ))) : null;
     const box = el('div', { class: 'sig-idea' + (dis[key] ? ' dismissed' : '') + (watch[key] ? ' watched' : '') });
-    box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), sigChip(lead.tier)));
+    box.append(el('div', { class: 'sig-head' }, el('strong', { text: sigHeadline(g, h) }), el('span', { class: 'sig-tags' }, sigDirChip(g), sigChip(lead.tier))));
     box.append(el('div', { class: 'muted small', text: `${sigs.length} signal${sigs.length === 1 ? '' : 's'} for${g.against.length ? `, ${g.against.length} against` : ', none against'} · since ${lead.since ? monthLab(dayMs(lead.since)) : '–'}` }));
     for (const x of sigs.slice(0, 3)) box.append(el('div', { class: 'sig-ev' }, el('div', { text: '• ' + x.name + (x.revised ? ' (revised data)' : '') + sigWhy(x) }), el('div', { class: 'muted small', text: sigEvidence(x) + ' ' + sigOos(x) })));
     if (sigs.length > 3) box.append(el('div', { class: 'muted small', text: `+ ${sigs.length - 3} more rule${sigs.length === 4 ? '' : 's'} pointing the same way: ${sigs.slice(3).map(x => x.name).join('; ')}.` }));
     if (frac != null) box.append(el('div', { class: 'sig-priced' }, el('span', { class: 'muted small', text: `Since it fired: ${sigMove(lead.kind, moved)} (typical over ${h}m: ${sigMove(lead.kind, typ)})` }),
       el('div', { class: 'rbar' }, el('div', { class: 'rbar-fill', style: `width:${Math.round(Math.min(frac, 1) * 100)}%` }))));
-    box.append(el('div', { class: 'muted small', text: `Cancels if the rule stops holding (${lead.rule}), or ${g.target_name} breaks its trend the other way.` }));
+    const until = lead.since ? ` or the ${h}-month window closes (${monthLab(addMonths(dayMs(lead.since), h))})` : '';
+    box.append(el('div', { class: 'muted small', text: `Ends when the rule stops holding (${lead.rule}), ${g.target_name} breaks its trend the other way${until ? ',' : ''}${until}. Ended rules are listed under “Signals that just ended”.` }));
     if (g.catalysts.length) box.append(el('div', { class: 'muted small', text: 'Next: ' + g.catalysts.map(e => `${dShort(dayMs(e.d))} ${e.region} ${e.name}`).join(' · ') }));
     const sid = S[g.target] ? g.target : null;
     box.append(el('div', { class: 'sig-btns' },
@@ -5266,7 +5282,7 @@ function renderSigIdeas(c) {
   if (shown.length > 3 && !state.sigIdeasAll) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${Math.min(shown.length, 12)} ideas`, onclick: () => { state.sigIdeasAll = true; c.render(); } }));
   const nd = ideas.filter(g => dis[g.target + '|' + g.dir]).length;
   if (nd) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: state.sigShowDis ? 'Hide dismissed' : `Show ${nd} dismissed`, onclick: () => { state.sigShowDis = !state.sigShowDis; c.render(); } }));
-  setNote(c, `Research prompts from fixed rules on public data, ranked by the strength of their record: not recommendations. Each card shows how the target behaved after past signals against all months, how much has already happened since this one fired, and what would cancel it. Engine run ${SIG.generated}.`);
+  setNote(c, `Research prompts from fixed rules on public data, ranked by the strength of their record: not recommendations. Bullish and bearish (sell-side) rules are tested the same way; bearish ones show how often the target fell. Each card shows how the target behaved after past signals against all months, how much has already happened since this one fired, and what would cancel it. Engine run ${SIG.generated}.`);
   setSource(c, 'Dashboard signal engine (pipeline/signals.py) on FRED, Yahoo Finance, OECD, DGBAS and DOSM data');
 }
 function renderSigContext(c) {
@@ -5279,6 +5295,19 @@ function renderSigContext(c) {
   b.append(ul);
   setNote(c, 'Switched on, but their history shows no reliable edge (or too little history to tell). Worth knowing, not worth acting on alone.');
 }
+// exit prompts: rules with a record that switched off lately (the engine's off_since = first month off)
+function renderSigExits(c) {
+  const b = htmlBody(c); if (!SIG) return; setSource(c, 'Dashboard signal engine (pipeline/signals.py); calculated');
+  if (!SIG.signals.some(x => 'off_since' in x)) { b.append(el('div', { class: 'muted', text: 'Appears after the next engine run.' })); return; }
+  const m0 = addMonths(Date.UTC(new Date(state.latest).getUTCFullYear(), new Date(state.latest).getUTCMonth(), 1), -3);
+  const L = SIG.signals.filter(x => !x.on && x.off_since && dayMs(x.off_since) >= m0 && TIER_W[x.tier] > 0).sort((p, q) => q.off_since.localeCompare(p.off_since));
+  if (!L.length) b.append(el('div', { class: 'muted', text: 'None in the last three months.' }));
+  const ul = el('ul', { class: 'changes sig-list' });
+  for (const x of L) ul.append(el('li', {}, sigDirChip(x), ' ', el('a', { href: '#', text: x.name, onclick: e => { e.preventDefault(); state.sigSel = x.id; goSub('signals', 'All signals'); } }),
+    el('span', { class: 'muted small', text: ` · ${x.tier.toLowerCase()} · ended ${monthLab(dayMs(x.off_since))} · ${sigSide(x) > 0 ? 'exit prompt for longs taken on it' : 'its bearish case has lapsed'}` })));
+  b.append(ul);
+  setNote(c, 'Rules with a tested or thin record that switched off in the last three months. For an idea built on a bullish rule this is the exit prompt; for a bearish one, the reason for caution has gone. Prompts, not instructions.');
+}
 const TIER_W = { 'Tested edge': 3, 'Thin evidence': 1, 'Context only': 0, 'Not enough history': 0 };
 state.sigFam = 'All'; state.sigSel = null;
 function renderSigTable(c) {
@@ -5290,7 +5319,7 @@ function renderSigTable(c) {
   if (!state.sigSel && L.length) state.sigSel = L[0].id;
   for (const x of L) { const st = x.best_h ? x.stats[String(x.best_h)] : null;
     tb.append(el('tr', { class: 'row' + (x.id === state.sigSel ? ' sel' : ''), style: 'cursor:pointer', title: x.rule + (x.revised ? ' · uses revised data' : '') + ' · click for detail', onclick: () => { state.sigSel = x.id; c.render(); cards.sig_detail.render(); } },
-      el('td', { text: x.name + (x.share_prices ? ' ⓢ' : ''), title: (x.share_prices ? 'Contains share prices (OECD leading index or the dashboard’s US leading index). ' : '') + sigOos(x) + sigWhy(x) }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
+      el('td', { text: x.name + (x.share_prices ? ' ⓢ' : ''), title: (x.share_prices ? 'Contains share prices (OECD leading index or the dashboard’s US leading index). ' : '') + sigOos(x) + sigWhy(x) }), el('td', { class: 'num ' + (x.on ? (x.dir > 0 ? 'up' : 'dn') : 'muted'), text: x.on ? (sigSide(x) > 0 ? '▲ ' : '▼ ') + (x.since ? 'on · ' + sinceF(dayMs(x.since)) : 'on') : 'off' }),
       el('td', {}, sigChip(x.tier)), el('td', { class: 'num', text: x.best_h ? x.best_h + 'm' : '–' }),
       el('td', { class: 'num', text: st ? `${sigMove(x.kind, st.med)} · ${fmtNum(st.hit, 0)}% up · n${st.n}` : '–' }), el('td', { class: 'num muted', text: st ? `${sigMove(x.kind, st.base_med)} · ${fmtNum(st.base_hit, 0)}% up` : '–' })));
     csv.push([x.name, x.family, x.on, x.since || '', x.tier, x.best_h || '', st ? st.n : '', st ? st.med : '', st ? st.hit : '', st ? st.base_med : '', st ? st.base_hit : '']); }
@@ -5370,7 +5399,8 @@ function sigTiles() {
   const box = $('#sigKpis'); if (!box) return; box.replaceChildren(); if (!SIG) return;
   const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
   const st = sigStore(), dis = st.dismissed || {}, ideas = SIG.ideas.filter(g => g.net > 0);
-  tile('Ideas to investigate', String(ideas.filter(g => !dis[g.target + '|' + g.dir]).length), `${ideas.length} in all${Object.keys(st.watched || {}).length ? ` · ${Object.keys(st.watched).length} watched` : ''}`, 'engine ' + SIG.generated.slice(0, 10));
+  const nUp = ideas.filter(g => sigSide(g) > 0).length;
+  tile('Ideas to investigate', String(ideas.filter(g => !dis[g.target + '|' + g.dir]).length), `${nUp} bullish · ${ideas.length - nUp} bearish${Object.keys(st.watched || {}).length ? ` · ${Object.keys(st.watched).length} watched` : ''}`, 'engine ' + SIG.generated.slice(0, 10));
   const on = SIG.signals.filter(x => x.on);
   tile('Tested-edge signals on', String(on.filter(x => x.tier === 'Tested edge').length), `${on.length} of ${SIG.signals.length} rules on`, 'see All signals');
   const m0 = Date.UTC(new Date(state.latest).getUTCFullYear(), new Date(state.latest).getUTCMonth() - 1, 1);
@@ -5380,7 +5410,9 @@ function sigTiles() {
 }
 function buildSignals() {
   const g = $('#sigGrid');
-  makeCard(g, { key: 'sig_ideas', title: 'Ideas to investigate', wide: true, range: false, render: renderSigIdeas });
+  state.sigSide = state.sigSide || 'all';
+  makeCard(g, { key: 'sig_ideas', title: 'Ideas to investigate', wide: true, range: false, render: renderSigIdeas, seg: { key: 'sigSide', options: [['all', 'All'], ['up', '▲ Bullish'], ['dn', '▼ Bearish']] } });
+  makeCard(g, { key: 'sig_exits', title: 'Signals that just ended', range: false, render: renderSigExits });
   makeCard(g, { key: 'sig_context', title: 'Also on: no proven edge', range: false, render: renderSigContext });
   makeCard(g, { key: 'sig_divtop', title: 'Widest divergences', range: false, render: c => { const b = htmlBody(c); if (!SIG) return; setSource(c, 'Dashboard signal engine on Yahoo Finance prices; calculated');
     const ul = el('ul', { class: 'changes sig-list' }); for (const d of SIG.divergences.slice(0, 4)) ul.append(el('li', {}, el('a', { href: '#', text: `${d.name_b} vs ${d.name_a}: ${sign(d.z)}${fmtNum(Math.abs(d.z), 1)}σ`, onclick: e => { e.preventDefault(); state.sigDiv = SIG.divergences.indexOf(d); goSub('signals', 'Divergences'); } }),
@@ -6687,7 +6719,7 @@ const SUBTABS = {
   valuation: [['Scorecard', ['val_table']], ['US equities', ['val_cape', 'val_fwd', 'val_erp']], ['Bonds, FX & global', ['val_tp', 'val_reer', 'val_stretch']]],
   posvol: [['Volatility', ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv']], ['Positioning (CFTC)', ['pos_table', 'pos_ext', 'pos_hist']], ['Sentiment', ['sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table']]],
   stress: [['Stress composite', ['st_hist', 'st_heat', 'st_ofr']], ['Where everything stands', ['st_table']], ['Peak signposts', ['sg_grid', 'sg_share', 'sg_rules']], ['Uncertainty', ['unc_us', 'unc_global', 'unc_gpr']]],
-  signals: [['Ideas to investigate', ['sig_ideas', 'sig_context', 'sig_divtop']], ['All signals', ['sig_table', 'sig_detail']], ['Divergences', ['sig_div', 'sig_divchart']], ['Track record', ['sig_log']], ['How it works', ['sig_how']]],
+  signals: [['Ideas to investigate', ['sig_ideas', 'sig_exits', 'sig_divtop', 'sig_context']], ['All signals', ['sig_table', 'sig_detail']], ['Divergences', ['sig_div', 'sig_divchart']], ['Track record', ['sig_log']], ['How it works', ['sig_how']]],
   correlation: [['Matrix & shifts', ['matrix', 'shifts']], ['Rolling correlation', ['pair']], ['Lead-lag', ['ll_chart', 'll_bars', 'll_table']], ['Sensitivities', ['sens_table']]],
 };
 state.sub = {};
@@ -6935,7 +6967,7 @@ function sigStrip(tab) {
   const on = SIG ? SIG.signals.filter(x => want.includes(x.target) && x.on && !inIdea.has(x.id)).sort((a, b) => (b.active - a.active) || ((SIG.tiers || []).indexOf(a.tier) - (SIG.tiers || []).indexOf(b.tier))) : [];
   const ul = el('ul'), dot = d => el('span', { class: 'qdot', style: `background:${tok(d > 0 ? '--pos' : '--neg')}` });
   const open = id => e => { e.preventDefault(); state.sigSel = id; goSub('signals', 'All signals'); };
-  for (const x of ideas) ul.append(el('li', {}, dot(x.dir), el('a', { href: '#', text: `Idea to investigate: ${x.target_name} (${x.target.startsWith('R_') ? (x.dir > 0 ? 'outperformance' : 'underperformance') : x.dir > 0 ? 'positive' : 'caution'})`, onclick: e => { e.preventDefault(); goSub('signals', 'Ideas to investigate'); } }),
+  for (const x of ideas) ul.append(el('li', {}, dot(x.dir), el('a', { href: '#', text: `Idea to investigate: ${x.target_name} (${x.target.startsWith('R_') ? (x.dir > 0 ? 'outperformance' : 'underperformance') : sigSide(x) > 0 ? 'bullish' : 'bearish'})`, onclick: e => { e.preventDefault(); goSub('signals', 'Ideas to investigate'); } }),
     el('span', { class: 'muted', text: ` · ${x.signals.length} signal${x.signals.length > 1 ? 's' : ''} for` })));
   const cap = Math.max(0, 4 - ideas.length);
   for (const x of on.slice(0, cap)) ul.append(el('li', {}, dot(x.dir), el('a', { href: '#', text: x.name, onclick: open(x.id) }),

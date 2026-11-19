@@ -782,6 +782,10 @@ table.llt td:last-child { white-space: nowrap; }
 .sig-priced .rbar { display: block; width: 100%; height: 6px; margin-top: 3px; }
 .rbar-fill { height: 100%; border-radius: 3px; background: var(--muted); }
 .chip.tchip.up { --st: var(--pos); } .chip.tchip.warn { --st: var(--warning); } .chip.tchip.none { --st: var(--grid); }
+.sig-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.chip.dchip { padding: 1px 8px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; }
+.chip.dchip.up { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); }
+.chip.dchip.dn { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); }
 .sig-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 ul.changes.sig-list { grid-template-columns: 1fr; columns: auto; }
 ul.changes.sig-list li { display: block; }

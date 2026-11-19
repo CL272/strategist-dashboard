@@ -334,6 +334,10 @@ def study(cond: pd.Series, target: pd.Series, kind: str, d: int, gap: int) -> di
         if last is None or (t - last).days > gap * 30.4:
             ev.append(t)
             last = t
+    off_since = None   # when the latest run ended (the first month off), if the rule is off now: an exit prompt for ideas built on it
+    if not cond.iloc[-1] and cond.any():
+        after = cond.index[cond.index > cond[cond].index[-1]]
+        off_since = after[0] if len(after) else None
     run_start = None
     if cond.iloc[-1]:
         j = len(cond) - 1
@@ -374,6 +378,7 @@ def study(cond: pd.Series, target: pd.Series, kind: str, d: int, gap: int) -> di
             tier = "Context only"
     wf = walk_forward(ev, target, kind, d, valid)
     return dict(events=[str(t.date()) for t in ev], n_events=len(ev), on=bool(cond.iloc[-1]), since=str(run_start.date()) if run_start is not None else None,
+                off_since=str(off_since.date()) if off_since is not None else None,
                 stats={str(h): v for h, v in stats.items()}, best_h=best, tier=tier, history_from=str(start.date()) if start is not None else None, wf=wf)
 
 
