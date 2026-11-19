@@ -121,7 +121,7 @@ function pearson(a, b) {
 // ------------------------------------------------------------------ cards & charts
 function makeCard(parent, o) {
   const c = { ...o, inst: null, csv: null };
-  c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = follow the top date bar
+  c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = the page default (3Y; the page-wide bar was removed 19 Nov 2026)
   const tools = el('div', { class: 'card-tools' });
   if (o.seg && o.seg.select) {   // compact drop-down (e.g. currency choice)
     const sel = el('select', { class: 'mini-select', 'aria-label': o.seg.label || 'Option', title: o.seg.label || '' });
@@ -144,13 +144,17 @@ function makeCard(parent, o) {
     tools.append(seg);
   }
   // rarely used tools live in one "⋯" menu; toggles stay visible in .card-tools
-  c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
+  c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, Ctrl + mouse wheel zooms, double-click resets; ↕ Auto in the header undoes it). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
   c.menuEl = el('div', { class: 'card-menu pop', hidden: true, role: 'menu' }, c.yBtn,
     el('button', { class: 'menu-item', type: 'button', text: '⤓ Download PNG', title: 'Download chart as image', onclick: () => { closePops(); exportPNG(c); } }),
     el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.source || c.asOfText ? [...c.csv, [], ...(c.source ? [['Source: ' + c.source]] : []), ...(c.asOfText ? [[c.asOfText]] : [])] : c.csv, c.title); } }),
     el('div', { class: 'menu-src-wrap', hidden: true }, el('div', { class: 'pop-label', text: 'Source' }), c.srcMenu = el('div', { class: 'menu-src' })));
   const kebab = el('button', { class: 'ghost kebab', type: 'button', text: '⋯', title: 'More: y-axis range, downloads', 'aria-haspopup': 'menu', onclick: e => { e.stopPropagation(); togglePop(c.menuEl); } });
   const actions = el('div', { class: 'card-actions' });
+  // shown only while a y-axis has been stretched, squeezed or typed in: one click back to automatic scaling
+  c.yAuto = el('button', { class: 'ghost y-auto', type: 'button', text: '↕ Auto', hidden: true, title: 'Y-axis: back to automatic scaling',
+    onclick: e => { e.stopPropagation(); yAutoReset(c); } });
+  actions.append(c.yAuto);
   c.rangeEl = o.range === false ? null : buildCardRange(c);
   if (c.rangeEl) actions.append(c.rangePill);
   actions.append(el('button', { class: 'ghost', type: 'button', text: '⤢', title: 'Focus (enlarge for screenshots)', onclick: () => { c.root.classList.toggle('focus'); setTimeout(() => c.inst && c.inst.resize(), 0); } }),
@@ -175,6 +179,10 @@ function makeCard(parent, o) {
     if (c.range) [state.from, state.to] = resolveRange(c.range);
     if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
+    // a hand-set y-axis fits one view: a new date range, toggle or layout goes back to automatic scaling
+    const view = JSON.stringify([c.range, o.seg ? state[o.seg.key] : null, c.pairMode || null]);
+    if (c.yRange && c.viewKey != null && view !== c.viewKey) yAutoReset(c, false);
+    c.viewKey = view;
     const prevUse = S_USE, prevObj = S_OBJ; S_USE = c.used = new Set(); S_OBJ = c.read = new Set(); c.asOf = null;
     try { o.render(c); applyYRange(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
     finally { [state.from, state.to] = keep; S_USE = prevUse; S_OBJ = prevObj; }
@@ -200,7 +208,7 @@ function valueAxes(c) {   // [{i, name, extent:[lo,hi]}] for the chart's numeric
   return out;
 }
 // ---- TradingView-style y-axis: drag the axis numbers up/down to stretch or squeeze the scale,
-// Shift-drag (or two-finger scroll over the axis) to slide it, mouse wheel to zoom at the pointer, double-click to reset.
+// Shift-drag to slide it, Ctrl + mouse wheel to zoom at the pointer (plain wheel scrolls the page), double-click or ↕ Auto to reset.
 function axisAt(c, x, y) {   // the numeric y axis whose label strip is under the pointer, or null
   const ch = c.inst, opt = ch.getOption(), n = (opt.yAxis || []).length;
   for (let i = 0; i < n; i++) {
@@ -221,7 +229,7 @@ function setAxisRange(c, i, lo, hi) {
   // a dragged range rarely ends on round numbers, so the two end labels are hidden to keep the axis tidy
   for (let k = 0; k < n; k++) patch.push(k === i ? { min: lo, max: hi, axisLabel: { showMinLabel: false, showMaxLabel: false } } : {});
   c.inst.setOption({ yAxis: patch });
-  c.yBtn.classList.add('on');
+  c.yBtn.classList.add('on'); c.yAuto.hidden = false;
   if (!c.yPanel.hidden) c.yPanel.hidden = true;
 }
 function attachAxisDrag(c) {
@@ -242,6 +250,8 @@ function attachAxisDrag(c) {
   const end = () => { drag = null; };
   zr.on('mouseup', end); zr.on('globalout', end);
   zr.on('mousewheel', e => {
+    // plain scrolling scrolls the page; Ctrl (or ⌘) + wheel over the axis numbers zooms the axis
+    if (!(e.event && (e.event.ctrlKey || e.event.metaKey))) return;
     const a = axisAt(c, e.offsetX, e.offsetY); if (!a) return;
     if (e.event) { e.event.preventDefault && e.event.preventDefault(); e.event.stopPropagation && e.event.stopPropagation(); }
     const [lo, hi] = a.ext, span = hi - lo, f = e.wheelDelta > 0 ? 0.88 : 1 / 0.88;
@@ -251,11 +261,17 @@ function attachAxisDrag(c) {
   zr.on('dblclick', e => {
     const a = axisAt(c, e.offsetX, e.offsetY); if (!a || !c.yRange) return;
     delete c.yRange[a.i];
-    if (!Object.keys(c.yRange).length) { c.yRange = null; c.yBtn.classList.remove('on'); }
+    if (!Object.keys(c.yRange).length) { c.yRange = null; c.yBtn.classList.remove('on'); c.yAuto.hidden = true; }
     c.render();
   });
 }
+function yManual(c) { return !!c.yRange && Object.values(c.yRange).some(r => r && (r.min != null || r.max != null)); }
+function yAutoReset(c, redraw = true) {
+  c.yRange = null; c.yBtn.classList.remove('on'); c.yAuto.hidden = true; if (c.yPanel) c.yPanel.hidden = true;
+  if (redraw) c.render();
+}
 function applyYRange(c) {
+  if (c.yAuto) c.yAuto.hidden = !yManual(c);
   if (!c.yRange || !c.inst || c.chartEl.hidden) return;
   const n = (c.inst.getOption().yAxis || []).length;
   const patch = [];
@@ -294,7 +310,7 @@ function toggleYPanel(c) {
   };
   inputs.forEach(([, lo, hi]) => [lo, hi].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') apply(); })));
   c.yPanel.append(el('button', { type: 'button', text: 'Apply', onclick: apply }),
-    el('button', { type: 'button', class: 'ghost', text: 'Auto', title: 'Back to automatic scaling', onclick: () => { c.yRange = null; c.yBtn.classList.remove('on'); c.yPanel.hidden = true; c.render(); } }),
+    el('button', { type: 'button', class: 'ghost', text: 'Auto', title: 'Back to automatic scaling', onclick: () => { c.yRange = null; c.yBtn.classList.remove('on'); c.yAuto.hidden = true; c.yPanel.hidden = true; c.render(); } }),
     el('span', { class: 'muted small', text: 'Blank = automatic. Grey numbers show the current range. Tip: you can also drag the axis numbers on the chart (double-click the axis to reset).' }));
   c.yPanel.hidden = false;
 }
@@ -322,7 +338,7 @@ const ASOF_FILES = [
   [/^(ai_|tm_models$)/, () => AI && ['Updated', utcT(AI.updated_utc)]],
   [/^headlines$/, () => NEWS && ['Updated', utcT(NEWS.updated_utc)]],
   [/^cal/, () => CAL && ['Updated', utcT(CAL.generated)]],
-  [/^sig_(?!how)/, () => SIG && ['Updated', utcT(SIG.generated)]],
+  [/^(sig_(?!how)|ov_signals$)/, () => SIG && ['Updated', utcT(SIG.generated)]],
   [/^fp_/, () => FP && ['Futures prices of', utcT(FP.generated)]],
   [/^st_/, () => STR && STR.snapshot && ['Data to', Math.max(...STR.snapshot.map(x => Date.parse(x.asof) || 0))]],
   [/^sg_grid$/, () => SIGN && ['Updated', utcT(META.updated_utc)]],
@@ -378,8 +394,8 @@ function buildCardRange(c) {
   const f = el('input', { type: 'date', 'aria-label': 'From' }), t = el('input', { type: 'date', 'aria-label': 'To' });
   const onDate = () => { const a = Date.parse(f.value), b = Date.parse(t.value); if (!isNaN(a) && !isNaN(b) && a < b) { c.range = { from: a, to: b }; c.render(); } };
   f.addEventListener('change', onDate); t.addEventListener('change', onDate);
-  const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Follow page range', title: 'Use the date range at the top of the page again',
-    onclick: () => { c.range = null; c.render(); closePops(); } });
+  const reset = el('button', { type: 'button', class: 'ghost reset', text: '↺ Default range', title: 'Back to this chart’s usual date range',
+    onclick: () => { c.range = c.defaultRange ? { preset: c.defaultRange } : null; c.render(); closePops(); } });
   seg.title = 'Date range for this chart. Tip: you can also drag across the chart to zoom';
   row.append(el('div', { class: 'pop-label', text: 'Date range for this chart' }), seg, el('span', { class: 'custom' }, f, el('span', { class: 'muted', text: '–' }), t), reset,
     el('div', { class: 'pop-hint', text: 'Tip: drag across the chart to zoom.' }));
@@ -393,11 +409,11 @@ function syncCardRange(c) {
   const active = c.range ? (c.range.preset || 'custom') : (state.preset || 'custom');
   seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.p === active));
   f.value = iso(a); t.value = iso(b); f.max = t.max = iso(state.latest);
-  reset.hidden = !c.range;
+  reset.hidden = c.defaultRange ? !!(c.range && c.range.preset === c.defaultRange) : !c.range;
   const short = t0 => { const d = new Date(t0); return `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`; };
   pill.textContent = (active === 'custom' ? `${short(a)}–${short(b)}` : active === 'MAX' ? 'Max' : active) + ' ▾';
   pill.classList.toggle('own', !!c.range);
-  pill.title = `Date range for this chart: ${nice(a)} – ${nice(b)}` + (c.range ? ' (set on this chart; the page range does not change it)' : ' (follows the page range)');
+  pill.title = `Date range for this chart: ${nice(a)} – ${nice(b)}` + (c.range ? ' (set on this chart)' : ' (the default range; click to change it for this chart)');
 }
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
@@ -1194,13 +1210,35 @@ function renderChanges(c) {
   setNote(c, 'Rules: regime switch or new raw signal; stress band change; more peak signposts; breadth crossing 20% or 80%; VIX curve inverting; a central bank rate change or gauge move over 15bp; a ≥2σ market move; an idea hitting its target or stop; stale data. Red = most important; click a line to open its page.');
 }
 
+// Strategist View: the Signals page's active ideas in two columns (bullish, bearish), plus rules that just ended
+function renderOvSignals(c) {
+  const b = htmlBody(c);
+  if (!SIG) { b.append(el('div', { class: 'muted', text: 'Waiting for the signal engine.' })); return; }
+  const dis = sigStore().dismissed || {}, ideas = SIG.ideas.filter(g => g.net > 0 && !dis[g.target + '|' + g.dir]);
+  const go = () => goSub('signals', 'Ideas to investigate');
+  const col = (lab, cls, L) => el('div', { class: 'ovs-col' }, el('div', { class: 'ovs-h ' + cls, text: `${lab} (${L.length})` }),
+    L.length ? el('ul', { class: 'ovs-list' }, ...L.slice(0, 4).map(g => { const x = sigById(g.signals[0]);
+      return el('li', { title: sigHeadline(g, x.best_h) + (x.since ? ` · since ${monthLab(dayMs(x.since))}` : '') }, el('a', { href: '#', text: g.target_name, onclick: e => { e.preventDefault(); state.sigSide = cls; go(); } }),
+        el('span', { class: 'muted small', text: ` · ${x.best_h}m · ${x.tier.toLowerCase()}` })); }),
+      L.length > 4 ? el('li', { class: 'muted small', text: `+${L.length - 4} more on the Signals page` }) : '') : el('div', { class: 'muted small', text: 'None active.' }));
+  b.append(el('div', { class: 'ovs-grid' }, col('▼ Bearish', 'dn', ideas.filter(g => sigSide(g) < 0)), col('▲ Bullish', 'up', ideas.filter(g => sigSide(g) > 0))));
+  if (SIG.signals.some(x => 'off_since' in x)) {
+    const m0 = addMonths(Date.UTC(new Date(state.latest).getUTCFullYear(), new Date(state.latest).getUTCMonth(), 1), -3);
+    const ended = SIG.signals.filter(x => !x.on && x.off_since && dayMs(x.off_since) >= m0 && TIER_W[x.tier] > 0);
+    if (ended.length) b.append(el('p', { class: 'small ovs-ended' }, el('b', { text: 'Just ended · ' }),
+      ended.map(x => `${sigSide(x) > 0 ? '▲' : '▼'} ${x.target_name} (${monthLab(dayMs(x.off_since))})`).join('; '), el('span', { class: 'muted', text: ' (exit prompts)' })));
+  }
+  setNote(c, 'Active ideas from the Signals page, sell-side first; hover for the headline, click for the evidence. Rules with a tested or thin record over the horizon shown (m = months), not recommendations.');
+  setSource(c, 'Dashboard signal engine (pipeline/signals.py) on FRED, Yahoo Finance, OECD, DGBAS and DOSM data');
+}
 function buildOverview() {
   const g = $('#ovGrid');
   const tp = makeCard(g, { key: 'points', range: false, title: 'Talking points', wide: true, source: 'FRED, Yahoo Finance', render: renderPoints });
   const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
     try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
   tp.root.querySelector('.card-tools').prepend(copy);
-  makeCard(g, { key: 'changes', range: false, wide: true, title: 'What changed this week', source: 'Dashboard rules on its own data', render: renderChanges });
+  makeCard(g, { key: 'changes', range: false, title: 'What changed this week', source: 'Dashboard rules on its own data', render: renderChanges });
+  makeCard(g, { key: 'ov_signals', range: false, title: 'Signals now: bullish and bearish', render: renderOvSignals });
   makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', render: renderHeadlinesCard });
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
@@ -1209,14 +1247,14 @@ function buildOverview() {
     seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
   makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
     source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
-  for (const k of ['points', 'changes', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  for (const k of ['points', 'changes', 'ov_signals', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
 function applyPairToggles() { for (const k of ['ism_ip', 'ism_sv', 'bc_cn', 'bc_mkt', 'bc_my', 'bc_ea', 'netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
   overviewKpis();
-  ['points', 'changes', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
+  ['points', 'changes', 'ov_signals', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
@@ -1583,7 +1621,8 @@ function renderAiRampSpend(c) {
   setSource(c, RAMP_SRC);
 }
 function renderAiRampSize(c) {
-  lines(c, ['RAMP_ADOPT_SMALL', 'RAMP_ADOPT_MEDIUM', 'RAMP_ADOPT_LARGE'].filter(id => has(id)).map(id => ({ name: S[id].label.replace(' (Ramp)', '').replace(' paying for AI', ''), data: pts(S[id], state.from, state.to) })),
+  const tiers = ['RAMP_ADOPT_MICRO', 'RAMP_ADOPT_SMB', 'RAMP_ADOPT_MIDMARKET', 'RAMP_ADOPT_ENTERPRISE'];   // Ramp's tiers since Nov 2026; the old three before
+  lines(c, (tiers.some(id => has(id)) ? tiers : ['RAMP_ADOPT_SMALL', 'RAMP_ADOPT_MEDIUM', 'RAMP_ADOPT_LARGE']).filter(id => has(id)).map(id => ({ name: S[id].label.replace(' (Ramp)', '').replace(' paying for AI', ''), data: pts(S[id], state.from, state.to) })),
     v => fmtNum(v, 1) + '%', v => fmtNum(v, 0) + '%');
   setNote(c, 'Share paying for AI by company size: large firms adopt first; small-business uptake shows how broad the spread is.'); setSource(c, RAMP_SRC);
 }
@@ -5250,6 +5289,7 @@ function renderSigIdeas(c) {
   const b = htmlBody(c); if (!SIG) { b.append(el('div', { class: 'empty', text: 'The signal engine runs with the next full data refresh.' })); return; }
   const st = sigStore(), dis = st.dismissed || {}, watch = st.watched || {};
   const all = SIG.ideas.filter(g => g.net > 0), side = state.sigSide || 'all';
+  c.root.querySelectorAll('.card-tools .seg button').forEach((x, i) => x.classList.toggle('on', ['all', 'up', 'dn'][i] === side));   // also when set from the Strategist View
   const ideas = all.filter(g => side === 'all' || (side === 'up') === (sigSide(g) > 0)), shown = ideas.filter(g => !dis[g.target + '|' + g.dir] || state.sigShowDis);
   const nUp = all.filter(g => sigSide(g) > 0).length;
   b.append(el('div', { class: 'muted small', text: `${nUp} bullish · ${all.length - nUp} bearish (sell-side) ideas active.` }));
@@ -6687,7 +6727,7 @@ function renderCalNext(c) {
 // ------------------------------------------------------------------ sub-tabs
 // Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
 const SUBTABS = {
-  overview: [['Today', ['points', 'changes', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
+  overview: [['Today', ['points', 'changes', 'ov_signals', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
@@ -7357,7 +7397,7 @@ function setTab(t) {
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
-  $('.filters').hidden = t === 'news' || t === 'calendar' || t === 'weekly' || t === 'ideas';
+  $('.filters').hidden = true;   // the page-wide date bar was removed (owner, 19 Nov 2026); each card has its own range pill
   setFiltersHeight();
   renderTab();
 }

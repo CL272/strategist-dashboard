@@ -79,6 +79,23 @@ def _tokenomics(t: str) -> dict[str, pd.Series]:
     return out
 
 
+
+def _size_key(size: str):
+    """Ramp's company-size label -> (stable id suffix, display name). Ramp renamed its tiers in Nov 2026
+    ("Small" / "Medium-sized" / "Large" became "1. Micro-SMB (MIC)", "2. SMB", "3. Mid-Market (MM)", "4. Enterprise (ENT)");
+    the new tiers get new ids so the two definitions never mix."""
+    t = re.sub(r"^\s*\d+\.\s*", "", size or "").strip()
+    low = t.lower()
+    for pat, key, name in (("micro", "MICRO", "Micro businesses"), ("enterprise", "ENTERPRISE", "Enterprises"),
+                           ("mid", "MIDMARKET", "Mid-market firms"), ("smb", "SMB", "Small businesses")):
+        if pat in low:
+            return key, name
+    old = {"small": "SMALL", "medium": "MEDIUM", "large": "LARGE"}   # the earlier three tiers
+    for pat, key in old.items():
+        if low.startswith(pat):
+            return key, t.split()[0]
+    return None, t
+
 def build(status: dict) -> None:
     print("Ramp AI Index")
     old = load_existing("ramp.json")
@@ -95,8 +112,9 @@ def build(status: dict) -> None:
                 series[f"RAMP_ADOPT_{v.upper()}"] = (s, f"Businesses paying for {v} (Ramp)", "%")
         for size in sorted({x.get("business_size") for x in props.get("adoptionSize", []) if x.get("business_size")}):
             s = _series([x for x in props["adoptionSize"] if x.get("business_size") == size], "date_month", "adoption_rate_pct")
-            if len(s):
-                series["RAMP_ADOPT_" + size.split()[0].upper().replace("-SIZED", "")] = (s, f"{size} paying for AI (Ramp)", "%")
+            key, name = _size_key(size)
+            if len(s) and key:
+                series["RAMP_ADOPT_" + key] = (s, f"{name} paying for AI (Ramp)", "%")
         share = (props.get("spendShareData") or {}).get("overall") or []
         if share:
             series["RAMP_AI_SHARE"] = (_series(share, "my_date", "ai_share_of_tpv", 100), "AI share of business spend (Ramp)", "%")

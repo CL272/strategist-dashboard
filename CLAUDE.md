@@ -15,8 +15,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   lists people browse use view chips (Markets → Performance, Watchlist). Never dump hundreds of rows open.
 - **Tiles: at most 5 per sub-tab, one slim strip.** Pick them per sub-tab in `TILE_SETS` (label prefixes); `fitTiles` runs
   after every render, falls back to the first five, and puts the full change and date in each tile's tooltip.
-- **Page frame (redesign, Nov 2026):** one sticky header row (`.pagebar`: title and section left, date range right; the
-  greeting only on the Strategist View); then the sub-tab bar (underlined text on one line, scrolls sideways, never
+- **Page frame (redesign, Nov 2026):** one sticky header row (`.pagebar`: title and section left; the greeting only on the
+  Strategist View). The page-wide date bar was removed (owner, 19 Nov 2026): each card's range pill sets its dates, cards
+  without their own `defaultRange` use 3Y; then the sub-tab bar (underlined text on one line, scrolls sideways, never
   wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
   "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages).
 - **Sources and dates sit under every card** (owner's request, 19 Nov 2026): one muted line, source on the left (click to
@@ -29,6 +30,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
+- **Y-axis by hand, back in one click**: dragging the axis numbers (or Ctrl + wheel over them; a plain wheel scrolls the
+  page) sets `c.yRange`; the header then shows "↕ Auto" (`yAutoReset`), and a new date range, toggle or layout clears it.
 - **Axis labels never repeat a rounded number**: when an axis's ticks fall between whole numbers, `valAxis` and
   `fixAxisDecimals` relabel that whole axis with 2 decimals (owner's request). Keep axis formatters on `fmtNum`.
   A series moved forward to show a lead carries `_src` (the unshifted series) so its card's date stays true.
@@ -54,7 +57,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Signals show both directions alike**: bullish and bearish (sell-side) rules are tested the same way; label them with
   `sigDirLab`/`sigSide` (a rising yield reads as bearish for bonds) and state bearish odds as "down X%". `signals.py` writes
   `off_since` (first month off); rules with a record that ended in the last three months are the exit prompts in
-  "Signals that just ended". Signals are research prompts, never recommendations.
+  "Signals that just ended". The Strategist View shows them in two columns (`ov_signals`, sell-side first).
+  Signals are research prompts, never recommendations.
 - **Structured products** live in `docs/sp.js` (page), `docs/sp-model.js` (pricing maths, shared with the Monte Carlo worker
   `docs/sp-worker.js`) and `pipeline/structured.py` (data). Generic structure names only, never issuer or product brand
   names; every figure says "indicative … not a quote". Run `node tools/sp-check.js` after any change to the model or the

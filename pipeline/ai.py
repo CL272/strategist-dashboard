@@ -87,8 +87,14 @@ def openrouter(notes: list) -> dict:
     apps = _dehydrated(html, '["rankings","apps"]') or {}
     wprice = bench.get("weightedInputPrices", {}) or {}
     cpr = bench.get("costPerRequest", {}) or {}
-    intel = {x.get("permaslug"): x.get("score") for x in (bench.get("aaData", {}) or {}).get("intelligence", [])}
-    coding = {x.get("permaslug"): x.get("score") for x in (bench.get("aaData", {}) or {}).get("coding", [])}
+    aa = bench.get("aaData", {}) or {}
+    # OpenRouter renamed "intelligence" to "intelligenceIndex" (Nov 2026) and dropped the coding list: accept either
+    intel_l = aa.get("intelligence") or aa.get("intelligenceIndex") or []
+    coding_l = aa.get("coding") if isinstance(aa.get("coding"), list) else []
+    intel = {x.get("permaslug"): x.get("score") for x in intel_l if isinstance(x, dict)}
+    coding = {x.get("permaslug"): x.get("score") for x in coding_l if isinstance(x, dict)}
+    if not intel:
+        notes.append("OpenRouter rankings: no capability scores found (page layout changed?)")
 
     def base(slug):   # 'anthropic/claude-opus-5-20260723' -> 'anthropic/claude-opus-5'
         return re.sub(r"-\d{8}$", "", slug or "")

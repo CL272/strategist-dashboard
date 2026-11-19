@@ -938,3 +938,16 @@ textarea.vdlg-in { resize: vertical; font: inherit; line-height: 1.5; }
 .nbk-text { min-height: 240px; }
 #nbkGrid .card .html-body > .vdlg-in { margin-bottom: 8px; }
 @media (max-width: 640px) { .vset-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .note-btn { display: none; } }
+
+/* the page-wide date bar is gone (owner's request, 19 Nov 2026): each card's range pill sets its dates */
+.pagebar .filters { display: none !important; }
+/* y-axis back to automatic: visible only while an axis is hand-set (overrides the hover-only header buttons) */
+.card-actions .y-auto:not([hidden]) { opacity: 1 !important; visibility: visible !important; color: var(--accent); border-color: var(--accent); font-size: 12px; padding: 2px 8px; }
+/* Strategist View: signals in two columns */
+.ovs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ovs-h { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.ovs-h.dn { color: var(--neg); } .ovs-h.up { color: var(--pos); }
+.ovs-list { margin: 0; padding-left: 16px; font-size: 13px; line-height: 1.4; }
+.ovs-list li { margin-bottom: 4px; }
+.ovs-ended { margin: 8px 0 0; }
+@media (max-width: 600px) { .ovs-grid { grid-template-columns: 1fr; } }
