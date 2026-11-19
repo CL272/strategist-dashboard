@@ -32,8 +32,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Axis labels never repeat a rounded number**: when an axis's ticks fall between whole numbers, `valAxis` and
   `fixAxisDecimals` relabel that whole axis with 2 decimals (owner's request). Keep axis formatters on `fmtNum`.
   A series moved forward to show a lead carries `_src` (the unshifted series) so its card's date stays true.
-- **Charts: at most 5 coloured lines.** `drawLines` greys the rest (home markets first) and shortens legend names;
-  give series full names and let it shorten them.
+- **Charts: every line in colour, up to ten** (owner's request, 19 Nov 2026; readability over the house palette). `drawLines`
+  greys only lines beyond ten (home markets first) and shortens legend names; give series full names and let it shorten them.
+  Slots `--s1`…`--s10` in `style.css`. Asia-Pacific economies keep one colour on every chart (`COUNTRY_TOK`; `seriesCard`
+  uses it when every id has a country prefix). The Playbook's faint past-episode fan is deliberate and stays grey.
 - **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`).
 - **Region and country pages hold everything about one place, split by asset class.** Sub-tabs always in this order,
   leaving out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one in two to stay

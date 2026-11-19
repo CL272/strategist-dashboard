@@ -33,8 +33,11 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const tok = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const SLOTS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
-const col = i => tok(SLOTS[i % 8]);
+const SLOTS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8', '--s9', '--s10'];
+const col = i => tok(SLOTS[i % SLOTS.length]);
+// one colour per Asia-Pacific economy, the same on every chart (owner's request: readable, not limited to the house colours)
+const COUNTRY_TOK = { MY: '--s1', SG: '--s2', AU: '--s3', KR: '--s4', TW: '--s5', CN: '--s6', IN: '--s7', ID: '--s8', JP: '--s9' };
+const countryCol = id => { const m = /^([A-Z]{2})_/.exec(id); return m && COUNTRY_TOK[m[1]] ? tok(COUNTRY_TOK[m[1]]) : null; };
 
 const iso = t => new Date(t).toISOString().slice(0, 10);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -483,6 +486,7 @@ function line(name, data, color, extra = {}) {
   return {
     name, type: 'line', data, showSymbol: false, symbol: 'circle', symbolSize: 8, sampling: 'lttb',
     lineStyle: { width: 2, color }, itemStyle: { color }, emphasis: { disabled: true }, ...extra,
+    ...(extra.lineStyle ? { lineStyle: { width: 2, color, ...extra.lineStyle } } : {}),   // a style tweak keeps the series colour
   };
 }
 function zeroLine() {
@@ -574,7 +578,7 @@ function endsTooClose(list) {   // end labels collide when the last values sit c
   return last.some((v, i) => i > 0 && (v - last[i - 1]) / span < 0.07);
 }
 // ---- busy charts: short legend names, and at most five lines in colour
-const MAX_COLOUR = 5;
+const MAX_COLOUR = 10;   // every line in colour up to ten (owner's request, 19 Nov 2026); beyond that the rest are grey
 const HOME_RE = /^(Malaysia|Malaysian|MY |KLCI|FBM KLCI|BNM|OPR|Singapore|SG |SGS|STI|Straits|S\$|MAS|US |US$|UST|United States|S&P|Fed|EFFR|Effective fed)/i;
 function shortNames(names) {   // drop words every legend entry repeats ("… CPI YoY", "… 10Y yield")
   if (names.length < 3) return names;
@@ -597,7 +601,8 @@ function drawLines(c, list, { fmt = v => fmtNum(v, autoDec(v)), axisFmt, zero = 
   const focus = focusSeries(list), muted = tok('--muted');
   const series = list.map((s, i) => focus.has(i) ? line(s.name, s.data, s.color || col(i), s.extra || {})
     : line(s.name, s.data, muted, { ...(s.extra || {}), lineStyle: { width: 1.1, color: muted, opacity: 0.55 }, itemStyle: { color: muted }, z: 1 }));
-  if (focus.size < list.length) { endLabels = false; series.forEach(x => { x.emphasis = { focus: 'series', lineStyle: { width: 2.6, opacity: 1 } }; x.blur = { lineStyle: { opacity: 0.25 } }; }); }
+  if (list.length > 5) series.forEach(x => { if (x.lineStyle && x.z !== 1 && x.lineStyle.width === 2) x.lineStyle = { ...x.lineStyle, width: 1.7 }; });   // many lines: a little thinner
+  if (focus.size < list.length || list.length > 5) { endLabels = endLabels && focus.size === list.length; series.forEach(x => { x.emphasis = { focus: 'series', lineStyle: { width: 2.6, opacity: 1 } }; x.blur = { lineStyle: { opacity: 0.25 } }; }); }
   const legendNames = shortNames(list.map(s => s.name)), legendMap = new Map(list.map((s, i) => [s.name, legendNames[i]]));
   if ((zero || hlines.length) && series.length) {
     const ml = zeroLine();
@@ -2525,7 +2530,8 @@ function regionKpis(box = $('#asiaKpis')) {
 }
 function seriesCard(ids, fmt, axisFmt, opts = {}) {
   return c => { const ok = ids.filter(id => has(id)); if (!ok.length) return setEmpty(c, 'Waiting for data.');
-    drawLines(c, ok.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })), { fmt, axisFmt, endLabels: ok.length < 3, ...opts });
+    const byCountry = ok.length >= 3 && ok.every(id => countryCol(id));   // country comparisons: each economy keeps its colour
+    drawLines(c, ok.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: byCountry ? countryCol(id) : col(i) })), { fmt, axisFmt, endLabels: ok.length < 3, ...opts });
     setSource(c, srcOf(ok)); if (opts.note) setNote(c, opts.note); };
 }
 const pct1 = v => fmtNum(v, 1) + '%', pct2 = v => fmtNum(v, 2) + '%', pct0 = v => fmtNum(v, 0) + '%';
