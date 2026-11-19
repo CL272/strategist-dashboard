@@ -19,8 +19,12 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   greeting only on the Strategist View); then the sub-tab bar (underlined text on one line, scrolls sideways, never
   wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
   "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages).
-- **Sources live in the card's "⋯" menu** (`setSource` fills it) and in CSV and PNG downloads; only licence credits
-  (Cboe, Vast.ai, GetDeploying, Zillow: `SRC_KEEP`) stay on the card face. Text columns in tables use class `l` so they
+- **Sources and dates sit under every card** (owner's request, 19 Nov 2026): one muted line, source on the left (click to
+  show in full), "Data to …" on the right. `setSource` sets the source; the date is worked out after each render (`showAsOf`)
+  from the series the card read (`idxLE`/`pts` record them), one date per frequency, with each series listed in the date's
+  tooltip. Cards drawn from a data file rather than the series store get a date from `ASOF_FILES`; a render can also call
+  `setAsOf(c, t)`. A card drawn outside `c.render` must call `showAsOf` itself (see `renderMktCharts`). Both go into CSV downloads.
+  Text columns in tables use class `l` so they
   wrap; numbers never wrap. On phones the first table column stays put while the rest scrolls.
 - **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway

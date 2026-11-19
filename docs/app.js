@@ -2,7 +2,9 @@
 'use strict';
 
 const DAY = 864e5;
-const S = {};                 // series store: id -> {id,label,group,kind,unit,source,note,t:[ms],v:[]}
+let S_USE = null, S_OBJ = null;   // while a card draws: series it looks up (ids) and series whose values it reads (objects), for its "Data to" date
+const S_RAW = {};             // series store: id -> {id,label,group,kind,unit,source,note,t:[ms],v:[]}
+const S = new Proxy(S_RAW, { get(o, k) { if (S_USE && typeof k === 'string' && k in o) S_USE.add(k); return o[k]; } });
 let META = {};
 const FONT = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
 const state = {
@@ -71,6 +73,7 @@ function fmtChg(s, c) {
 
 // ------------------------------------------------------------------ series access
 function idxLE(s, x) {
+  if (S_OBJ) S_OBJ.add(s);
   let lo = 0, hi = s.t.length - 1, ans = -1;
   while (lo <= hi) { const m = (lo + hi) >> 1; if (s.t[m] <= x) { ans = m; lo = m + 1; } else hi = m - 1; }
   return ans;
@@ -138,7 +141,7 @@ function makeCard(parent, o) {
   c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, mouse wheel zooms, double-click resets). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
   c.menuEl = el('div', { class: 'card-menu pop', hidden: true, role: 'menu' }, c.yBtn,
     el('button', { class: 'menu-item', type: 'button', text: '⤓ Download PNG', title: 'Download chart as image', onclick: () => { closePops(); exportPNG(c); } }),
-    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.source ? [...c.csv, [], ['Source: ' + c.source]] : c.csv, c.title); } }),
+    el('button', { class: 'menu-item', type: 'button', text: '⤓ Download CSV', title: 'Download chart data', onclick: () => { closePops(); c.csv && downloadCSV(c.source || c.asOfText ? [...c.csv, [], ...(c.source ? [['Source: ' + c.source]] : []), ...(c.asOfText ? [[c.asOfText]] : [])] : c.csv, c.title); } }),
     el('div', { class: 'menu-src-wrap', hidden: true }, el('div', { class: 'pop-label', text: 'Source' }), c.srcMenu = el('div', { class: 'menu-src' })));
   const kebab = el('button', { class: 'ghost kebab', type: 'button', text: '⋯', title: 'More: y-axis range, downloads', 'aria-haspopup': 'menu', onclick: e => { e.stopPropagation(); togglePop(c.menuEl); } });
   const actions = el('div', { class: 'card-actions' });
@@ -153,11 +156,11 @@ function makeCard(parent, o) {
   c.chartEl = el('div', { class: 'chart' });
   c.emptyEl = el('div', { class: 'empty', hidden: true });
   c.noteEl = el('p', { class: 'note', hidden: true });
-  c.srcEl = el('p', { class: 'src' });
+  c.srcEl = el('p', { class: 'src' }, c.srcTxt = el('span', { class: 'src-t' }), c.srcDate = el('span', { class: 'src-d' }));
   c.root = el('div', { class: 'card' + (o.wide ? ' wide' : '') + (o.tall ? ' tall' : '') },
     el('div', { class: 'card-head' }, el('div', { class: 'card-title' }, c.titleEl), tools, actions), c.subEl,
     c.chartEl, c.emptyEl, c.yPanel = el('div', { class: 'y-panel', hidden: true }), c.noteEl, c.srcEl);
-  c.srcEl.addEventListener('click', () => c.srcEl.classList.toggle('open'));
+  c.srcTxt.addEventListener('click', () => c.srcEl.classList.toggle('open'));
   parent.append(c.root);
   setSource(c, o.source || '');
   c.render = () => {
@@ -166,8 +169,11 @@ function makeCard(parent, o) {
     if (c.range) [state.from, state.to] = resolveRange(c.range);
     if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
+    const prevUse = S_USE, prevObj = S_OBJ; S_USE = c.used = new Set(); S_OBJ = c.read = new Set(); c.asOf = null;
     try { o.render(c); applyYRange(c); } catch (e) { console.error(o.key, e); setEmpty(c, 'Could not draw this chart.'); }
-    finally { [state.from, state.to] = keep; }
+    finally { [state.from, state.to] = keep; S_USE = prevUse; S_OBJ = prevObj; }
+    if (!c.used.size && !c.read.size && c.usedPrev) [c.used, c.read] = c.usedPrev;   // a cached render reads nothing: keep the last lists
+    c.usedPrev = [c.used, c.read]; try { showAsOf(c); } catch (e) { console.warn('as-of date', o.key, e); }
     c.yBtn.hidden = !valueAxes(c).length;
     if (c.rangeEl) syncCardRange(c);
   };
@@ -288,9 +294,53 @@ function toggleYPanel(c) {
 }
 const SRC_KEEP = /Cboe|Vast\.ai|GetDeploying|Zillow/i;   // credits the data licences ask to show beside the chart
 function setSource(c, txt) {
-  c.source = txt; c.srcEl.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt; c.srcEl.title = txt ? 'Source: ' + txt + ' (click to show in full)' : '';
+  c.source = txt; c.srcTxt.textContent = txt ? 'Source: ' + txt : ''; c.srcEl.hidden = !txt && !c.srcDate.textContent; c.srcTxt.title = txt ? 'Source: ' + txt + ' (click to show in full)' : '';
   if (c.srcMenu) { c.srcMenu.textContent = txt || ''; c.srcMenu.parentElement.hidden = !txt; }
   if (c.root) c.root.classList.toggle('src-keep', !!txt && SRC_KEEP.test(txt));
+}
+// "Data to …": the latest observation (up to the card's end date) of every series the card read while drawing,
+// one date per frequency (daily dates, months for monthly data, quarters, years). Hover lists each series.
+// A render can also give its own date with setAsOf(c, t) (data that is not in the series store).
+function freqOf(s) {
+  const n = s.t.length; if (n < 2) return 'd';
+  const g = []; for (let i = Math.max(1, n - 6); i < n; i++) g.push(s.t[i] - s.t[i - 1]);
+  g.sort((a, b) => a - b); const m = g[g.length >> 1] / DAY;
+  return m <= 4 ? 'd' : m <= 10 ? 'w' : m <= 45 ? 'm' : m <= 130 ? 'q' : 'y';
+}
+const FREQ_NAME = { d: 'daily', w: 'weekly', m: 'monthly', q: 'quarterly', y: 'annual' };
+function dateLab(t, f) { const d = new Date(t); return f === 'm' ? monthLab(t) : f === 'q' ? `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${d.getUTCFullYear()}` : f === 'y' ? String(d.getUTCFullYear()) : nice(t); }
+function setAsOf(c, t, f = 'd') { c.asOf = t ? { t: typeof t === 'number' ? t : Date.parse(t), f } : null; }
+// cards built from a data file rather than the series store: the file's own date ("Updated …" when it is a fetch time)
+const utcT = x => x ? Date.parse(String(x).replace(' UTC', 'Z').replace(' ', 'T')) : NaN;
+const ASOF_FILES = [
+  [/^(ai_|tm_models$)/, () => AI && ['Updated', utcT(AI.updated_utc)]],
+  [/^headlines$/, () => NEWS && ['Updated', utcT(NEWS.updated_utc)]],
+  [/^cal/, () => CAL && ['Updated', utcT(CAL.generated)]],
+  [/^sig_(?!how)/, () => SIG && ['Updated', utcT(SIG.generated)]],
+  [/^fp_/, () => FP && ['Futures prices of', utcT(FP.generated)]],
+  [/^st_/, () => STR && STR.snapshot && ['Data to', Math.max(...STR.snapshot.map(x => Date.parse(x.asof) || 0))]],
+  [/^sg_grid$/, () => SIGN && ['Updated', utcT(META.updated_utc)]],
+  [/^sp_(term|baskets)$/, () => typeof SPD !== 'undefined' && SPD && SPD._meta && ['Updated', utcT(SPD._meta.fetched_utc)]],
+  [/^shifts$/, () => ['Data to', state.to || state.latest]],
+];
+function showAsOf(c) {
+  const to = c.lastRange ? c.lastRange[1] : state.to, rows = [];
+  if (!c.emptyEl.hidden) { c.srcDate.textContent = ''; c.srcEl.hidden = !c.source; c.asOfText = ''; return; }
+  // series whose values were read; if none (a render that works on raw arrays), every series it looked up
+  const list = c.read && c.read.size ? [...c.read] : [...(c.used || [])].map(id => S_RAW[id]), seen = new Set();
+  for (const s of list) { if (!s || !s.t || !s.t.length || seen.has(s)) continue; seen.add(s); const i = idxLE(s, to == null ? Infinity : to); if (i >= 0) rows.push({ id: s.id, s, t: s.t[i], f: freqOf(s) }); }
+  const best = {};
+  for (const r of rows) if (!best[r.f] || r.t > best[r.f]) best[r.f] = r.t;
+  if (c.asOf && !isNaN(c.asOf.t) && (!best[c.asOf.f] || c.asOf.t > best[c.asOf.f])) best[c.asOf.f] = c.asOf.t;
+  if (best.d && best.w && best.d - best.w < 10 * DAY) delete best.w;   // a weekly series a few days behind the daily ones adds nothing
+  let fs = Object.keys(best).sort((a, b) => 'dwmqy'.indexOf(a) - 'dwmqy'.indexOf(b));
+  if (fs.length > 3) fs = [fs[0], ...fs.slice(-2)];   // the freshest, then the two slowest kinds; the rest are in the tooltip
+  let file = null;
+  if (!fs.length) { const m = ASOF_FILES.find(([re]) => re.test(c.key)); file = m && m[1](); }
+  const txt = file && file[1] > 0 ? `${file[0]} ${nice(file[1])}` : !fs.length ? '' : fs.length === 1 ? 'Data to ' + dateLab(best[fs[0]], fs[0]) : 'Data to ' + fs.map(f => `${dateLab(best[f], f)} (${FREQ_NAME[f]})`).join(' · ');
+  c.asOfText = txt; c.srcDate.textContent = txt; c.srcEl.hidden = !c.source && !txt;
+  rows.sort((a, b) => b.t - a.t);
+  c.srcDate.title = rows.length ? 'Latest observation of each series on this card:\n' + rows.slice(0, 15).map(r => `${r.s.short || r.s.label || r.id || 'calculated series'}: ${dateLab(r.t, r.f)}`).join('\n') + (rows.length > 15 ? `\n… and ${rows.length - 15} more` : '') + (META.updated_utc ? `\n\nSite data refreshed ${META.updated_utc}` : '') : '';
 }
 function srcOf(ids) {   // merge "Provider (detail)" sources: Yahoo Finance (A), Yahoo Finance (B) -> Yahoo Finance (A, B)
   const by = new Map();
@@ -4136,6 +4186,8 @@ function renderMktCharts() {
     drawLines(c2, yl.map(id => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(state.selSlot[id]) })),
       { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%' });
   }
+  // these two cards are drawn here rather than through c.render: give them their "Data to" dates directly
+  for (const [c, ids] of [[c1, pr], [c2, yl]]) { c.read = new Set(ids.map(id => S_RAW[id])); c.lastRange = [state.from, state.to]; try { showAsOf(c); } catch (e) { /* date only */ } }
 }
 // ------------------------------------------------------------------ MARKETS → Trend (WP23)
 // Trend state of the main assets and of the relative-strength ratios strategists watch. Prices only (FX as quoted).
@@ -4716,6 +4768,8 @@ function renderCorrMatrix(c) {
 function renderShifts(shifts) {
   const c = cards.shifts;
   c.chartEl.hidden = true; c.emptyEl.hidden = true;
+  // drawn by the matrix card: share its series list and date once it has finished reading
+  c.read = cards.matrix.read; c.used = cards.matrix.used; c.lastRange = cards.matrix.lastRange; setTimeout(() => { try { showAsOf(c); } catch (e) { /* date only */ } }, 0);
   let ul = c.root.querySelector('.shifts'); if (!ul) { ul = el('ul', { class: 'shifts' }); c.root.insertBefore(ul, c.noteEl); }
   ul.replaceChildren();
   shifts.sort((p, q) => Math.abs(q.d) - Math.abs(p.d)).slice(0, 10).forEach(s => {
@@ -4887,6 +4941,7 @@ function capRows(tb, key, n = 12) {
 function renderLLTable(c) {
   const b = htmlBody(c), rows = LL_PAIRS.filter(p => has(p[0], p[2])).map(p => ({ p, sc: llScan(p[0], p[1], p[2], p[3]) })).filter(r => r.sc)
     .sort((x, y) => Math.abs(y.sc.best.r) - Math.abs(x.sc.best.r));
+  setSource(c, srcOf([...new Set(rows.flatMap(r => [r.p[0], r.p[2]]))]) + '; calculated');
   const tbl = el('table', { class: 'perf watch' }), heads = ['Relationship', 'First series', 'Second series', 'As measured', 'Best shift', 'Correlation there', 'Months'];
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 3 ? 'l' : '' })))));
   const tb = el('tbody'), L = state.ll;
@@ -5189,7 +5244,7 @@ function renderSigIdeas(c) {
   setSource(c, 'Dashboard signal engine (pipeline/signals.py) on FRED, Yahoo Finance, OECD, DGBAS and DOSM data');
 }
 function renderSigContext(c) {
-  const b = htmlBody(c); if (!SIG) return;
+  const b = htmlBody(c); if (!SIG) return; setSource(c, 'Dashboard signal engine (pipeline/signals.py); calculated');
   const L = SIG.signals.filter(x => x.on && (x.active || x.months_on <= 12) && TIER_W[x.tier] === 0);
   if (!L.length) { b.append(el('div', { class: 'muted', text: 'None.' })); return; }
   const ul = el('ul', { class: 'changes sig-list' });
@@ -5301,7 +5356,7 @@ function buildSignals() {
   const g = $('#sigGrid');
   makeCard(g, { key: 'sig_ideas', title: 'Ideas to investigate', wide: true, range: false, render: renderSigIdeas });
   makeCard(g, { key: 'sig_context', title: 'Also on: no proven edge', range: false, render: renderSigContext });
-  makeCard(g, { key: 'sig_divtop', title: 'Widest divergences', range: false, render: c => { const b = htmlBody(c); if (!SIG) return;
+  makeCard(g, { key: 'sig_divtop', title: 'Widest divergences', range: false, render: c => { const b = htmlBody(c); if (!SIG) return; setSource(c, 'Dashboard signal engine on Yahoo Finance prices; calculated');
     const ul = el('ul', { class: 'changes sig-list' }); for (const d of SIG.divergences.slice(0, 4)) ul.append(el('li', {}, el('a', { href: '#', text: `${d.name_b} vs ${d.name_a}: ${sign(d.z)}${fmtNum(Math.abs(d.z), 1)}σ`, onclick: e => { e.preventDefault(); state.sigDiv = SIG.divergences.indexOf(d); goSub('signals', 'Divergences'); } }),
       el('span', { class: 'muted small', text: ` · ${d.name_b} ${pctF1(d.ret_b)} vs implied ${pctF1(d.implied_b)} over 3 months` }))); b.append(ul);
     setNote(c, 'Pairs that usually move together, ranked by how far apart they are now (standard deviations of the usual gap). Beyond ±2σ is unusual.'); } });
@@ -6160,6 +6215,7 @@ function renderCbTable(c) {
   tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
   c.csv = csv;
   setNote(c, `Fed: what fed funds futures price over the next ~6 months. ECB, BoJ, BNM, RBA: the named market rate minus the policy rate. “vs normal” removes the usual premium: for money-market rates (BNM interbank, RBA bills) the median spread in past periods with no rate move; government-curve rates (BoJ JGBs, ECB forwards) are read as is. The gauge reads direction, not probabilities; beyond ±${CB_DEAD}bp of normal reads as hikes or cuts priced. Real rate = policy rate minus latest headline inflation (Singapore: MAS core). Click a row for that bank.`);
+  setSource(c, 'FRED (EFFR); CBOT fed funds futures via Yahoo Finance; ECB Data Portal; Bank of Japan; Bank Negara Malaysia; RBA; MAS; inflation from national statistics offices; calculated');
 }
 function renderCbRates(c) {
   cbPrep();
@@ -6501,7 +6557,7 @@ function calTable(list, today, { compact = false, weekly = false } = {}) {
       ? [e.sgt || '–', e.region, name, prev]
       : [weekly ? `${WEEKDAYS[new Date(d).getUTCDay()]} ${new Date(d).getUTCDate()}` + (e.sgt ? ' · ' + e.sgt : '') : e.sgt || '–', e.region, name, e.period || e.covers || '', actual, prev, el('span', { class: 'tag ' + e.conf.toLowerCase(), text: timing, title: timingTip }), e.src || ''];
     const cls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
-    tb.append(el('tr', { class: 'row ' + st }, ...cells.map((x, i) => el('td', { class: cls[i] }, x))));
+    tb.append(el('tr', { class: 'row ' + st, title: e.src ? 'Source: ' + e.src : '' }, ...cells.map((x, i) => el('td', { class: cls[i] }, x))));   // per-event source: hover (column kept in CSV)
     csv.push([iso(d), e.sgt || '', e.region, e.name, ...(compact ? [e.prev || ''] : [e.period || '', e.actual || '', e.prev || '', timing, e.src || ''])]);
   }
   tbl.append(tb);
@@ -6723,6 +6779,7 @@ function renderPolicySummary(c, k) {
   b.append(el('table', { class: 'perf asset-table kv' }, el('tbody', {}, ...rows.map(([a, v]) => el('tr', { class: 'row' }, el('td', { text: a }), el('td', { class: 'num', text: v }))))),
     el('button', { type: 'button', class: 'ghost more-btn', text: 'Open on Central banks →', onclick: go }));
   setNote(c, 'Summary only; the full picture (implied path, history, decisions) is on the Central banks page.');
+  setSource(c, (k === 'Fed' ? 'CBOT 30-day fed funds futures via Yahoo Finance; FRED (EFFR); Federal Reserve projections' : CBS[k].src) + '; inflation from the national statistics office; calculated');
 }
 const pctF1 = v => sign(v) + fmtNum(Math.abs(v), 1) + '%';
 function buildRegions() {

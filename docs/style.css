@@ -378,6 +378,7 @@ table.cal td.ev .star { color: var(--serious); display: inline-block; width: 14p
 table.cal td.ev .muted { margin-left: 14px; }
 table.cal td.reg { white-space: nowrap; color: var(--ink-2); }
 table.cal td.src { color: var(--muted); font-size: 12px; white-space: normal; }
+table.cal th.src, table.cal td.src { display: none; }   /* each event's source is in its row's hover text and in the CSV; the card names the sources below */
 table.cal tr.grp.today td { color: var(--accent); }
 table.cal tr.grp.past td { color: var(--muted); }
 table.cal tr.row.done td.ev { color: var(--ink-2); }
@@ -858,8 +859,15 @@ table.perf td.l:first-child { min-width: 9em; }
 }
 
 /* ===== WP69: quieter cards. Sources sit in the "⋯" menu (licence credits stay visible); buttons show on hover or focus ===== */
-.card .src { display: none; }
-.card.src-keep .src { display: block; }
+/* sources and the latest-data date sit under every card (owner's request, 19 Nov 2026): source left, date right */
+.card > p.src { display: flex; gap: 12px; align-items: baseline; margin: 6px 0 0; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.card > p.src[hidden] { display: none; }
+.card > p.src .src-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.card > p.src .src-d { flex: 0 0 auto; margin-left: auto; color: var(--ink-2); cursor: help; }
+.card > p.src .src-d:empty { display: none; }
+.card > p.src.open { flex-wrap: wrap; }
+.card > p.src.open .src-t { white-space: normal; }
+@media (max-width: 600px) { .card > p.src { flex-wrap: wrap; row-gap: 2px; } .card > p.src .src-d { margin-left: 0; } }
 .menu-src-wrap { border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 10px 4px; max-width: 340px; }
 .menu-src { font-size: 12px; color: var(--ink-2); line-height: 1.45; white-space: normal; }
 .card .note { font-size: 12px; color: var(--ink-2); }
