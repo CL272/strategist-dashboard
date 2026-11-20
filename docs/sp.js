@@ -353,7 +353,7 @@ function buildSPUnder() {
 // ------------------------------------------------------------------ WP40. Pricer: indicative terms, payoff, back-test
 const SP_KINDS = [['eln', 'ELN (reverse convertible)'], ['fcn', 'FCN with knock-in'], ['auto1', 'Autocallable, single'], ['auto3', 'Autocallable, worst-of'],
   ['pp', 'Capital-protected note'], ['shark', 'Sharkfin (capped)'], ['acc', 'Accumulator']];
-const SP_DEF = { kind: 'fcn', ids: ['SPX', '', ''], months: 12, strike: 100, ki: 70, kiType: 'maturity', ac: 100, freq: 1, cb: 70, memory: true, prot: 100, cap: 120, ko: 105, margin: 1.5, ccy: 'auto' };
+const SP_DEF = { kind: 'fcn', ids: ['SPX', '', ''], months: 12, strike: 100, ki: 70, kiType: 'maturity', ac: 100, freq: 1, cb: 70, memory: true, prot: 100, cap: 120, ko: 105, margin: 1.5, comm: 0, ccy: 'auto' };
 state.spf = { ...SP_DEF };
 const SP_PRESETS = { fcn: () => ({ kind: 'fcn', ids: [state.spSel || 'SPX', '', ''], months: 6, strike: 100, ki: 70, kiType: 'maturity' }),
   auto1: () => ({ kind: 'auto1', ids: ['SPX', '', ''], months: 24, ac: 100, cb: 70, ki: 60, kiType: 'maturity', freq: 3, memory: true }),
@@ -376,8 +376,26 @@ function spCorr(ids) {   // 1-year correlation of weekly returns, from the weekl
   }
   return C;
 }
-// closed-form and Monte Carlo pricing; returns what the Terms card shows
-function spPrice(f = state.spf) {
+// upfront commission (owner's request, 20 Nov 2026): the client pays 100, the commission is taken first and only the rest
+// (e.g. 98) buys the note. The note's own terms (coupon, participation) are unchanged; what the client gets per 100 paid is not.
+function spPrice(f = state.spf) { return spWithComm(spPriceNote(f), f); }
+function spWithComm(R, f) {
+  if (!R || R.err || R.pending || f.kind === 'acc') return R;
+  const c = Math.max(0, Math.min(0.5, (+f.comm || 0) / 100)), k = 1 - c;
+  if (!c) return { ...R, comm: 0 };
+  if (R.what === 'coupon') {
+    const L = R.mc ? R.mc.life : R.T, base = f.kind === 'fcn' || f.kind === 'eln' ? f.strike / 100 : 1;
+    return { ...R, comm: c, clientYield: (k * (1 + R.net * L) - 1) / L, beClient: base * (1 / k - R.net * R.T), life: L };
+  }
+  if (R.what === 'participation') {
+    const P = f.prot / 100, need = 1 / k - P, rise = need <= 0 ? 0 : need / R.net;   // index rise needed for the client to get 100 back
+    const ok = f.kind !== 'shark' || rise <= f.cap / 100 - 1;
+    return { ...R, comm: c, protClient: P * k, beClientIdx: ok ? 1 + rise : null };
+  }
+  return { ...R, comm: c };
+}
+// closed-form and Monte Carlo pricing per 1 of note notional; returns what the Terms card shows
+function spPriceNote(f = state.spf) {
   const ids = spIds(f); if (!ids.length) return { err: 'Pick an underlying.' };
   if (f.kind === 'auto3' && ids.length < 2) return { err: 'Pick two or three underlyings for a worst-of note.' };
   const T = f.months / 12, days = Math.round(T * 365), ccy = spNoteCcy(f, ids), rr = rateFor(ccy, T), r = rr.r, m = f.margin / 100, DF = Math.exp(-r * T);
@@ -446,6 +464,7 @@ function renderSpForm(c) {
     ...(k === 'pp' || k === 'shark' ? [spField('Capital protected, %', spNum('prot'))] : []), ...(k === 'shark' ? [spField('Cap, % of spot', spNum('cap'))] : []),
     ...(k === 'acc' ? [spField('Knock-out, % of spot', spNum('ko', 1))] : []),
     spField('Issuer margin, % a year', spNum('margin', 0.25, 0, 5)),
+    ...(k === 'acc' ? [] : [spField('Upfront commission, %', spNum('comm', 0.25, 0, 10))]),
     spField('Note currency', spSelect('ccy', [['auto', 'as the underlying'], ['USD', 'USD'], ['SGD', 'SGD'], ['MYR', 'MYR'], ['EUR', 'EUR'], ['AUD', 'AUD']])));
   b.append(grid, el('div', { class: 'sp-presets' }, el('span', { class: 'muted small', text: 'Start from: ' }),
     ...[['fcn', 'FCN on the screener pick'], ['auto1', 'Index autocall'], ['auto3', 'Chips worst-of'], ['pp', '3-year protected'], ['shark', 'Sharkfin'], ['acc', 'Accumulator']].map(([p, l]) => el('button', { type: 'button', class: 'ghost', text: l, onclick: () => { state.spPreset = p; spRecalc(); } }))));
@@ -459,8 +478,15 @@ function renderSpTerms(c) {
   if (R.pending) { b.append(el('div', { class: 'empty', text: 'Simulating…' })); return; }
   const big = (lab, v, sub) => el('div', { class: 'sp-big' }, el('div', { class: 'muted small', text: lab }), el('div', { class: 'sp-big-v', text: v }), sub ? el('div', { class: 'muted small', text: sub }) : '');
   const row = el('div', { class: 'sp-bigs' });
-  if (R.what === 'coupon') row.append(big('Coupon, a year (after margin)', pc2(R.net * 100), `before margin ${pc2(R.gross * 100)}`), big('Break-even', R.be ? fmtNum(R.be * 100, 1) + '% of spot' : '–', 'worst final level where the client gets the money back'));
-  if (R.what === 'participation') row.append(big('Participation (after margin)', fmtNum(R.net * 100, 0) + '%', `before margin ${fmtNum(R.gross * 100, 0)}%`), big('Option budget', pc2(R.budget * 100), 'of notional, after margin'));
+  const cm = R.comm ? fmtNum(R.comm * 100, 2).replace(/\.?0+$/, '') : '', inNote = R.comm ? fmtNum((1 - R.comm) * 100, 2).replace(/\.?0+$/, '') : '';
+  if (R.what === 'coupon' && !R.comm) row.append(big('Coupon, a year (after margin)', pc2(R.net * 100), `before margin ${pc2(R.gross * 100)}`), big('Break-even', R.be ? fmtNum(R.be * 100, 1) + '% of spot' : '–', 'worst final level where the client gets the money back'));
+  if (R.what === 'coupon' && R.comm) row.append(big('Coupon, a year (after margin)', pc2(R.net * 100), `on the note: ${inNote} of every 100 paid`),
+    big('Client’s yield after commission', pc2(R.clientYield * 100), `${cm}% upfront${R.mc ? `, over the expected life (${fmtNum(R.life * 12, 1)} months)` : ''}`),
+    big('Break-even', fmtNum(R.beClient * 100, 1) + '% of spot', `for the client to get 100 back (${fmtNum(R.be * 100, 1)}% before commission)`));
+  if (R.what === 'participation' && !R.comm) row.append(big('Participation (after margin)', fmtNum(R.net * 100, 0) + '%', `before margin ${fmtNum(R.gross * 100, 0)}%`), big('Option budget', pc2(R.budget * 100), 'of notional, after margin'));
+  if (R.what === 'participation' && R.comm) row.append(big('Participation (after margin)', fmtNum(R.net * 100, 0) + '%', `of the rise, on ${inNote} of every 100 paid`),
+    big('Capital back at maturity', fmtNum(R.protClient * 100, 1) + '%', `of the client’s money (${f.prot}% of the note, after the ${cm}% commission)`),
+    big('Break-even', R.beClientIdx ? `index +${fmtNum((R.beClientIdx - 1) * 100, 1)}%` : 'not reached', R.beClientIdx ? 'rise needed for the client to get 100 back' : `the cap at ${f.cap}% is too low to earn back the commission`));
   if (R.what === 'strike') row.append(big('Zero-cost strike', fmtNum(R.strike * 100, 1) + '% of spot', 'after margin'), big('Chance of knock-out', fmtNum(R.koProb * 100, 0) + '%', `expected units bought: ${fmtNum(R.units, 0)} of up to ${R.weeks * 2}`));
   b.append(row);
   if (R.mc) { const M = R.mc, firstCall = M.called.reduce((s, p) => s + p, 0);
@@ -476,7 +502,7 @@ function renderSpTerms(c) {
     b.append(el('p', { class: 'muted small', text: f.kind === 'eln' ? 'Coupon after margin by strike (rows) and tenor (columns)' : 'Coupon after margin by strike (rows) and knock-in (columns)' }),
       el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, el('th', { class: 'l', text: 'Strike' }), ...cols.map(cv => el('th', { text: f.kind === 'eln' ? cv + 'M' : 'KI ' + cv + '%' })))), tb));
   }
-  setNote(c, `${R.note} Rates: ${R.rsrc}, ${pc2(R.r * 100)} for the tenor; note currency ${R.ccy}.${R.est ? ' Uses an estimated volatility (no listed options): treat as a rough guide.' : ''} ${SP_LBL}`);
+  setNote(c, `${R.note} Rates: ${R.rsrc}, ${pc2(R.r * 100)} for the tenor; note currency ${R.ccy}.${R.comm ? ` Upfront commission ${cm}%: the client pays 100 and ${inNote} buys the note; coupons and protection apply to the ${inNote}, so the client's yield and break-even are worse than the note's.` : ''}${R.est ? ' Uses an estimated volatility (no listed options): treat as a rough guide.' : ''} ${SP_LBL}`);
   setSource(c, 'Model: Black-Scholes with the implied vol at the strike or barrier; Monte Carlo for autocallables and worst-of notes; ' + SPX_SRC_ALL);
 }
 // payoff at maturity against the worst underlying's final level
@@ -491,15 +517,17 @@ function renderSpPayoff(c) {
   else if (f.kind === 'pp') pay = w => P + R.net * Math.max(w - 1, 0);
   else if (f.kind === 'shark') pay = w => P + R.net * Math.min(Math.max(w - 1, 0), cap - 1);
   else return setEmpty(c, 'An accumulator has no single payoff at maturity: it depends on the whole path (see the back-test).');
-  const o = baseOpt();
-  o.series = [line('Note pays back (per 100 invested)', xs.map(w => [w * 100, pay(w) * 100]), col(0)), line(R.ids.length > 1 ? 'Holding the worst share' : 'Holding the underlying', xs.map(w => [w * 100, w * 100]), tok('--muted'), { lineStyle: { width: 1.5, type: 'dashed', color: tok('--muted') } })];
+  const o = baseOpt(), k = 1 - (R.comm || 0), cmTxt = R.comm ? fmtNum(R.comm * 100, 2).replace(/\.?0+$/, '') + '%' : '';
+  o.series = [line(R.comm ? 'Client gets back, per 100 paid' : 'Note pays back (per 100 invested)', xs.map(w => [w * 100, k * pay(w) * 100]), col(0)),
+    ...(R.comm ? [line(`Before the ${cmTxt} commission`, xs.map(w => [w * 100, pay(w) * 100]), tok('--muted'), { lineStyle: { width: 1.2, type: 'dotted', color: tok('--muted') } })] : []), line(R.ids.length > 1 ? 'Holding the worst share' : 'Holding the underlying', xs.map(w => [w * 100, w * 100]), tok('--muted'), { lineStyle: { width: 1.5, type: 'dashed', color: tok('--muted') } })];
   o.xAxis = { type: 'value', min: 30, max: 160, name: 'worst underlying at maturity, % of start', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: tok('--muted'), fontSize: 11 }, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false } };
-  o.yAxis = valAxis(v => fmtNum(v, 0)); o.grid.bottom = 30;
+  o.yAxis = valAxis(v => fmtNum(v, 0)); o.grid.bottom = 30; o.grid.top = 12 + 22 * legendRows(c, o.series.map(x => x.name));
   o.tooltip = { ...o.tooltip, valueFormatter: v => fmtNum(v, 1) };
   if (f.kind !== 'pp' && f.kind !== 'shark') o.series[0].markLine = { silent: true, symbol: 'none', lineStyle: { color: tok('--critical'), type: 'dotted' }, label: { formatter: 'knock-in / strike', color: tok('--muted'), fontSize: 10 }, data: [{ xAxis: (f.kind === 'eln' ? K : B) * 100 }] };
   inst(c).setOption(o, true);
-  c.csv = [['Worst final level %', 'Note pays %'], ...xs.map(w => [w * 100, (pay(w) * 100).toFixed(2)])];
-  setNote(c, f.kind === 'auto1' || f.kind === 'auto3' ? 'At final maturity only (if not called before); coupons paid along the way are not included. Above the knock-in the client gets 100 back; below it, the worst share’s level.' : 'Total paid back at maturity, including coupons, per 100 invested, against the worst underlying’s level then.');
+  c.csv = [['Worst final level %', 'Note pays % of notional', 'Client gets back per 100 paid'], ...xs.map(w => [w * 100, (pay(w) * 100).toFixed(2), (k * pay(w) * 100).toFixed(2)])];
+  setNote(c, (f.kind === 'auto1' || f.kind === 'auto3' ? 'At final maturity only (if not called before); coupons paid along the way are not included. Above the knock-in the client gets 100 back; below it, the worst share’s level.' : 'Total paid back at maturity, including coupons, per 100 invested, against the worst underlying’s level then.')
+    + (R.comm ? ` With the ${cmTxt} upfront commission only ${fmtNum(k * 100, 2).replace(/\.?0+$/, '')} of each 100 buys the note, so the blue line sits below the dotted one by that share.` : ''));
   setSource(c, 'Calculated from the terms above');
 }
 // back-test: the same note issued every week since the history starts
@@ -528,6 +556,7 @@ function spBacktest(f, R) {
       }
     }
     const yrs = life / 52;
+    if (f.kind !== 'acc' && R.comm) { pay *= 1 - R.comm; loss = pay < 1; }   // per 100 the client paid: only (1 − commission) bought the note
     out.push({ t: common[i], pay, ann: (Math.pow(Math.max(pay, 0.01), 1 / yrs) - 1) * 100, hold: (Math.pow(hold, 52 / W) - 1) * 100, called, hit, loss, life });
   }
   return out;
@@ -539,7 +568,7 @@ function renderSpBacktest(c) {
   const n = bt.length, share = fn => bt.filter(fn).length / n * 100, losses = bt.filter(x => x.loss), avg = a => a.reduce((s, v) => s + v, 0) / a.length;
   drawLines(c, [{ name: 'Note, return a year', data: bt.filter(x => x.t >= state.from).map(x => [x.t, x.ann]) }, { name: R.ids.length > 1 ? 'Holding the basket (equal weight), a year' : 'Holding the underlying, a year', data: bt.filter(x => x.t >= state.from).map(x => [x.t, x.hold]) }],
     { fmt: v => pctF1(v), axisFmt: v => fmtNum(v, 0) + '%', zero: true, endLabels: false });
-  c.subEl.textContent = `Issued every week from ${nice(bt[0].t)} (${n} notes): called early ${fmtNum(share(x => x.called), 0)}% · knocked in ${fmtNum(share(x => x.hit), 0)}% · ended with a loss ${fmtNum(share(x => x.loss), 0)}%` +
+  c.subEl.textContent = `${R.comm ? `After the ${fmtNum(R.comm * 100, 2).replace(/\.?0+$/, '')}% upfront commission. ` : ''}Issued every week from ${nice(bt[0].t)} (${n} notes): called early ${fmtNum(share(x => x.called), 0)}% · knocked in ${fmtNum(share(x => x.hit), 0)}% · ended with a loss ${fmtNum(share(x => x.loss), 0)}%` +
     (losses.length ? ` (average loss ${fmtNum((1 - avg(losses.map(x => x.pay))) * 100, 0)}%, worst ${fmtNum((1 - Math.min(...losses.map(x => x.pay))) * 100, 0)}%)` : '') + ` · average ${pctF1(avg(bt.map(x => x.ann)))} a year against ${pctF1(avg(bt.map(x => x.hold)))} for holding.`;
   c.csv = [['Issue date', 'Paid back per 1', 'Return a year %', 'Holding a year %', 'Called', 'Knocked in', 'Loss'], ...bt.map(x => [iso(x.t), x.pay.toFixed(4), x.ann.toFixed(2), x.hold.toFixed(2), x.called, x.hit, x.loss])];
   setNote(c, 'Losses cluster in the bad years (2008, 2020, 2022): look at when, not just how often. The coupon is today’s indicative coupon, held constant; real coupons were higher in volatile years. Weekly closes stand in for daily barrier checks, so knock-ins are slightly understated. Price returns only; dividends are not added to the holding line.');
@@ -763,13 +792,13 @@ function renderNbTable(c) {
       el('td', { class: 'l', text: n.label, title: `${(SP_KINDS.find(k => k[0] === n.kind) || [, n.kind])[1]} · ${n.ids.join(', ')} · ${n.trade} to ${n.maturity}` }), el('td', { class: 'l', text: SP_TINY(s.worst.id) }),
       el('td', { class: 'num', text: fmtNum(s.worst.now, 1) + '%' }), el('td', { class: 'num ' + (s.toKi < 10 ? 'dn' : ''), text: pt(s.toKi) }), el('td', { class: 'num', text: pt(s.toStrike) }),
       el('td', { class: 'num', text: pt(s.toAc) }), el('td', { class: 'num', text: s.next ? dShort(s.next) : '–' }),
-      el('td', { class: 'l' }, el('span', { class: 'qdot', style: `background:${tok(NB_TONE[s.st])}` }), s.st), el('td', { class: 'num', text: fmtNum(s.value, 0) + '%' }),
+      el('td', { class: 'l' }, el('span', { class: 'qdot', style: `background:${tok(NB_TONE[s.st])}` }), s.st), el('td', { class: 'num', text: fmtNum(s.value * (1 - (+n.comm || 0) / 100), 0) + '%', title: +n.comm ? `Per 100 the client paid, after the ${n.comm}% upfront commission (${fmtNum(s.value, 0)}% of the note)` : 'Per 100 of the note' }),
       el('td', {}, el('button', { type: 'button', class: 'ghost', text: 'Edit', onclick: e => { e.stopPropagation(); state.nbEdit = n.id; cards.nb_form.render(); } }))));
-    csv.push([n.label, s.worst.id, s.worst.now, s.toKi, s.toStrike, s.toAc, s.next ? iso(s.next) : '', s.st, s.value]);
+    csv.push([n.label, s.worst.id, s.worst.now, s.toKi, s.toStrike, s.toAc, s.next ? iso(s.next) : '', s.st, +(s.value * (1 - (+n.comm || 0) / 100)).toFixed(2)]);
   }
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 || i === 7 ? 'l' : '' })))), tb)));
   c.csv = csv;
-  setNote(c, 'Sorted by distance to knock-in (closest first). Levels are against the initial fixing; "Worth today" = the principal if the note matured now (coupons not included). Daily knock-ins use daily closes where the dashboard has them, weekly otherwise. Stored in this browser only; include them in the Idea log export to move them.');
+  setNote(c, 'Sorted by distance to knock-in (closest first). Levels are against the initial fixing; "Worth today" = the principal if the note matured now (coupons not included), per 100 the client paid (after any upfront commission). Daily knock-ins use daily closes where the dashboard has them, weekly otherwise. Stored in this browser only; include them in the Idea log export to move them.');
   setSource(c, 'Yahoo Finance prices; your note terms');
 }
 function renderNbChart(c) {
@@ -801,7 +830,8 @@ function renderNbForm(c) {
       spField('Underlyings (worst of)', el('div', { class: 'sp-und' }, ...und)), spField('Initial levels (blank = close on trade date)', el('div', { class: 'sp-und' }, ...ini)),
       spField('Trade date', inp('trade', 'date')), spField('Maturity', inp('maturity', 'date')), spField('Strike, %', inp('strike', 'number')), spField('Knock-in, %', inp('ki', 'number')),
       spField('Knock-in watched', sel('kiType', [['maturity', 'at maturity only'], ['daily', 'every day']])), spField('Autocall level, % (0 = none)', inp('ac', 'number')),
-      spField('Observation', sel('freq', [[1, 'monthly'], [3, 'quarterly']])), spField('Coupon, % a year', inp('coupon', 'number')), spField('Coupon barrier, % (0 = always paid)', inp('cb', 'number'))),
+      spField('Observation', sel('freq', [[1, 'monthly'], [3, 'quarterly']])), spField('Coupon, % a year', inp('coupon', 'number')), spField('Coupon barrier, % (0 = always paid)', inp('cb', 'number')),
+      spField('Upfront commission, %', inp('comm', 'number', { step: 0.25, min: 0, max: 10, placeholder: '0' }))),
     el('div', { class: 'sp-presets' },
       el('button', { type: 'button', class: 'primary', text: ed ? 'Save changes' : 'Add note', onclick: () => {
         n.ids = n.ids.filter(Boolean); if (!n.label || !n.ids.length) { alert('Give the note a label and at least one underlying.'); return; }

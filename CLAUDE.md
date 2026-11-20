@@ -63,7 +63,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Signals are research prompts, never recommendations.
 - **Structured products** live in `docs/sp.js` (page), `docs/sp-model.js` (pricing maths, shared with the Monte Carlo worker
   `docs/sp-worker.js`) and `pipeline/structured.py` (data). Generic structure names only, never issuer or product brand
-  names; every figure says "indicative … not a quote". Run `node tools/sp-check.js` after any change to the model or the
+  names; every figure says "indicative … not a quote". The upfront commission (`comm`, owner's request 20 Nov 2026) is applied
+  after pricing (`spWithComm`): the client pays 100 and only 100 − comm buys the note, so the note's coupon and participation
+  stay as priced while the client's yield, break-even, protection, payoff, back-test and "Worth today" are per 100 paid. Run `node tools/sp-check.js` after any change to the model or the
   surfaces: it checks identities and listed put prices (within 15%) and must pass before pushing. The owner's notes stay
   in the private vault (`sd-notes-v1`), never in the repository.
 - **Later packages** (Income menu, Playbook, earnings, model stress, credit cycle, gold, country funds) live in
