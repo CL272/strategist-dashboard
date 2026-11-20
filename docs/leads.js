@@ -398,39 +398,51 @@ function usLeadTiles() {   // appended to the US tiles; TILE_SETS picks five per
 }
 
 // ------------------------------------------------------------------ shared: a dual-axis card drawn at the measured lead
-function ldLeadPair(c, a, b, shift, intro, fm = {}, outro = '') {   // a, b = [id, mode, name]; shift: move a forward by its measured lead (if it passes)
+function ldLeadPair(c, a, b, shift, intro, fm = {}, outro = '') {   // a, b = [id, mode, name]; shift: move a forward by its measured lead (if it passes);
+  // shift = 'best': move it by the best-fitting shift even when that fails the test (the note then says so: context only)
   if (!has(a[0], b[0])) { setEmpty(c, 'Waiting for data.'); return null; }
-  const st = ldBestLead(a[0], a[1], b[0], b[1]), k = shift && st && st.ok ? st.k : 0;
+  const st = ldBestLead(a[0], a[1], b[0], b[1]), k = shift && st && (st.ok || (shift === 'best' && st.k)) ? st.k : 0;
   leadPair(c, a, b, k, { fmtA: fm.fmtA || llFmtF(a[1]), fmtB: fm.fmtB || llFmtF(b[1]), axisA: fm.axisA || llAxF(a[1]), axisB: fm.axisB || llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
   const short = s => s.replace(/,.*$/, '');
   const res = !st || st.missing ? '' : st.short ? 'History too short to test a lead.' : st.thin
     ? `On only ${Math.round(st.n / 12)} years of history it passes at ${st.k} months (${corrF(st.rk)} against ${corrF(st.r0)} in the same month), too little to count as a lead.`
     : leadNote({ ...st, a: a[0] }, short(a[2]), short(b[2]));
-  setNote(c, [intro, res, k ? `The first series is drawn ${k} months later than measured, so its turns line up; the part past today hints at the months ahead.` : '', outro].filter(Boolean).join(' '));
+  const weak = k && !st.ok ? `Drawn at its best-fitting shift (${k} months, correlation ${corrF(st.rk)}), which does not pass the dashboard’s lead test: context only, not a counted lead.` : '';
+  setNote(c, [intro, res, weak || (k ? `The first series is drawn ${k} months later than measured, so its turns line up; the part past today hints at the months ahead.` : ''), outro].filter(Boolean).join(' '));
   setSource(c, srcOf([a[0], b[0]]));
   return st;
 }
 const LEAD_SEG = key => { state[key] = '1'; return { key, options: [['0', 'As measured'], ['1', 'At its lead']] }; };
+// relabel a card's lead button with the months found ("Lead +7m", or "Best fit +14m" when the link fails the test)
+function ldLeadLabel(c, st) {
+  const b = c.seg2El && c.seg2El.querySelectorAll('button')[1]; if (!b) return;
+  b.textContent = st && st.k ? (st.ok ? `Lead +${st.k}m` : `Best fit +${st.k}m`) : 'Lead';
+  b.title = st && st.k ? (st.ok ? 'Draw the first series at its measured lead' : 'Draw it at its best-fitting shift: this link does not pass the dashboard’s lead test') : 'No lead found';
+}
 
 // ------------------------------------------------------------------ WP56. Global breadth and money (Regime & Leading → Global breadth & money)
 const GL_DIFF_T = [['BCI_G7', 'level', 'G7 business confidence'], ['EEM', 'yoy', 'Emerging-market equities, % YoY'], ['ACWI', 'yoy', 'World equities (MSCI World), % YoY'], ['COPPER', 'yoy', 'Copper, % YoY']];
-state.glDiffT = 'BCI_G7';
+state.glDiffT = 'BCI_G7'; state.glDiffLead = '1'; state.glMoneyLead = '0';   // breadth opens at its measured lead; money (fails the test) as measured
 function renderGlDiff(c) {
   if (ldWait(c)) return; if (!has('LD_CLI_DIFF')) return setEmpty(c, 'Waiting for data.');
   const tg = GL_DIFF_T.find(x => x[0] === state.glDiffT) || GL_DIFF_T[0], a = asOf(S.LD_CLI_DIFF, state.latest), n = (LEADS._meta.cli_econ || []).length || 17;
-  ldLeadPair(c, ['LD_CLI_DIFF', 'level', `Leading indices rising, % of ${n} economies`], tg, true,
+  const st = ldLeadPair(c, ['LD_CLI_DIFF', 'level', `Leading indices rising, % of ${n} economies`], tg, state.glDiffLead === '1',
     `${fmtNum(a.v, 0)}% of ${n} economies’ OECD leading indices are higher than six months earlier (${monthLab(a.t)}).`, { fmtA: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, 0) + '%' },
     'Breadth matters more than any one country: when most leading indices turn up together, global manufacturing, emerging markets and commodities have tended to follow. A reading below 30% that starts rising has marked the early stage of past recoveries. The OECD indices are revised and partly built from share prices, so the real-time lead is shorter than the history suggests.');
   setSource(c, 'OECD composite leading indices (' + (LEADS._meta.cli_econ || []).join(', ') + '); ' + srcOf([tg[0]]) + '; calculated');
+  ldLeadLabel(c, st);
 }
 state.glMoney = 'LD_RNM6';
 function renderGlMoney(c) {
   if (ldWait(c)) return; const id = state.glMoney; if (!has(id)) return setEmpty(c, 'Waiting for data.');
   const a = asOf(S[id], state.latest), lab = id === 'LD_RNM6' ? 'narrow' : 'broad';
-  ldLeadPair(c, [id, 'level', `Global real ${lab} money, 6M annualised, %`], ['BCI_G7', 'level', 'G7 business confidence'], false,
+  const st = ldLeadPair(c, [id, 'level', `Global real ${lab} money, 6M annualised, %`], ['BCI_G7', 'level', 'G7 business confidence'], state.glMoneyLead === '1' ? 'best' : false,
     `Real ${lab} money in nine large economies is growing ${pctF1(a.v)} a year (six-month pace after inflation, ${monthLab(a.t)}).`, { fmtA: pctF1, axisA: v => fmtNum(v, 0) + '%' },
-    'Simon Ward (Janus Henderson) reads real narrow money as a 6-to-9-month lead for global industry. On this broader, longer sample it does not pass the dashboard’s test, so it is context, not a counted lead. It excludes China, which publishes no money series to the OECD; the weights are GDP shares (US, euro area, Japan, India, UK, Canada, Brazil, Korea, Australia).');
+    'Simon Ward (Janus Henderson) reads real narrow money as a 6-to-9-month lead for global industry; the dashboard’s own test (above) gives the lead it finds on this longer sample. '
+    + 'US M1’s May 2020 redefinition (savings deposits moved in, tripling it) is spliced out, so 2020 shows the real surge rather than the reclassification. '
+    + 'It excludes China, which publishes no money series to the OECD; the weights are GDP shares (US, euro area, Japan, India, UK, Canada, Brazil, Korea, Australia).');
   setSource(c, 'OECD key indicators (narrow and broad money, CPI), FRED (euro-area HICP), Japan CPI via e-Stat; calculated');
+  ldLeadLabel(c, st);
 }
 function renderGlTable(c) {
   const b = htmlBody(c), ids = Object.keys(S).filter(k => /^CLI_/.test(k) && has(k)), heads = ['Economy', 'Level', '1M', '6M change', 'Phase'], tb = el('tbody'), csv = [heads];
@@ -870,8 +882,10 @@ function buildLeads() {
   makeCard(ug, { key: 'inf_core', title: 'Underlying inflation', defaultRange: '10Y', render: renderInfCore });
   // Run 2: global breadth and money, canaries, Asian trade pulse, China credit, Malaysia pulse, presidential cycle, put/call
   makeCard(rg, { key: 'gl_diff', title: 'Breadth of the leading indices', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1),
-    seg: { key: 'glDiffT', select: true, label: 'Compare with', prefix: 'vs', options: GL_DIFF_T.map(x => [x[0], x[2].replace(/,.*$/, '')]) }, render: renderGlDiff });
-  makeCard(rg, { key: 'gl_money', title: 'Global real money (ex-China)', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), seg: { key: 'glMoney', options: [['LD_RNM6', 'Narrow'], ['LD_RBM6', 'Broad']] }, render: renderGlMoney });
+    seg: { key: 'glDiffT', select: true, label: 'Compare with', prefix: 'vs', options: GL_DIFF_T.map(x => [x[0], x[2].replace(/,.*$/, '')]) },
+    seg2: { key: 'glDiffLead', options: [['0', 'As measured'], ['1', 'Lead']] }, render: renderGlDiff });
+  makeCard(rg, { key: 'gl_money', title: 'Global real money (ex-China)', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), seg: { key: 'glMoney', options: [['LD_RNM6', 'Narrow'], ['LD_RBM6', 'Broad']] },
+    seg2: { key: 'glMoneyLead', options: [['0', 'As measured'], ['1', 'Best fit']] }, render: renderGlMoney });
   makeCard(rg, { key: 'gl_table', title: 'Leading indices by economy', range: false, render: renderGlTable });
   makeCard(rg, { key: 'can_table', title: 'Market canaries', wide: true, range: false, render: renderCanTable });
   makeCard(rg, { key: 'can_chart', title: 'Canary vs what it leads', defaultRange: '10Y', seg: LEAD_SEG('canLead'), render: renderCanChart });

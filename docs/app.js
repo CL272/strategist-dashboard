@@ -123,26 +123,30 @@ function makeCard(parent, o) {
   const c = { ...o, inst: null, csv: null };
   c.range = o.defaultRange ? { preset: o.defaultRange } : null;   // null = the page default (3Y; the page-wide bar was removed 19 Nov 2026)
   const tools = el('div', { class: 'card-tools' });
-  if (o.seg && o.seg.select) {   // compact drop-down (e.g. currency choice)
-    const sel = el('select', { class: 'mini-select', 'aria-label': o.seg.label || 'Option', title: o.seg.label || '' });
-    for (const [val, lab] of o.seg.options) sel.append(el('option', { value: val, text: lab }));
-    sel.value = state[o.seg.key];
-    sel.addEventListener('change', () => { state[o.seg.key] = sel.value; (o.seg.onchange || c.render)(); });
-    c.segSel = sel;
-    tools.append(o.seg.prefix ? el('label', { class: 'mini-label' }, el('span', { class: 'muted small', text: o.seg.prefix }), sel) : sel);
-  } else if (o.seg) {
+  const segEl = sg => {
+    if (sg.select) {   // compact drop-down (e.g. currency choice)
+      const sel = el('select', { class: 'mini-select', 'aria-label': sg.label || 'Option', title: sg.label || '' });
+      for (const [val, lab] of sg.options) sel.append(el('option', { value: val, text: lab }));
+      sel.value = state[sg.key];
+      sel.addEventListener('change', () => { state[sg.key] = sel.value; (sg.onchange || c.render)(); });
+      if (sg === o.seg) c.segSel = sel;
+      return sg.prefix ? el('label', { class: 'mini-label' }, el('span', { class: 'muted small', text: sg.prefix }), sel) : sel;
+    }
     const seg = el('div', { class: 'seg', role: 'group' });
-    for (const [val, lab] of o.seg.options) {
-      const b = el('button', { type: 'button', text: lab, class: val === state[o.seg.key] ? 'on' : '' });
+    for (const [val, lab] of sg.options) {
+      const b = el('button', { type: 'button', text: lab, class: val === state[sg.key] ? 'on' : '' });
       b.addEventListener('click', () => {
-        state[o.seg.key] = val;
+        state[sg.key] = val;
         seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
         c.render();
       });
       seg.append(b);
     }
-    tools.append(seg);
-  }
+    return seg;
+  };
+  // a second toggle (seg2, e.g. "As measured / Lead +7m" beside a "vs" picker) sits with the first as one compact group
+  if (o.seg && o.seg2) { c.seg2El = segEl(o.seg2); tools.append(el('div', { class: 'tool-row' }, segEl(o.seg), c.seg2El)); }
+  else if (o.seg) tools.append(segEl(o.seg));
   // rarely used tools live in one "⋯" menu; toggles stay visible in .card-tools
   c.yBtn = el('button', { class: 'menu-item', type: 'button', text: '↕ Y-axis range…', title: 'Y-axis: drag the axis numbers on the chart up or down to stretch or squeeze the scale (Shift-drag slides it, Ctrl + mouse wheel zooms, double-click resets; ↕ Auto in the header undoes it). Click here for exact values', onclick: () => { closePops(); toggleYPanel(c); } });
   c.menuEl = el('div', { class: 'card-menu pop', hidden: true, role: 'menu' }, c.yBtn,
@@ -180,7 +184,7 @@ function makeCard(parent, o) {
     if (o.earliest != null && c.range && c.range.preset === 'MAX') state.from = o.earliest;
     c.lastRange = [state.from, state.to];
     // a hand-set y-axis fits one view: a new date range, toggle or layout goes back to automatic scaling
-    const view = JSON.stringify([c.range, o.seg ? state[o.seg.key] : null, c.pairMode || null]);
+    const view = JSON.stringify([c.range, o.seg ? state[o.seg.key] : null, o.seg2 ? state[o.seg2.key] : null, c.pairMode || null]);
     if (c.yRange && c.viewKey != null && view !== c.viewKey) yAutoReset(c, false);
     c.viewKey = view;
     const prevUse = S_USE, prevObj = S_OBJ; S_USE = c.used = new Set(); S_OBJ = c.read = new Set(); c.asOf = null;

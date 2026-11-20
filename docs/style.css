@@ -955,3 +955,4 @@ textarea.vdlg-in { resize: vertical; font: inherit; line-height: 1.5; }
 .ovs-list li { margin-bottom: 4px; }
 .ovs-ended { margin: 8px 0 0; }
 @media (max-width: 600px) { .ovs-grid { grid-template-columns: 1fr; } }
+.card-tools .tool-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }

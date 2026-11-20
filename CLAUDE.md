@@ -27,7 +27,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `setAsOf(c, t)`. A card drawn outside `c.render` must call `showAsOf` itself (see `renderMktCharts`). Both go into CSV downloads.
   Text columns in tables use class `l` so they
   wrap; numbers never wrap. On phones the first table column stays put while the rest scrolls.
-- **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). The
+- **Card headers stay quiet**: toggles (`seg`) are visible; everything else goes in the "⋯" menu (`c.menuEl`). A card
+  that needs two toggles (a "vs" picker plus "As measured / Lead") passes `seg2`; both sit in one `.tool-row` group, and
+  `ldLeadLabel` writes the measured months on the lead button ("Best fit +Nm" when the link fails the test). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
 - **Y-axis by hand, back in one click**: dragging the axis numbers (or Ctrl + wheel over them; a plain wheel scrolls the

@@ -233,6 +233,12 @@ def money(fred: dict, asia: dict) -> dict:
             s = s[~s.index.duplicated(keep="last")]
             if s.index[-1] < pd.Timestamp.today() - pd.DateOffset(months=9):   # stopped reporting (Brazil and India broad money end in 2018)
                 continue
+            # definition breaks: a one-month jump of more than 40% (US M1 in May 2020, when the Fed moved savings deposits
+            # into M1 and it tripled) is spliced out: earlier levels are rescaled so that month shows no growth
+            mom = s / s.shift(1)
+            for t in mom[(mom > 1.4) | (mom < 0.7)].index:
+                s.loc[s.index < t] *= mom[t]
+                print(f"    money: spliced a definition break in {a} {meas} at {t:%Y-%m} (x{mom[t]:.2f})")
             g6 = ((s / s.shift(6)) ** 2 - 1) * 100
             pi = infl[a].reindex(g6.index.union(infl[a].index)).ffill(limit=3).reindex(g6.index)
             rows[a] = (g6 - pi).dropna()
