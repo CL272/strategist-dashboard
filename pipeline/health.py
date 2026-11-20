@@ -45,6 +45,10 @@ def allowed_for(sid: str, default: int) -> int:
         return 400   # IMF soundness indicators arrive two to three quarters after the quarter
     if sid.startswith("MY_HH_"):
         return 200   # Bank Negara's household-loan figures reach data.gov.my about four months late
+    if sid.startswith("SAVA_"):
+        return 900   # OECD annual household saving: national accounts arrive one to two years after the year (stamped 1 Jan)
+    if sid.startswith("SAVQ_"):
+        return 290 if sid != "SAVQ_CHN" else 200   # OECD quarterly saving reaches the dashboard table about two quarters late
     return SLOW.get(sid, default)
 
 

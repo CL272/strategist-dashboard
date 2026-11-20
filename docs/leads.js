@@ -693,6 +693,103 @@ function renderSentPc(c) {
   setSource(c, 'Cboe (delayed) option volumes, summed by the dashboard; CNN Business Fear & Greed (put/call component)');
 }
 
+// ------------------------------------------------------------------ Household saving rates (owner's request, 20 Nov 2026)
+// Regime & Leading → Household saving (cross-region), plus one card on each country page that has data. Two OECD measures:
+// quarterly GROSS saving (% of gross disposable income; higher than the headline rates) and annual NET saving (closest to
+// the headline rates each country quotes). Malaysia, Singapore, Taiwan, Indonesia and India publish no household rate.
+const SAV_ECON = [['USA', 'US'], ['CAN', 'Canada'], ['GBR', 'UK'], ['EA', 'Euro area'], ['DEU', 'Germany'], ['FRA', 'France'], ['ITA', 'Italy'],
+  ['ESP', 'Spain'], ['AUS', 'Australia'], ['JPN', 'Japan'], ['KOR', 'Korea'], ['CHN', 'China']];
+const SAV_SRC_Q = 'OECD household dashboard (gross saving of households and NPISH, % of gross disposable income)';
+const SAV_SRC_A = 'OECD National Accounts at a Glance (net saving of households and NPISH, % of net disposable income)';
+const savName = a => (SAV_ECON.find(x => x[0] === a) || [a, a])[1];
+// one colour per economy on every saving chart; Asia-Pacific ones match COUNTRY_TOK; no two economies on the same chart share one
+const SAV_TOK = { USA: '--s1', CAN: '--s6', GBR: '--s7', DEU: '--s10', FRA: '--s2', ITA: '--s8', ESP: '--s4', EA: '--s5',
+  AUS: COUNTRY_TOK.AU, JPN: COUNTRY_TOK.JP, KOR: COUNTRY_TOK.KR, CHN: COUNTRY_TOK.CN };
+const savCol = (id, i) => { const k = SAV_TOK[id.replace(/^SAV[QA]_/, '')]; return k ? tok(k) : col(i); };
+function savNorm(id) {   // the 2015–2019 average: "before the pandemic"
+  const s = S[id]; if (!s) return null; const a = Date.UTC(2015, 0, 1), b = Date.UTC(2020, 0, 1), p = pts(s, a, b - 1);
+  return p.length ? p.reduce((x, q) => x + q[1], 0) / p.length : null;
+}
+const savLab = (id, t) => /^SAVA_/.test(id) ? String(new Date(t).getUTCFullYear()) : /^SAVQ_/.test(id) ? `Q${Math.floor(new Date(t).getUTCMonth() / 3) + 1} ${new Date(t).getUTCFullYear()}` : monthLab(t);
+const savPts = v => v == null ? '–' : `${sign(v)}${fmtNum(Math.abs(v), 1)} pts`;
+function savLines(c, list, src, extra = '') {   // list: [[id, name]]; one line gets its 2015–19 average as a dashed line
+  if (ldWait(c)) return;
+  const L = list.filter(([id]) => has(id));
+  if (!L.length) return setEmpty(c, 'Waiting for data.');
+  const one = L.length === 1, n0 = one ? savNorm(L[0][0]) : null;
+  drawLines(c, L.map(([id, nm], i) => ({ name: nm, data: pts(S[id], state.from, state.to), color: savCol(id, i) })),
+    { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', hlines: n0 != null ? [{ y: n0, label: '2015–19 average' }] : [] });
+  const parts = L.map(([id, nm]) => { const a = asOf(S[id], state.latest), n = savNorm(id); return a ? `${nm} ${fmtNum(a.v, 1)}% (${savLab(id, a.t)}${n != null ? `; ${savPts(a.v - n)} vs 2015–19` : ''})` : ''; }).filter(Boolean);
+  setNote(c, `${parts.join('; ')}. ${extra}Higher saving means households are holding back on spending; a falling rate can carry consumption for a while but leaves less cushion.`);
+  setSource(c, src);
+}
+function renderSavQ(c) {
+  if (ldWait(c)) return;
+  const ids = ['USA', 'CAN', 'GBR', 'DEU', 'FRA', 'ITA', 'ESP', 'AUS'].map(a => 'SAVQ_' + a).filter(id => has(id));
+  if (!ids.length) return setEmpty(c, 'Waiting for the next data run.');
+  drawLines(c, ids.map((id, i) => ({ name: savName(id.slice(5)), data: pts(S[id], state.from, state.to), color: savCol(id, i) })),
+    { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false });
+  const gap = ids.map(id => { const a = asOf(S[id], state.latest), n = savNorm(id); return a && n != null ? [savName(id.slice(5)), a.v - n] : null; }).filter(Boolean);
+  const up = gap.filter(g => g[1] > 0.5).sort((a, b) => b[1] - a[1]).map(g => `${g[0]} (${savPts(g[1])})`), dn = gap.filter(g => g[1] < -0.5).sort((a, b) => a[1] - b[1]).map(g => `${g[0]} (${savPts(g[1])})`);
+  setNote(c, `${up.length ? `Saving more than before the pandemic: ${up.join(', ')}.` : 'No economy saves clearly more than before the pandemic.'} ${dn.length ? `Saving less: ${dn.join(', ')}.` : ''} `
+    + 'Gross saving rate of households (and the charities that serve them), % of gross disposable income, quarterly. Gross rates include depreciation of homes and are adjusted for pension entitlements, so they run several points above the headline rates countries quote (US personal saving rate on the US page). Compare each line with its own past, not the levels across countries. Japan, Korea and China are not in this quarterly table: see the annual chart and the table.');
+  setSource(c, SAV_SRC_Q);
+}
+function renderSavA(c) {
+  savLines(c, [['SAVA_JPN', 'Japan'], ['SAVA_KOR', 'Korea'], ['SAVA_CHN', 'China'], ['SAVA_USA', 'US'], ['SAVA_EA', 'Euro area']], SAV_SRC_A,
+    'Net saving, % of net disposable income, annual; published one to two years after the year. ');
+}
+function renderSavTable(c) {
+  if (ldWait(c)) return;
+  const b = htmlBody(c), heads = ['Economy', 'Quarterly (gross)', 'vs 2015–19', '1-year change', 'Annual (net)', 'vs 2015–19'];
+  const tbl = el('table', { class: 'perf watch' }); tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i === 0 ? 'l' : '' })))));
+  const rows = SAV_ECON.map(([a, nm]) => {
+    const q = has('SAVQ_' + a) ? asOf(S['SAVQ_' + a], state.latest) : null, y = has('SAVA_' + a) ? asOf(S['SAVA_' + a], state.latest) : null;
+    const q1 = q ? asOf(S['SAVQ_' + a], addMonths(q.t, -12)) : null, nq = q ? savNorm('SAVQ_' + a) : null, ny = y ? savNorm('SAVA_' + a) : null;
+    return { a, nm, q, y, dq: q && nq != null ? q.v - nq : null, d1: q && q1 ? q.v - q1.v : null, dy: y && ny != null ? y.v - ny : null };
+  }).filter(r => r.q || r.y).sort((p, r) => ((r.dq ?? r.dy ?? -99) - (p.dq ?? p.dy ?? -99)));
+  const cls = v => 'num ' + (v == null ? '' : v > 0.5 ? 'up' : v < -0.5 ? 'dn' : '');
+  const tb = el('tbody');
+  for (const r of rows) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: r.nm }),
+    el('td', { class: 'num', text: r.q ? `${fmtNum(r.q.v, 1)}% · ${savLab('SAVQ_' + r.a, r.q.t)}` : '–' }), el('td', { class: cls(r.dq), text: savPts(r.dq) }), el('td', { class: cls(r.d1), text: savPts(r.d1) }),
+    el('td', { class: 'num', text: r.y ? `${fmtNum(r.y.v, 1)}% · ${savLab('SAVA_' + r.a, r.y.t)}` : '–' }), el('td', { class: cls(r.dy), text: savPts(r.dy) })));
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [['Economy', 'Quarterly gross %', 'Quarter', 'vs 2015-19 (pts)', '1-year change (pts)', 'Annual net %', 'Year', 'vs 2015-19 (pts)'],
+    ...rows.map(r => [r.nm, r.q ? r.q.v.toFixed(2) : '', r.q ? savLab('SAVQ_' + r.a, r.q.t) : '', r.dq != null ? r.dq.toFixed(2) : '', r.d1 != null ? r.d1.toFixed(2) : '', r.y ? r.y.v.toFixed(2) : '', r.y ? savLab('SAVA_' + r.a, r.y.t) : '', r.dy != null ? r.dy.toFixed(2) : ''])];
+  setNote(c, 'Ranked by how far each economy saves above (blue) or below (red) its own 2015–19 average. Quarterly = gross rate; annual = net rate, closest to headline figures. '
+    + 'No household saving rate is published for Malaysia, Singapore, Taiwan, Indonesia or India (their statistics offices publish national saving, which mixes in companies and government).');
+  setSource(c, `${SAV_SRC_Q}; ${SAV_SRC_A}${has('SAVQ_CHN') ? '; China quarterly: National Bureau of Statistics, calculated' : ''}`);
+}
+function savTiles(box, tile) {
+  const t = (lab, id) => { if (!has(id)) return; const a = asOf(S[id], state.latest), n = savNorm(id); tile(lab, fmtNum(a.v, 1) + '%', n != null ? `${savPts(a.v - n)} vs 2015–19` : '', savLab(id, a.t) + (/^SAVQ_(?!CHN)/.test(id) ? ' · gross' : /^SAVA_/.test(id) ? ' · net' : '')); };
+  t('US saving rate', 'PSAVERT'); t('Germany saving rate', 'SAVQ_DEU'); t('UK saving rate', 'SAVQ_GBR'); t('Japan saving rate', 'SAVA_JPN');
+  t('China saving rate', has('SAVQ_CHN') ? 'SAVQ_CHN' : 'SAVA_CHN');
+}
+SUBTABS.regime.push(['Household saving', ['sav_tbl', 'sav_q', 'sav_a'], 'Consumers']);   // added last so existing bookmarks keep their place
+SUBTABS.us.find(x => x[0] === 'Housing & consumer')[1].push('us_sav');
+SUBTABS.europe.find(x => x[0] === 'Economy')[1].push('eu_sav');
+SUBTABS.uk.find(x => x[0] === 'Economy')[1].push('uk_sav');
+SUBTABS.japan.find(x => x[0] === 'Economy')[1].push('jp_sav');
+SUBTABS.kr.find(x => x[0] === 'Economy')[1].push('kr_sav');
+SUBTABS.cn.find(x => x[0] === 'Economy')[1].push('cn_sav');
+Object.assign(TILE_SETS.regime, { 'Household saving': ['US saving rate', 'Germany saving rate', 'UK saving rate', 'Japan saving rate', 'China saving rate'] });
+function buildSavings() {
+  const rg = $('#regGrid');
+  makeCard(rg, { key: 'sav_tbl', title: 'Household saving: now vs before', wide: true, range: false, render: renderSavTable });
+  makeCard(rg, { key: 'sav_q', title: 'Saving rates, quarterly (gross)', wide: true, defaultRange: 'MAX', earliest: Date.UTC(2006, 0, 1), render: renderSavQ });   // the OECD quarterly table starts in 2006
+  makeCard(rg, { key: 'sav_a', title: 'Saving rates, annual (net)', wide: true, defaultRange: 'MAX', earliest: Date.UTC(1995, 0, 1), render: renderSavA });
+  const card = (grid, key, title, list, src, extra, range = 'MAX') => makeCard($('#' + grid), { key, title, defaultRange: range, earliest: Date.UTC(1995, 0, 1), render: c => savLines(c, list, src, extra) });
+  makeCard($('#usGrid'), { key: 'us_sav', title: 'US personal saving rate', defaultRange: '10Y', render: c => savLines(c, [['PSAVERT', 'Personal saving rate']],
+    'FRED (PSAVERT), US Bureau of Economic Analysis', 'Monthly, % of disposable personal income (the headline US rate). ') });
+  card('europeGrid', 'eu_sav', 'Household saving rates', [['SAVQ_DEU', 'Germany'], ['SAVQ_FRA', 'France'], ['SAVQ_ITA', 'Italy'], ['SAVQ_ESP', 'Spain']], SAV_SRC_Q, 'Gross rates, quarterly. ', '10Y');
+  card('ukGrid', 'uk_sav', 'Household saving rate', [['SAVQ_GBR', 'UK']], SAV_SRC_Q, 'Gross rate, quarterly. ', '10Y');
+  card('japanGrid', 'jp_sav', 'Household saving rate', [['SAVA_JPN', 'Japan']], SAV_SRC_A, 'Net rate, annual (no quarterly figure in the OECD table). ');
+  card('krGrid', 'kr_sav', 'Household saving rate', [['SAVA_KOR', 'Korea']], SAV_SRC_A, 'Net rate, annual. ');
+  makeCard($('#cnGrid'), { key: 'cn_sav', title: 'Household saving rate', defaultRange: 'MAX', earliest: Date.UTC(1995, 0, 1), render: c => has('SAVQ_CHN')
+    ? savLines(c, [['SAVQ_CHN', 'China, last 4 quarters'], ['SAVA_CHN', 'China, annual (OECD)']], 'National Bureau of Statistics (per-capita income and spending), calculated; ' + SAV_SRC_A, 'Quarterly line: 1 − spending ÷ income over the last four quarters. ')
+    : savLines(c, [['SAVA_CHN', 'China']], SAV_SRC_A, 'Net rate, annual. ') });
+}
+
 // ------------------------------------------------------------------ build and wiring
 function ldTiles(sel, fn) {   // append tiles to a page's tile box (TILE_SETS then picks five for the open sub-tab)
   const box = $(sel); if (!box) return;
@@ -703,6 +800,7 @@ function regLeadTiles() {
   const sub = ldSub('regime');
   if (sub === 'Market signals') ldTiles('#regKpis', canTile);
   if (sub === 'Global breadth & money') { if (!LEADS) { loadLeads().then(() => state.tab === 'regime' && renderTab()); return; } ldTiles('#regKpis', glTiles); }
+  if (sub === 'Household saving') { if (!LEADS) { loadLeads().then(() => state.tab === 'regime' && renderTab()); return; } ldTiles('#regKpis', savTiles); }
 }
 function asiaLeadTiles() { if (ldSub('asia') !== 'Trade pulse') return; if (!LEADS) { loadLeads().then(() => state.tab === 'asia' && renderTab()); return; } ldTiles('#asiaKpis', axTiles); }
 function myLeadTiles() { if (['Equities', 'Sectors'].includes(ldSub('my'))) return; if (!LEADS) { loadLeads().then(() => state.tab === 'my' && renderTab()); return; } ldTiles('#myKpis', myPulseTile); }

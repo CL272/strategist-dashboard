@@ -7524,7 +7524,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

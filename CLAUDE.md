@@ -75,6 +75,12 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `leadStats` rule searched over 2 to 18 months, plus at least 12 years of overlap); never type a lead into a note.
   Add publication delays for new series to `PUB_LAG` (app.js) and `lag_of` (signals.py). Tiles for app.js pages are added
   through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
+- **Household saving rates** (owner's request, 20 Nov 2026) come from `pipeline/leads.py` (`savings_oecd`: OECD quarterly
+  GROSS rate `SAVQ_*` and annual NET rate `SAVA_*`; `savings_china`: NBS per-capita income and spending, `SAVQ_CHN`, tried
+  each run and skipped if the site does not answer). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
+  Household saving (table, quarterly, annual) plus one card on the US, Europe, UK, Japan, Korea and China pages (Australia's
+  is in au.js). Gross and net rates differ by several points: never put them on one axis as if comparable. Malaysia,
+  Singapore, Taiwan, Indonesia and India publish no household rate.
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
   from `pipeline/rba.py` (RBA tables) and `pipeline/abs_au.py` (ABS Data API). The RBA's NAIRU and forecasts have no feed:
   after each Statement on Monetary Policy (Feb, May, Aug, Nov) update `RBA_SMP` in `pipeline/config.py`, including
