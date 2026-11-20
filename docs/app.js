@@ -3792,7 +3792,7 @@ function renderPosExt(c) {
 let SENT = null;
 const FG_BANDS = [[25, 'Extreme fear'], [45, 'Fear'], [55, 'Neutral'], [75, 'Greed'], [101, 'Extreme greed']];
 const fgBand = v => FG_BANDS.find(([x]) => v < x)[1];
-const AAII_AVG = { bull: 37.5, bear: 31.0 };   // AAII's published long-term averages since 1987
+const AAII_AVG = { bull: 37.5, neut: 31.5, bear: 31.0 };   // AAII's published long-term averages since 1987
 function sentUpd(src) { const m = SENT && SENT.meta && SENT.meta[src]; if (!m) return 'Source not loaded';
   const d = m.fetched_utc ? nice(dayMs(m.fetched_utc.slice(0, 10))) : '–';
   return m.ok ? `Source last read ${d}` : `⚠ Source failed on the last try; last read ${d}`; }
@@ -3825,10 +3825,13 @@ function renderSentFG(c) {
 function renderSentAAII(c) {
   if (!has('AAII_BULL', 'AAII_BEAR')) return setEmpty(c, 'AAII survey not loaded (scraped source; it arrives with the next daily run).');
   const sp = aaiiSpread();
-  drawLines(c, [{ name: 'Bulls %', data: pts(S.AAII_BULL, state.from, state.to), color: col(0) }, { name: 'Bears %', data: pts(S.AAII_BEAR, state.from, state.to), color: col(1) }],
+  // neutral in charcoal (no side); its long-run average (31.5%) sits on top of the bears' (31.0%), so only two dashed lines are drawn
+  drawLines(c, [{ name: 'Bulls %', data: pts(S.AAII_BULL, state.from, state.to), color: col(0) },
+    ...(has('AAII_NEUT') ? [{ name: 'Neutral %', data: pts(S.AAII_NEUT, state.from, state.to), color: tok('--s10'), extra: { lineStyle: { width: 1.6 } } }] : []),
+    { name: 'Bears %', data: pts(S.AAII_BEAR, state.from, state.to), color: col(1) }],
     { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', hlines: [{ y: AAII_AVG.bull, label: `bull avg ${AAII_AVG.bull}%`, color: col(0) }, { y: AAII_AVG.bear, label: `bear avg ${AAII_AVG.bear}%`, color: col(1) }], endLabels: false });
-  const a = asOf(sp, state.to);
-  setNote(c, `Weekly poll of individual investors on the next 6 months. Latest (${nice(a.t)}): bulls − bears ${sign(a.v)}${fmtNum(Math.abs(a.v), 1)} pts. Dashed lines = long-term averages. Bears far above average has tended to be a contrarian buy signal. AAII shows only about 6 months online; the dashboard archives each week, so history grows from Jun 2026. ${sentUpd('AAII')}.`);
+  const a = asOf(sp, state.to), lv = id => { const x = has(id) ? asOf(S[id], state.to) : null; return x ? fmtNum(x.v, 1) + '%' : '–'; };
+  setNote(c, `Latest (${nice(a.t)}): bulls ${lv('AAII_BULL')}, neutral ${lv('AAII_NEUT')}, bears ${lv('AAII_BEAR')}; bulls − bears ${sign(a.v)}${fmtNum(Math.abs(a.v), 1)} pts. Weekly poll of individual investors on the next 6 months. Dashed lines = long-term averages (bulls ${AAII_AVG.bull}%, bears ${AAII_AVG.bear}%; neutral ${AAII_AVG.neut}%, not drawn as it sits on the bears' line). A high neutral share means investors are unsure rather than bearish. Bears far above average has tended to be a contrarian buy signal. AAII shows only about 6 months online; the dashboard archives each week, so history grows from Jun 2026. ${sentUpd('AAII')}.`);
   setSource(c, 'AAII Sentiment Survey (scraped; archived weekly by this dashboard)');
 }
 function renderSentNAAIM(c) {
@@ -3859,7 +3862,7 @@ function renderSentTable(c) {
 function buildSentiment() {
   const g = $('#pvGrid');
   makeCard(g, { key: 'sent_fg', title: 'CNN Fear & Greed', defaultRange: '3Y', render: renderSentFG });
-  makeCard(g, { key: 'sent_aaii', title: 'AAII survey: bulls vs bears', defaultRange: '1Y', render: renderSentAAII });
+  makeCard(g, { key: 'sent_aaii', title: 'AAII: bulls, neutral, bears', defaultRange: '1Y', render: renderSentAAII });
   makeCard(g, { key: 'sent_naaim', title: 'NAAIM: active managers’ equity exposure', defaultRange: '3Y', render: renderSentNAAIM });
   makeCard(g, { key: 'sent_table', title: 'Sentiment scorecard', range: false, render: renderSentTable });
   const r = cards.sent_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
