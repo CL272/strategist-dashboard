@@ -241,9 +241,9 @@ week_ending,slug,org,tokens
 2026-11-19,anthropic/claude-sonnet-5.5-20260928,anthropic,2857964635636
 2026-11-19,baidu/ernie-5.5-flash-preview-20261110,baidu,3504292015364
 2026-11-19,deepseek/deepseek-v4.1-flash-20260910,deepseek,15964729892294
-2026-11-19,deepseek/deepseek-v4.1-flash-20261017,deepseek,62208052509299
+2026-11-19,deepseek/deepseek-v4.1-flash-20261017,deepseek,62208054083113
 2026-11-19,meta/muse-spark-1.3-contributor-20260902,meta,2977160889810
-2026-11-19,minimax/minimax-m3.1-flash-20261019,minimax,3915757693437
+2026-11-19,minimax/minimax-m3.1-flash-20261019,minimax,3915757751459
 2026-11-19,moonshotai/kimi-k3.1-pro-20261023,moonshotai,3554382650813
 2026-11-19,nvidia/nemotron-3-ultra-550b-a55b-20260604,nvidia,3419321440254
 2026-11-19,nvidia/nemotron-3.5-super-vl-20261015,nvidia,2858819534585
@@ -253,6 +253,6 @@ week_ending,slug,org,tokens
 2026-11-19,tencent/hy4-20261104,tencent,11671866202519
 2026-11-19,tencent/hy4-flash-20261116,tencent,69273358650121
 2026-11-19,typesafe/jev-1.13-20260917,typesafe,2929129098067
-2026-11-19,xiaomi/mimo-v2.6-flash-20260921,xiaomi,4013072026235
+2026-11-19,xiaomi/mimo-v2.6-flash-20260921,xiaomi,4013072442315
 2026-11-19,z-ai/glm-5.3-20260816,z-ai,3346674366824
 2026-11-19,z-ai/glm-5.3-flash-20260826,z-ai,10690458462867
