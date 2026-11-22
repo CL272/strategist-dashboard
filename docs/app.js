@@ -877,7 +877,7 @@ function renderScarcity(c) {
     const { band, name } = SCARCITY[id], [st] = scarcityStatus(a.v, band);
     const hist = s.v.slice(0, a.i + 1).filter(x => x != null), below = hist.filter(x => x <= a.v).length;
     const where = a.v > band[1] ? fmtNum(a.v - band[1], 1) + ' pts above' : a.v >= band[0] ? 'inside' : fmtNum(band[0] - a.v, 1) + ' pts below';
-    return `${s.label} ${fmtNum(a.v, 1)}%: ${st.toUpperCase()} (${where} the ${name} of ${band[0]}–${band[1]}%; ${Math.round(below / hist.length * 100)}th percentile since ${new Date(s.t[0]).getUTCFullYear()})`;
+    return `${s.label} ${fmtNum(a.v, 1)}%: ${st.toUpperCase()} (${where} the ${name} of ${band[0]}–${band[1]}%; ${ordinal(below / hist.length * 100)} percentile since ${new Date(s.t[0]).getUTCFullYear()})`;
   }).filter(Boolean);
   setNote(c, parts.join(' · ') + '. Shaded bands = where stress starts: above the band reserves are ample, inside it they are approaching scarcity, below it they are scarce. ' + ids.map(id => SCARCITY[id].who).join('. ') + '.');
 }
@@ -1038,7 +1038,7 @@ function renderFragile(c) {
   const comp = rows.reduce((a, r) => a + r.p, 0) / rows.length;
   const [st, lab, icon] = stressBand(comp);
   b.append(el('div', { class: 'fragile-head' },
-    el('span', { class: 'big', text: `${Math.round(comp)}th` }),
+    el('span', { class: 'big', text: `${ordinal(comp)}` }),
     el('span', { class: 'status', style: `--st:${tok('--' + st)}` }, el('span', { class: 'dot' }), `${icon}${lab}`),
     el('span', { class: 'muted small', text: `average percentile of ${rows.length} stress gauges vs their last 10 years` })));
   for (const r of rows.sort((x, y) => y.p - x.p)) {
@@ -1119,7 +1119,7 @@ function overviewKpis() {
     tile('Fed net liquidity, 13w', fmtChg(s, a.v - b.v), `level ${fmtVal(s, a.v)}`, 'as of ' + nice(a.t)); }
   else tile('Fed net liquidity, 13w', '–', 'needs FRED data', '');
   if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, state.to), [lab, tk] = legacyBand(a.v);
-    tile('Stress composite', `${Math.round(a.v)}th pct`, lab, 'Funding · Credit · Growth vs 10 years', tk); }
+    tile('Stress composite', `${ordinal(a.v)} pct`, lab, 'Funding · Credit · Growth vs 10 years', tk); }
   if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, state.to); tile('Recession odds, 12m', fmtNum(a.v, 0) + '%', 'NY Fed yield-curve model', monthLab(a.t)); }
   const above = OV_EQ.filter(id => has(id)).map(id => { const s = S[id], a = asOf(s, state.to); const m = a && ma(s, a.i, 200); return m ? a.v > m : null; }).filter(x => x != null);
   if (above.length) tile('Equity breadth', `${above.filter(Boolean).length} of ${above.length}`, 'global indices above their 200-day average', 'as of ' + nice(state.to));
@@ -1144,7 +1144,7 @@ function talkingPoints() {
   if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, to), gm = asOf(S.REG_GM, to), im = asOf(S.REG_IM, to);
     out.push(`Macro regime: ${QUADS[q.v].name} as of ${monthLab(q.t)} data. Growth momentum ${gm.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(gm.v)}), inflation momentum ${im.v >= 0 ? 'accelerating' : 'decelerating'} (${zf(im.v)}).`); }
   if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, to), bl = ['Funding', 'Credit', 'Growth'].filter(k => has(STRESS_IDS[k])).map(k => `${k} ${Math.round(asOf(S[STRESS_IDS[k]], to).v)}`);
-    out.push(`Stress: composite at the ${Math.round(a.v)}th percentile of the last 10 years (${legacyBand(a.v)[0].toLowerCase()}); blocks: ${bl.join(', ')}.`); }
+    out.push(`Stress: composite at the ${ordinal(a.v)} percentile of the last 10 years (${legacyBand(a.v)[0].toLowerCase()}); blocks: ${bl.join(', ')}.`); }
   if (has('DXY')) { const s = S.DXY, a = asOf(s, to), b = asOf(s, addMonths(a.t, -1));
     let t = `USD: DXY ${fmtChg(s, chg(s, b.v, a.v))} over 1M`;
     if (has('USDSGD')) { const u = S.USDSGD, ua = asOf(u, to), ub = asOf(u, addMonths(ua.t, -1)); t += `; USD/SGD ${fmtNum(ua.v, 4)} (${fmtChg(u, chg(u, ub.v, ua.v))})`; }
@@ -1173,7 +1173,7 @@ function whatChanged(end = state.latest) {
     if (r && c && r.v !== c.v && r0 === c.v) add(2, `Raw regime signal newly points to ${QUADS[r.v].name} (${monthLab(r.t)}); needs a second month to confirm.`, 'regime', 'Regime now'); }
   // stress composite band
   if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, wk);
-    if (a && b && legacyBand(a.v)[0] !== legacyBand(b.v)[0]) add(a.v > b.v ? 1 : 3, `Stress composite moved from ${legacyBand(b.v)[0].toLowerCase()} to ${legacyBand(a.v)[0].toLowerCase()} (${Math.round(b.v)}th → ${Math.round(a.v)}th percentile).`, 'stress', 'Stress composite'); }
+    if (a && b && legacyBand(a.v)[0] !== legacyBand(b.v)[0]) add(a.v > b.v ? 1 : 3, `Stress composite moved from ${legacyBand(b.v)[0].toLowerCase()} to ${legacyBand(a.v)[0].toLowerCase()} (${ordinal(b.v)} → ${ordinal(a.v)} percentile).`, 'stress', 'Stress composite'); }
   // peak signposts
   if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.triggered[j] == null) j--;
     if (j > n && SIGN.triggered[j] != null && SIGN.triggered[j - 1] != null && SIGN.triggered[j] > SIGN.triggered[j - 1])
@@ -3668,12 +3668,12 @@ function posvolKpis() {
   const box = $('#pvKpis'); box.replaceChildren();
   const tile = (label, val, delta, foot) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: label }), el('div', { class: 'k-value', text: val }),
     el('div', { class: 'k-delta', text: delta }), el('div', { class: 'k-asof', text: foot })));
-  if (has('VIX')) { const p = pctRank(S.VIX, state.to, 10); if (p) tile('VIX', fmtNum(p.v, 1), `${Math.round(p.p)}th percentile (10y)`, 'as of ' + nice(p.t)); }
+  if (has('VIX')) { const p = pctRank(S.VIX, state.to, 10); if (p) tile('VIX', fmtNum(p.v, 1), `${ordinal(p.p)} percentile (10y)`, 'as of ' + nice(p.t)); }
   if (has('VIX', 'VIX3M')) { const a = asOf(S.VIX, state.to), b = asOf(S.VIX3M, state.to), r = b.v / a.v;
     tile('VIX 3M / VIX', fmtNum(r, 2), r <= 1 ? '⚠ below 1, inverted: near-term stress priced above 3-month' : 'above 1, normal (contango): calm near term', nice(a.t)); }
   if (has('VIX', 'SPX')) { rvCache = rvCache || realizedVol('SPX'); const a = asOf(S.VIX, state.to), r = asOf(rvCache, state.to);
     if (r) tile('VIX − realised vol', sign(a.v - r.v) + fmtNum(Math.abs(a.v - r.v), 1) + ' pts', `S&P 500 realised (1m) ${fmtNum(r.v, 1)}%`, 'insurance premium'); }
-  if (has('MOVE')) { const p = pctRank(S.MOVE, state.to, 10); if (p) tile('MOVE (rates vol)', fmtNum(p.v, 0), `${Math.round(p.p)}th percentile (10y)`, nice(p.t)); }
+  if (has('MOVE')) { const p = pctRank(S.MOVE, state.to, 10); if (p) tile('MOVE (rates vol)', fmtNum(p.v, 0), `${ordinal(p.p)} percentile (10y)`, nice(p.t)); }
   sentKpis(tile);
   if (POS) { const st = Object.values(POS.markets).map(m => posStats(m)).filter(Boolean);
     tile('Crowded positions', `${st.filter(s => s.pct >= 90 || s.pct <= 10).length} of ${st.length}`, 'speculators at a 3-year extreme (top/bottom 10%)', 'CFTC, week of ' + nice(Math.max(...st.map(s => s.t)))); }
@@ -3722,7 +3722,7 @@ function renderVolX(c) {
   if (!rows.length) return setEmpty(c, 'Waiting for volatility data (next daily run).');
   const o = baseOpt(); o.legend.show = false;
   o.grid = { left: 8, right: 70, top: 8, bottom: 8, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${Math.round(r.v)}th percentile</b> (5 years)<br><span style="color:${tok('--ink-2')}">${esc(r.name)}: ${fmtNum(r.lvl, 1)}</span>`; } };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${ordinal(r.v)} percentile</b> (5 years)<br><span style="color:${tok('--ink-2')}">${esc(r.name)}: ${fmtNum(r.lvl, 1)}</span>`; } };
   o.xAxis = { type: 'value', min: 0, max: 100, axisLabel: { color: tok('--muted'), fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
   o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
   o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(1), itemStyle: { color: tok('--' + stressBand(r.v)[0]), borderRadius: [0, 4, 4, 0] } })),
@@ -3780,7 +3780,7 @@ function renderPosExt(c) {
   const rows = Object.values(POS.markets).map(m => { const s = posStats(m); return s && { name: m.label, v: s.z, pct: s.pct }; }).filter(Boolean).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 12).sort((a, b) => b.v - a.v);
   const o = baseOpt(); o.legend.show = false;
   o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${zf(r.v)}σ</b> · ${Math.round(r.pct)}th percentile<br><span style="color:${tok('--ink-2')}">${esc(r.name)}, speculators vs 3 years</span>`; } };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex]; return `<b>${zf(r.v)}σ</b> · ${ordinal(r.pct)} percentile<br><span style="color:${tok('--ink-2')}">${esc(r.name)}, speculators vs 3 years</span>`; } };
   o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + 'σ' }, splitLine: { lineStyle: { color: tok('--grid') } } };
   o.yAxis = { type: 'category', inverse: true, data: rows.map(r => r.name), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
   o.series = [{ type: 'bar', barWidth: '60%', data: rows.map(r => ({ value: +r.v.toFixed(2), itemStyle: { color: r.v >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
@@ -3929,7 +3929,7 @@ function renderStressHeat(c) {
   H.rows.forEach((r, y) => r.v.forEach((v, x) => { if (v != null) data.push([x, y, v]); }));
   const o = baseOpt(); o.legend.show = false;
   o.grid = { left: 8, right: 8, top: 8, bottom: 52, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${p.value[2]}th percentile</b><br><span style="color:${tok('--ink-2')}">${esc(ys[p.value[1]])}, ${esc(nice(Date.parse(H.dates[p.value[0]])))}</span>` };
+  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => `<b>${ordinal(p.value[2])} percentile</b><br><span style="color:${tok('--ink-2')}">${esc(ys[p.value[1]])}, ${esc(nice(Date.parse(H.dates[p.value[0]])))}</span>` };
   o.xAxis = { type: 'category', data: H.dates.map(d => d.slice(0, 7)), axisLabel: { color: tok('--muted'), fontSize: 10, interval: Math.ceil(H.dates.length / 8) }, axisTick: { show: false }, axisLine: { show: false } };
   o.yAxis = { type: 'category', inverse: true, data: ys, axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisTick: { show: false }, axisLine: { show: false } };
   o.visualMap = { min: 0, max: 100, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 160, itemWidth: 10, text: ['100 stressed', '0 calm'], textStyle: { color: tok('--muted'), fontSize: 11 },
@@ -6028,7 +6028,7 @@ function wkTakeaways(end) {
   if (mv.length) out.push(`Unusual moves (≥2σ vs 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
   { const wc = whatChanged(end).filter(x => x.pri <= 2 && x.tab !== 'markets' && x.tab !== 'cbwatch' && x.tab !== 'sp').slice(0, 3); if (wc.length) out.push('What changed: ' + wc.map(x => x.text.replace(/\.$/, '')).join('; ') + '.'); }
   if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); let t = `Macro regime: ${QUADS[q.v].name} (${monthLab(q.t)} data)`;
-    if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${Math.round(a.v)}th percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
+    if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${ordinal(a.v)} percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
     out.push(t + '.'); }
   return out;
 }
@@ -6042,7 +6042,7 @@ function wkTiles(end) {
   const now = fpSnap('now');
   if (FP && FP.target && FP.target[0] != null) add('Fed funds target', `${fmtNum(FP.target[0], 2)}–${fmtNum(FP.target[1], 2)}%`, now && now.path.length ? `next ${dShort(dayMs(now.path[0].d))}: ${now.path[0].odds.replace(' ~100%', '')}` : '', null);
   if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, end), b = asOf(s, end - 28 * DAY); add('Fed net liquidity', fmtVal(s, a.v), b ? `4w ${sign(a.v - b.v)}${fmtVal(s, Math.abs(a.v - b.v))}` : '', null); }
-  if (has('VIX')) { const p = pctRank(S.VIX, end, 10); if (p) add('VIX', fmtNum(p.v, 1), `${Math.round(p.p)}th pct (10y)`, null); }
+  if (has('VIX')) { const p = pctRank(S.VIX, end, 10); if (p) add('VIX', fmtNum(p.v, 1), `${ordinal(p.p)} pct (10y)`, null); }
   return out;
 }
 function wkAsia(end) {
@@ -6742,7 +6742,7 @@ const SUBTABS = {
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
-  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_dxy']],
+  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_dxy']],
     ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
     ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
   europe: [['Equities', ['#sig_europe', 'eu_eq']], ['Rates & bonds', ['#sa_europe_rates', 'eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['#sa_europe_fx', 'eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']], ['Countries compared', ['#sa_eu_cmp', 'eu_cmp']]],
@@ -6921,6 +6921,7 @@ function buildRegions() {
     lines(c, ['UMCSENT'], v => fmtNum(v, 1), v => fmtNum(v, 0), { areas: recessionAreas(state.from, state.to) }); setSource(c, 'University of Michigan via FRED (UMCSENT)'); } });
   makeCard(us, { key: 'us_rates', title: 'Treasury yields', defaultRange: '3Y', render: c => {
     lines(c, ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%'); setSource(c, 'US Treasury via FRED'); } });
+  makeCard(us, { key: 'us_margin', title: 'Margin debt vs money supply', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), render: renderUsMargin });
   makeCard(us, { key: 'us_eq', title: 'US equities, rebased', defaultRange: '1Y', render: c => { rebasedCard(c, ['SPX', 'NDX', 'RTY', 'SPXEW']); setSource(c, 'Yahoo Finance'); } });
   makeCard(us, { key: 'us_dxy', title: 'US dollar index', defaultRange: '3Y', render: c => { lines(c, ['DXY'], v => fmtNum(v, 2), v => fmtNum(v, 0)); setSource(c, 'ICE via Yahoo Finance (DX-Y.NYB)'); } });
   makeCard(us, { key: 'us_fed', title: 'Federal Reserve', range: false, render: c => renderPolicySummary(c, 'Fed') });
@@ -7204,6 +7205,32 @@ function regionTiles(tab) {
     lvl('AU_CASH', 'RBA cash rate', v => fmtNum(v, 2) + '%', 3, pp); lvl('AU_TRIM_YOY', 'Trimmed-mean CPI', v => fmtNum(v, 1) + '%', 3, pp); lvl('AU_UNEMP', 'Unemployment rate', v => fmtNum(v, 1) + '%', 3, pp);
     lvl('AU_10Y', 'Australia 10Y', v => fmtNum(v, 2) + '%', 1); lvl('AUDUSD', 'AUD/USD', v => fmtNum(v, 4), 1); lvl('AS51', 'ASX 200', v => fmtNum(v, 0), 1);
   }
+}
+// Margin debt as a share of money (owner's request, 22 Nov 2026), from FRED: the Fed's Financial Accounts (broker-dealers'
+// receivables from customers, quarterly) against M2 and currency in circulation in the quarter's last month
+function marginRatios() {
+  if (!has('MARGIN_Z1', 'M2')) return null;
+  const Z = S.MARGIN_Z1, m2 = { id: 'MARGIN_M2', label: 'Margin loans as % of M2', t: [], v: [] }, cc = { id: 'MARGIN_CC', label: 'Margin loans as % of currency in circulation', t: [], v: [] };
+  for (let i = 0; i < Z.t.length; i++) {
+    const end = addMonths(Z.t[i], 2), a = asOf(S.M2, end), b = has('CURRCIR_M') ? asOf(S.CURRCIR_M, end) : null;
+    if (a && end - a.t <= 62 * DAY) { m2.t.push(Z.t[i]); m2.v.push(Z.v[i] / 1000 / a.v * 100); }
+    if (b && end - b.t <= 62 * DAY) { cc.t.push(Z.t[i]); cc.v.push(Z.v[i] / 1000 / b.v * 100); }
+  }
+  return m2.t.length ? { m2, cc } : null;
+}
+function renderUsMargin(c) {
+  const R = marginRatios(); if (!R) return setEmpty(c, 'Waiting for the next data run (Fed Financial Accounts via FRED).');
+  const { m2, cc } = R;
+  drawPair(c, { name: 'Margin loans ÷ currency in circulation (left)', data: pts(cc, state.from, state.to) }, { name: 'Margin loans ÷ M2 (right)', data: pts(m2, state.from, state.to) },
+    { fmtA: v => fmtNum(v, 1) + '%', fmtB: v => fmtNum(v, 2) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 1) + '%' });
+  const n = m2.v.length - 1, now = m2.v[n], tNow = m2.t[n], q = t => dateLab(t, 'q');
+  let since = null; for (let i = n - 1; i >= 0; i--) if (m2.v[i] >= now) { since = m2.t[i]; break; }
+  let pk = 0; m2.v.forEach((v, i) => { if (v > m2.v[pk]) pk = i; });
+  const pct = m2.v.filter(v => v <= now).length / m2.v.length * 100, z = asOf(S.MARGIN_Z1, tNow);
+  setNote(c, `Margin loans are ${fmtNum(now, 2)}% of M2 (${q(tNow)}; $${fmtNum(z.v / 1e6, 2)}tn), ${since ? `the highest since ${q(since)}` : 'a record'}, ${ordinal(Math.round(pct))} percentile since ${new Date(m2.t[0]).getUTCFullYear()}; the peak was ${fmtNum(m2.v[pk], 2)}% in ${q(m2.t[pk])}. `
+    + 'Borrowing to buy shares rises with confidence and peaked near the 2000 and 2007 market tops; a fast fall marks forced selling. Margin debt here is the Fed Financial Accounts measure: broker-dealers’ receivables from customers (margin loans and other receivables), quarterly, published about ten weeks after the quarter. '
+    + 'The widely shared monthly version uses FINRA’s margin statistics (debit balances at member firms), which are not on FRED and cover more accounts, so its levels and peaks differ. Each ratio uses M2 or currency in circulation in the quarter’s last month.');
+  setSource(c, 'FRED: Fed Financial Accounts Z.1 (BOGZ1FL663067003Q), M2 (M2SL), currency in circulation (MBCURRCIR); calculated');
 }
 function renderRegion(tab) { regionTiles(tab); renderPanel(tab); }
 

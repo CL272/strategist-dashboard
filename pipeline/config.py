@@ -144,7 +144,11 @@ FRED = [
     ("SOFR",        "SOFR",        "SOFR",                        "Liquidity", "yield", "%"),
     ("IORB",        "IORB",        "Interest on reserves (IORB)", "Liquidity", "yield", "%"),
     ("EFFR",        "EFFR",        "Effective fed funds",         "Liquidity", "yield", "%"),
-    ("M2",          "M2SL",        "US M2 money supply",          "Liquidity", "level", "USD bn"),
+    ("M2",          "M2SL",        "US M2 money supply",          "Liquidity", "level", "USD bn", "1980-01-01"),   # long history for margin debt ÷ M2
+    # margin debt vs money (owner's request, 22 Nov 2026): the Fed's Financial Accounts (Z.1), quarterly; FINRA's monthly
+    # margin statistics are not on FRED
+    ("MARGIN_Z1",   "BOGZ1FL663067003Q", "Broker margin loans to customers (Fed Financial Accounts)", "Liquidity", "level", "USD mn", "1980-01-01"),
+    ("CURRCIR_M",   "MBCURRCIR",   "Currency in circulation",     "Liquidity", "level", "USD bn", "1980-01-01"),
     ("GDP",         "GDP",         "US nominal GDP (SAAR)",       "Liquidity", "level", "USD bn"),
     ("BANK_ASSETS", "TLAACBW027SBOG", "Commercial bank total assets", "Liquidity", "level", "USD bn"),
     # Other central banks
