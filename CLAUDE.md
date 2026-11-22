@@ -85,6 +85,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Household saving (table, quarterly, annual) plus one card on the US, Europe, UK, Japan, Korea and China pages (Australia's
   is in au.js). Gross and net rates differ by several points: never put them on one axis as if comparable. Malaysia,
   Singapore, Taiwan, Indonesia and India publish no household rate.
+- **Margin debt** (owner's request, 22 Nov 2026): US → Equities, "Margin debt vs money supply" (`renderUsMargin`), as a
+  share of M2 and of currency in circulation. "FINRA monthly" (default) reads FINRA's margin statistics file in
+  `pipeline/leads.py` (`finra_margin`: `FINRA_DEBIT`, free credit balances; from Jan 1997); "Fed quarterly" uses the
+  Financial Accounts on FRED (`MARGIN_Z1`). FINRA updates the same .xlsx address in place; the page link is read first.
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
   from `pipeline/rba.py` (RBA tables) and `pipeline/abs_au.py` (ABS Data API). The RBA's NAIRU and forecasts have no feed:
   after each Statement on Monetary Policy (Feb, May, Aug, Nov) update `RBA_SMP` in `pipeline/config.py`, including

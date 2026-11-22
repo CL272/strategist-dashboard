@@ -6921,7 +6921,9 @@ function buildRegions() {
     lines(c, ['UMCSENT'], v => fmtNum(v, 1), v => fmtNum(v, 0), { areas: recessionAreas(state.from, state.to) }); setSource(c, 'University of Michigan via FRED (UMCSENT)'); } });
   makeCard(us, { key: 'us_rates', title: 'Treasury yields', defaultRange: '3Y', render: c => {
     lines(c, ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%'); setSource(c, 'US Treasury via FRED'); } });
-  makeCard(us, { key: 'us_margin', title: 'Margin debt vs money supply', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), render: renderUsMargin });
+  state.usMarginSrc = 'finra';
+  makeCard(us, { key: 'us_margin', title: 'Margin debt vs money supply', defaultRange: 'MAX', earliest: Date.UTC(1997, 0, 1), render: renderUsMargin,   // FINRA starts Jan 1997
+    seg: { key: 'usMarginSrc', options: [['finra', 'FINRA monthly'], ['z1', 'Fed quarterly']] } });
   makeCard(us, { key: 'us_eq', title: 'US equities, rebased', defaultRange: '1Y', render: c => { rebasedCard(c, ['SPX', 'NDX', 'RTY', 'SPXEW']); setSource(c, 'Yahoo Finance'); } });
   makeCard(us, { key: 'us_dxy', title: 'US dollar index', defaultRange: '3Y', render: c => { lines(c, ['DXY'], v => fmtNum(v, 2), v => fmtNum(v, 0)); setSource(c, 'ICE via Yahoo Finance (DX-Y.NYB)'); } });
   makeCard(us, { key: 'us_fed', title: 'Federal Reserve', range: false, render: c => renderPolicySummary(c, 'Fed') });
@@ -7208,29 +7210,38 @@ function regionTiles(tab) {
 }
 // Margin debt as a share of money (owner's request, 22 Nov 2026), from FRED: the Fed's Financial Accounts (broker-dealers'
 // receivables from customers, quarterly) against M2 and currency in circulation in the quarter's last month
-function marginRatios() {
-  if (!has('MARGIN_Z1', 'M2')) return null;
-  const Z = S.MARGIN_Z1, m2 = { id: 'MARGIN_M2', label: 'Margin loans as % of M2', t: [], v: [] }, cc = { id: 'MARGIN_CC', label: 'Margin loans as % of currency in circulation', t: [], v: [] };
-  for (let i = 0; i < Z.t.length; i++) {
-    const end = addMonths(Z.t[i], 2), a = asOf(S.M2, end), b = has('CURRCIR_M') ? asOf(S.CURRCIR_M, end) : null;
+function marginRatios(src = 'z1') {   // 'finra': FINRA debit balances, monthly (leads.json); 'z1': Fed Financial Accounts, quarterly (FRED)
+  const id = src === 'finra' ? 'FINRA_DEBIT' : 'MARGIN_Z1';
+  if (!has(id, 'M2')) return null;
+  const Z = S[id], m2 = { id: 'MARGIN_M2', label: 'Margin debt as % of M2', t: [], v: [] }, cc = { id: 'MARGIN_CC', label: 'Margin debt as % of currency in circulation', t: [], v: [] };
+  for (let i = 0; i < Z.t.length; i++) {   // money in the same month (FINRA) or the quarter's last month (Fed); a month not yet published uses the latest within two months
+    const end = src === 'finra' ? Z.t[i] : addMonths(Z.t[i], 2), a = asOf(S.M2, end), b = has('CURRCIR_M') ? asOf(S.CURRCIR_M, end) : null;
     if (a && end - a.t <= 62 * DAY) { m2.t.push(Z.t[i]); m2.v.push(Z.v[i] / 1000 / a.v * 100); }
     if (b && end - b.t <= 62 * DAY) { cc.t.push(Z.t[i]); cc.v.push(Z.v[i] / 1000 / b.v * 100); }
   }
   return m2.t.length ? { m2, cc } : null;
 }
 function renderUsMargin(c) {
-  const R = marginRatios(); if (!R) return setEmpty(c, 'Waiting for the next data run (Fed Financial Accounts via FRED).');
+  const fin = state.usMarginSrc === 'finra';
+  if (fin && typeof ldWait === 'function' && ldWait(c)) return;   // FINRA's file comes with leads.json
+  const R = marginRatios(fin ? 'finra' : 'z1'); if (!R) return setEmpty(c, fin ? 'FINRA margin statistics arrive with the next data run.' : 'Waiting for the next data run (Fed Financial Accounts via FRED).');
   const { m2, cc } = R;
-  drawPair(c, { name: 'Margin loans ÷ currency in circulation (left)', data: pts(cc, state.from, state.to) }, { name: 'Margin loans ÷ M2 (right)', data: pts(m2, state.from, state.to) },
+  drawPair(c, { name: 'Margin debt ÷ currency in circulation (left)', data: pts(cc, state.from, state.to) }, { name: 'Margin debt ÷ M2 (right)', data: pts(m2, state.from, state.to) },
     { fmtA: v => fmtNum(v, 1) + '%', fmtB: v => fmtNum(v, 2) + '%', axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 1) + '%' });
-  const n = m2.v.length - 1, now = m2.v[n], tNow = m2.t[n], q = t => dateLab(t, 'q');
+  const n = m2.v.length - 1, now = m2.v[n], tNow = m2.t[n], q = t => dateLab(t, fin ? 'm' : 'q');
   let since = null; for (let i = n - 1; i >= 0; i--) if (m2.v[i] >= now) { since = m2.t[i]; break; }
   let pk = 0; m2.v.forEach((v, i) => { if (v > m2.v[pk]) pk = i; });
-  const pct = m2.v.filter(v => v <= now).length / m2.v.length * 100, z = asOf(S.MARGIN_Z1, tNow);
-  setNote(c, `Margin loans are ${fmtNum(now, 2)}% of M2 (${q(tNow)}; $${fmtNum(z.v / 1e6, 2)}tn), ${since ? `the highest since ${q(since)}` : 'a record'}, ${ordinal(Math.round(pct))} percentile since ${new Date(m2.t[0]).getUTCFullYear()}; the peak was ${fmtNum(m2.v[pk], 2)}% in ${q(m2.t[pk])}. `
-    + 'Borrowing to buy shares rises with confidence and peaked near the 2000 and 2007 market tops; a fast fall marks forced selling. Margin debt here is the Fed Financial Accounts measure: broker-dealers’ receivables from customers (margin loans and other receivables), quarterly, published about ten weeks after the quarter. '
-    + 'The widely shared monthly version uses FINRA’s margin statistics (debit balances at member firms), which are not on FRED and cover more accounts, so its levels and peaks differ. Each ratio uses M2 or currency in circulation in the quarter’s last month.');
-  setSource(c, 'FRED: Fed Financial Accounts Z.1 (BOGZ1FL663067003Q), M2 (M2SL), currency in circulation (MBCURRCIR); calculated');
+  const pct = m2.v.filter(v => v <= now).length / m2.v.length * 100, z = asOf(S[fin ? 'FINRA_DEBIT' : 'MARGIN_Z1'], tNow), mLast = asOf(S.M2, state.latest);
+  const yoy = fin ? asOf(S.FINRA_DEBIT, addMonths(tNow, -12)) : null, y0 = new Date(m2.t[0]).getUTCFullYear();
+  const pp = m2.v.slice(0, n).reduce((b, v, i) => v > m2.v[b] ? i : b, 0);   // highest before the latest reading
+  setNote(c, `Margin debt is ${fmtNum(now, 2)}% of M2 (${q(tNow)}; $${fmtNum(z.v / 1e6, 2)}tn${yoy ? `, ${pctF1((z.v / yoy.v - 1) * 100)} on a year` : ''}), ${!since ? `a record since ${y0}; the previous peak was ${fmtNum(m2.v[pp], 2)}% in ${q(m2.t[pp])}`
+    : m2.t[pk] >= addMonths(tNow, -12) ? `just below the record ${fmtNum(m2.v[pk], 2)}% set in ${q(m2.t[pk])} (${ordinal(Math.round(pct))} percentile since ${y0})`
+    : `the highest since ${q(since)} (${ordinal(Math.round(pct))} percentile since ${y0}); the peak was ${fmtNum(m2.v[pk], 2)}% in ${q(m2.t[pk])}`}. `
+    + 'Borrowing to buy shares rises with confidence and peaked near the 2000, 2007 and 2021 market tops; a fast fall marks forced selling. '
+    + (fin ? `FINRA: debit balances in customers’ securities margin accounts at member firms, monthly from 1997, published about three weeks after the month.${mLast && mLast.t < tNow ? ` M2 for ${q(tNow)} is not out yet, so the latest month uses ${monthLab(mLast.t)}’s M2.` : ''} “Fed quarterly” shows the narrower Financial Accounts measure on FRED.`
+      : 'Fed Financial Accounts: broker-dealers’ receivables from customers (margin loans and other receivables), quarterly, published about ten weeks after the quarter; narrower than FINRA’s monthly debit balances, so its levels and peaks differ. Each ratio uses money in the quarter’s last month.'));
+  setSource(c, fin ? 'FINRA margin statistics (debit balances); FRED: M2 (M2SL), currency in circulation (MBCURRCIR); calculated'
+    : 'FRED: Fed Financial Accounts Z.1 (BOGZ1FL663067003Q), M2 (M2SL), currency in circulation (MBCURRCIR); calculated');
 }
 function renderRegion(tab) { regionTiles(tab); renderPanel(tab); }
 

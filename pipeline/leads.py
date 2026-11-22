@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import re
 from datetime import datetime, timezone
 
 import numpy as np
@@ -158,6 +159,44 @@ def savings_china() -> dict:
     return {"SAVQ_CHN": _ser(s, "China household saving rate (trailing 4 quarters)", "%",
                              "National Bureau of Statistics: 1 − per-capita consumption expenditure ÷ per-capita disposable income, nationwide, last four quarters",
                              group="Macro · Households", freq="Q")}
+
+
+# ------------------------------------------------------------------ FINRA margin statistics (owner's request, 22 Nov 2026)
+FINRA_PAGE = "https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics"
+FINRA_XLSX = "https://www.finra.org/sites/default/files/2021-03/margin-statistics.xlsx"   # updated in place each month
+
+
+def finra_margin() -> dict:
+    """Monthly customer margin balances at FINRA member firms (USD millions), from January 1997: debit balances in margin
+    accounts (margin debt) and free credit balances in cash and margin accounts."""
+    hdr = {"User-Agent": "Mozilla/5.0"}
+    url = FINRA_XLSX
+    try:   # the page links the current file; fall back to the known address
+        m = re.search(r'href="([^"]*margin-statistics[^"]*\.xlsx)"', requests.get(FINRA_PAGE, headers=hdr, timeout=60).text)
+        if m:
+            url = m.group(1) if m.group(1).startswith("http") else "https://www.finra.org" + m.group(1)
+    except Exception:
+        pass
+    r = requests.get(url, headers=hdr, timeout=60)
+    r.raise_for_status()
+    x = pd.read_excel(io.BytesIO(r.content), header=None)
+    head = [str(v).lower() for v in x.iloc[0]]
+    col = lambda *words: next(i for i, h in enumerate(head) if all(w in h for w in words))
+    t = pd.to_datetime(x.iloc[1:, 0].astype(str).str.strip() + "-01", errors="coerce")
+    out = {}
+    src = "FINRA margin statistics (customer balances at member firms)"
+    for sid, words, lab in (("FINRA_DEBIT", ("debit",), "Margin debt: debit balances in customers' margin accounts (FINRA)"),
+                            ("FINRA_FREE_CASH", ("free credit", "cash"), "Free credit balances in customers' cash accounts (FINRA)"),
+                            ("FINRA_FREE_MARGIN", ("free credit", "margin"), "Free credit balances in customers' margin accounts (FINRA)")):
+        v = pd.to_numeric(x.iloc[1:, col(*words)], errors="coerce")
+        s = pd.Series(v.values, index=t.values).dropna()
+        s = s[s.index.notna()].sort_index()
+        s = s[~s.index.duplicated(keep="last")]
+        out[sid] = _ser(s, lab, "USD mn", src, group="Equities · Positioning")
+    d = unpack(out["FINRA_DEBIT"])
+    if len(d) < 300 or d.index[-1] < pd.Timestamp.today() - pd.DateOffset(months=4):
+        raise RuntimeError("FINRA file short or stale")
+    return out
 
 
 # ------------------------------------------------------------------ sources
@@ -376,7 +415,7 @@ def derived(files: list[dict], have: dict) -> dict:
 
 
 def build(status: dict) -> None:
-    print("Leading indicators (NY Fed, Zillow, OECD, data.gov.my, NBS, derived)")
+    print("Leading indicators (NY Fed, Zillow, OECD, data.gov.my, NBS, FINRA, derived)")
     old = load_existing("leads.json")
     fred, yahoo, asia = load_existing("fred.json"), load_existing("yahoo.json"), load_existing("asia.json")
     files = [fred, yahoo, asia, load_existing("korea.json"), load_existing("taiwan.json"), load_existing("derived.json")]
@@ -385,6 +424,7 @@ def build(status: dict) -> None:
              ("OECD money", lambda: money(fred, asia), ("LD_RNM6", "LD_RBM6")), ("Malaysia pulse", malaysia, ("MY_",)),
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
              ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),
+             ("FINRA margin statistics", finra_margin, ("FINRA_",)),
              ("derived", lambda: derived(files, out), ("LD_OI", "LD_PP", "LD_BASKET", "CAN_", "LD_ASIA", "LD_CN")))
     for name, fn, prefixes in steps:
         try:
