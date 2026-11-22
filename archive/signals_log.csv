@@ -1,6 +1,7 @@
 since,signal,target,dir,kind,tier,best_h,level,logged
 2024-02-29,cli_ind_up_nifty,NIFTY,1,ret,Not enough history,3,21982.8,2026-11-11
 2025-02-28,cli_fra_up_cac,CAC,1,ret,Context only,3,8111.63,2026-11-12
+2025-04-30,kr_exp_accel_kospi,KOSPI,1,ret,Context only,6,2556.61,2026-11-22
 2025-07-31,cli_kor_up_kospi,KOSPI,1,ret,Thin evidence,6,3245.44,2026-11-11
 2025-07-31,cli_kor_up_twse,TWSE,1,ret,Thin evidence,6,23542.5,2026-11-11
 2025-07-31,kr_lixsp_up_kospi,KOSPI,1,ret,Tested edge,12,3245.44,2026-11-12
