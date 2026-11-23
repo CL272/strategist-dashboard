@@ -93,7 +93,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **After VIX spikes** (owner's request, 23 Nov 2026): Positioning & Vol → After VIX spikes (`docs/leads.js`, end of file).
   `pipeline/events.py` writes `events.json` (VIX from FRED VIXCLS since 1990 plus Yahoo's latest days; daily closes since
   1990 for S&P 500, Nasdaq 100, Nikkei, Hang Seng, STI, KLCI), loaded only when the card opens (`loadEvents`). An episode
-  = first close above the level after 63 trading days without one; returns at 1, 21, 63, 126, 252 trading days, against all days.
+  = first close above the level after 63 trading days without one; returns at 1, 21, 63, 126, 252 trading days, against all days. The "When" menu also has curve triggers (VIX 3M ÷ VIX < 1 / 0.95 / 0.90, from 2006);
+  two quick-pick buttons above the table switch between VIX above 35 and the inverted curve.
   The margin-debt rules (`margin_record`, `margin_surge`) are in `signals.py` (Extremes); FINRA series lag one month.
 - **Malaysian Treasury bills** (owner's request, 23 Nov 2026): `pipeline/cbwatch.py` reads Bank Negara's API
   `gov-sec-yield?date=` ("short-terms_bills", from Jan 2019) into `MY_MTB_3M/6M/12M`, up to 200 days per full run (recent

@@ -988,6 +988,11 @@ function renderEvtTable(c) {
   const trig = state.evtThr, mk = state.evtMkt, name = (EVT_MKTS.find(x => x[0] === mk) || [, mk])[1], R = vixEvents(trig, mk), lab = evtLab(trig);
   if (!R) return setEmpty(c, evtIsRatio(trig) ? 'VIX 3-month history arrives with the next data run.' : 'Event history arrives with the next data run.');
   const b = htmlBody(c), { eps, sum } = R, H = EVT_H.map(h => h[0]), y0 = new Date(R.V.t[0]).getUTCFullYear();
+  // quick picks above the table (the full list of triggers is in the "When" menu)
+  const pick = (code, text) => el('button', { type: 'button', 'aria-selected': String(String(trig) === code), text, onclick: () => {
+    state.evtThr = code; if (c.segSel) c.segSel.value = code; c.render(); cards.evt_bars.render(); } });
+  b.append(el('div', { class: 'seg-chips', style: 'margin-bottom:8px' }, el('span', { class: 'muted small', text: 'Quick pick: ' }),
+    pick('35', 'VIX above 35'), pick('r1', 'VIX curve inverted (3M ÷ VIX < 1)'), el('span', { class: 'muted small', text: ' · more levels in the “When” menu' })));
   if (!eps.length) { b.append(el('div', { class: 'empty', text: `No episode of ${lab} since ${y0}.` })); return; }
   // summary first: what usually happened, against all days
   const st = el('table', { class: 'perf watch' }), sb = el('tbody');
