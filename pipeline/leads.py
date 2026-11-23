@@ -243,6 +243,31 @@ def cli_diffusion() -> dict:
                                 f"OECD composite leading indices ({', '.join(CLI_ECON)}); share above their level 6 months earlier")}
 
 
+def cli_diffusion_xsp() -> dict:
+    """The same breadth without share prices (owner's request, 23 Nov 2026): each economy's leading index rebuilt as the
+    average of the OECD's own normalised components except share prices (LOCOSP), so it can be compared with equities
+    without circularity. The OECD smooths and rescales its published index, so levels differ slightly; direction is what
+    counts. At the ragged edge a month needs at least 60% of the economy's usual components."""
+    df = _oecd("OECD.SDD.STES,DSD_STES@DF_CLI,", f"{'+'.join(CLI_ECON)}.M....NOR.IX..H")
+    df = df[df["MEASURE"].astype(str).str.startswith("LOCO") & (df["MEASURE"] != "LOCOSP")]
+    rise = {}
+    for a, g in df.groupby("REF_AREA"):
+        x = g.pivot_table(index="t", columns="MEASURE", values="OBS_VALUE").sort_index()
+        n = x.notna().sum(axis=1)
+        usual = n[n.index >= n.index.max() - pd.DateOffset(years=5)].median()
+        s = x.mean(axis=1)[n >= max(1, 0.6 * usual)]
+        s6 = s.shift(6, freq="MS").reindex(s.index)
+        rise[a] = (s > s6).astype(float).where(s6.notna())
+    r = pd.DataFrame(rise).sort_index()
+    n = r.notna().sum(axis=1)
+    out = (r.sum(axis=1) / n.where(n > 0) * 100)[n >= 10]
+    if len(out) < 120:
+        raise RuntimeError("short ex-share-price breadth")
+    return {"LD_CLI_DIFF_XSP": _ser(out, f"Leading-index breadth without share prices: share of {len(CLI_ECON)} economies rising over 6 months", "%",
+                                    "OECD composite leading indicator components (normalised), all except share prices, averaged per economy; "
+                                    f"share above their level 6 months earlier ({', '.join(CLI_ECON)}); calculated")}
+
+
 def money(fred: dict, asia: dict) -> dict:
     areas = list(MONEY_W)
     m = _oecd("OECD.SDD.STES,DSD_KEI@DF_KEI,", f"{'+'.join(areas)}.M.MANM+MABM....")
@@ -421,6 +446,7 @@ def build(status: dict) -> None:
     files = [fred, yahoo, asia, load_existing("korea.json"), load_existing("taiwan.json"), load_existing("derived.json")]
     out: dict = {}
     steps = (("GSCPI", gscpi, ("GSCPI",)), ("Zillow rents", zori, ("ZORI_",)), ("OECD leading-index diffusion", cli_diffusion, ("LD_CLI_DIFF",)),
+             ("OECD breadth without share prices", cli_diffusion_xsp, ("LD_CLI_DIFF_XSP",)),
              ("OECD money", lambda: money(fred, asia), ("LD_RNM6", "LD_RBM6")), ("Malaysia pulse", malaysia, ("MY_",)),
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
              ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),

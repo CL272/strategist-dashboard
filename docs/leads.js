@@ -77,6 +77,7 @@ const LB_ROWS = [
   { id: 'MICH', mode: 'level', name: 'Households’ 1Y inflation expectations', group: 'Inflation', stage: 'Late', lead: CPIY, claim: 'expectations feed wage demands', home: ['us', 'Inflation pipeline'] },
   // Global & Asia
   { id: 'LD_CLI_DIFF', mode: 'level', name: 'Leading indices rising (17 economies)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: 'breadth turns before industry', home: ['regime', 'Global breadth & money'] },
+  { id: 'LD_CLI_DIFF_XSP', mode: 'level', name: 'Leading indices rising, without share prices', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: 'breadth turns before industry', home: ['regime', 'Global breadth & money'] },
   { id: 'LD_RNM6', mode: 'level', name: 'Global real narrow money (ex-China)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: '6–9 m (Simon Ward)', home: ['regime', 'Global breadth & money'] },
   { id: 'CLI_USA', mode: 'chg6', name: 'US leading index (OECD)', group: 'Global & Asia', lead: IPY, claim: '6 m', home: ['regime', 'Indicators'] },
   { id: 'CLI_CHN', mode: 'chg6', name: 'China leading index (OECD)', group: 'Global & Asia', lead: ['COPPER', 'yoy', 'copper', true], claim: '6 m', home: ['asia', 'What leads'] },
@@ -426,10 +427,21 @@ state.glDiffT = 'BCI_G7'; state.glDiffLead = '1'; state.glMoneyLead = '0';   // 
 function renderGlDiff(c) {
   if (ldWait(c)) return; if (!has('LD_CLI_DIFF')) return setEmpty(c, 'Waiting for data.');
   const tg = GL_DIFF_T.find(x => x[0] === state.glDiffT) || GL_DIFF_T[0], a = asOf(S.LD_CLI_DIFF, state.latest), n = (LEADS._meta.cli_econ || []).length || 17;
+  // the same breadth without share prices (dashed): the OECD indices contain share prices, so against equities the plain line is partly circular
+  const hx = has('LD_CLI_DIFF_XSP'), ax = hx ? asOf(S.LD_CLI_DIFF_XSP, state.latest) : null, sx = hx ? ldBestLead('LD_CLI_DIFF_XSP', 'level', tg[0], tg[1]) : null;
+  const xTxt = !hx ? '' : `Without share prices (dashed line: each index rebuilt from the OECD’s other components) ${fmtNum(ax.v, 0)}% are rising (${monthLab(ax.t)})`
+    + (sx && sx.ok ? `, and that version leads ${tg[2].replace(/,.*$/, '')} by ${sx.k} months (${corrF(sx.rk)} against ${corrF(sx.r0)} in the same month). ` : `; against ${tg[2].replace(/,.*$/, '')} it is context only (${ldWhy(sx)}). `);
   const st = ldLeadPair(c, ['LD_CLI_DIFF', 'level', `Leading indices rising, % of ${n} economies`], tg, state.glDiffLead === '1',
-    `${fmtNum(a.v, 0)}% of ${n} economies’ OECD leading indices are higher than six months earlier (${monthLab(a.t)}).`, { fmtA: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, 0) + '%' },
-    'Breadth matters more than any one country: when most leading indices turn up together, global manufacturing, emerging markets and commodities have tended to follow. A reading below 30% that starts rising has marked the early stage of past recoveries. The OECD indices are revised and partly built from share prices, so the real-time lead is shorter than the history suggests.');
-  setSource(c, 'OECD composite leading indices (' + (LEADS._meta.cli_econ || []).join(', ') + '); ' + srcOf([tg[0]]) + '; calculated');
+    `${fmtNum(a.v, 0)}% of ${n} economies’ OECD leading indices are higher than six months earlier (${monthLab(a.t)})${hx ? `; without share prices, ${fmtNum(ax.v, 0)}% (${monthLab(ax.t)})` : ''}.`, { fmtA: v => fmtNum(v, 0) + '%', axisA: v => fmtNum(v, 0) + '%' },
+    xTxt + 'Breadth matters more than any one country: when most leading indices turn up together, global manufacturing, emerging markets and commodities have tended to follow. A reading below 30% that starts rising has marked the early stage of past recoveries. The OECD indices are revised and partly built from share prices, so the real-time lead is shorter than the history suggests.');
+  if (hx && c.inst && c.pairMode !== 'stack') {   // draw the ex-share-price breadth on the same axis, moved by the same lead
+    const k = state.glDiffLead === '1' && st && st.ok ? st.k : 0, X = monthlyOf('LD_CLI_DIFF_XSP', 'level'), xmax = k ? addMonths(state.to, k) : state.to;
+    const data = pts(k ? { t: X.t.map(t => addMonths(t, k)), v: X.v, _src: X } : X, state.from, xmax), o = c.inst.getOption();
+    o.series.push({ name: 'Same, without share prices' + (k ? `, moved forward ${k} months` : ''), type: 'line', yAxisIndex: 0, data, showSymbol: false,
+      lineStyle: { type: 'dashed', width: 1.8, color: tok('--s1') }, itemStyle: { color: tok('--s1') } });
+    c.inst.setOption({ series: o.series, legend: { data: o.series.map(x => x.name) } });
+  }
+  setSource(c, 'OECD composite leading indices and their components (' + (LEADS._meta.cli_econ || []).join(', ') + '); ' + srcOf([tg[0]]) + '; calculated');
   ldLeadLabel(c, st);
 }
 state.glMoney = 'LD_RNM6';
