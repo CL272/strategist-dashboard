@@ -50,3 +50,4 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2026-11-30,r_klci_aaxj_up,R_KLCI_AAXJ,1,ret,Context only,12,3.906259514466861,2026-11-11
 2026-11-30,spx_below_10m,SPX,-1,ret,Context only,3,7340.53,2026-11-18
 2026-11-30,vix_high,SPX,1,ret,Context only,6,7043.11,2026-11-20
+2026-11-30,vix_inverted,SPX,1,ret,Context only,12,6910.39,2026-11-23
