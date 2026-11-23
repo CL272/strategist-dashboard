@@ -170,6 +170,7 @@ FRED = [
     ("EA_DFR_F",    "ECBDFR",      "ECB deposit facility rate (FRED)", "Rates · Euro area", "yield", "%"),
     ("REAL10Y",     "DFII10",      "UST 10Y real yield (TIPS)",   "Rates · US", "yield", "%"),
     ("BE10Y",       "T10YIE",      "10Y breakeven inflation",     "Rates · US", "yield", "%"),
+    ("BE5Y",        "T5YIE",       "5Y breakeven inflation",      "Rates · US", "yield", "%"),   # market inflation expectations, shortest daily maturity
     ("CURVE_2s10s", "T10Y2Y",      "2s10s curve",                 "Rates · US", "yield", "%"),
     ("CURVE_3m10y", "T10Y3M",      "3m10y curve",                 "Rates · US", "yield", "%"),
     # Credit & financial conditions

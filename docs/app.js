@@ -2112,13 +2112,19 @@ function buildRegime() {
         { fmt: v => fmtNum(v, 0) + '%', axisFmt: v => v + '%', yExtra: { min: 0, max: 100, scale: false }, hlines: [{ y: 30, label: '30%' }], areas: recessionAreas(state.from, state.to) }); } });
   makeCard(g, { key: 'infl', title: 'US inflation', source: 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)', sub: 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.',
     seg: { key: 'inflMode', options: [['actual', 'Actual'], ['exp', 'Expectations']] },
-    render: c => { const exp = state.inflMode === 'exp' && has('MICH', 'EXPINF1YR') ? ['CPI_YOY', 'MICH', 'EXPINF1YR'] : null;
+    render: c => { const exp = state.inflMode === 'exp' && has('MICH', 'EXPINF1YR') ? ['CPI_YOY', 'MICH', 'EXPINF1YR', ...(has('BE5Y') ? ['BE5Y'] : [])] : null;
       const ids = (exp || ['CPI_YOY', 'CORE_CPI_YOY', 'CORE_PCE_YOY', 'CORE_CPI_3M']).filter(x => has(x)); if (!ids.length) return setEmpty(c, NO_FRED);
       drawLines(c, ids.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: col(i) })),
         { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 1) + '%', hlines: [{ y: 2, label: '2% target' }] });
-      c.subEl.textContent = exp ? 'What households (University of Michigan survey) and markets plus surveys (Cleveland Fed model) expect inflation to be a year ahead, against actual CPI.' : 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.';
-      setSource(c, exp ? 'FRED (CPIAUCSL, MICH, EXPINF1YR)' : 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)');
-      if (state.inflMode === 'exp' && !exp) setNote(c, 'Expectations series arrive with the next daily run; showing actual inflation.'); else setNote(c, ''); } });
+      c.subEl.textContent = exp ? 'What households (University of Michigan survey), a model of markets plus surveys (Cleveland Fed) and the bond market (5-year breakeven, daily) expect inflation to be, against actual CPI.' : 'Year-on-year %, plus core CPI 3-month annualised for the latest trend.';
+      setSource(c, exp ? 'FRED (CPIAUCSL, MICH, EXPINF1YR, T5YIE)' : 'FRED (CPIAUCSL, CPILFESL, PCEPILFE)');
+      if (state.inflMode === 'exp' && !exp) setNote(c, 'Expectations series arrive with the next daily run; showing actual inflation.');
+      else if (exp) {   // the market's read against the surveys: the takeaway first
+        const v = id => has(id) ? asOf(S[id], state.to) : null, cpi = v('CPI_YOY'), mi = v('MICH'), cf = v('EXPINF1YR'), be = v('BE5Y'), be1 = be ? asOf(S.BE5Y, addMonths(be.t, -1)) : null;
+        setNote(c, (be ? `The bond market prices ${fmtNum(be.v, 2)}% a year over the next five years (5-year breakeven, ${nice(be.t)}${be1 ? `; ${sign(be.v - be1.v)}${fmtNum(Math.abs(be.v - be1.v) * 100, 0)}bp on the month` : ''}), against ${mi ? fmtNum(mi.v, 1) + '% from households' : '–'} and ${cf ? fmtNum(cf.v, 1) + '% from the Cleveland Fed model' : '–'} for the year ahead; CPI is ${cpi ? fmtNum(cpi.v, 1) + '%' : '–'}. ` : '')
+          + 'Breakevens are the gap between ordinary and inflation-protected Treasury yields: the market’s own forecast, priced every day, though a small liquidity premium can pull them down in sell-offs. Households’ expectations usually run above both and swing with petrol prices. '
+          + 'The 10-year breakeven and the 5y5y forward (long-run expectations) are on US → Rates & bonds.');
+      } else setNote(c, ''); } });
   makeCard(g, { key: 'gdpnow', title: 'GDPNow vs reported GDP', source: 'FRED (GDPNOW, A191RL1Q225SBEA); Atlanta Fed',
     sub: 'Real GDP growth, quarter on quarter annualised, %. GDPNow is the Atlanta Fed’s running model estimate for the quarter, before the official number.',
     render: c => { if (!has('GDPNOW') && !has('RGDP_SAAR')) return setEmpty(c, NO_FRED);
@@ -6927,10 +6933,11 @@ function buildRegions() {
     if (!has('RETAIL_REAL')) return setEmpty(c, NO_FRED);
     lines(c, [{ name: 'Real retail sales, % YoY', data: pts(yoyOf('RETAIL_REAL'), state.from, state.to) }], pctF1, v => fmtNum(v, 0) + '%', { zero: true });
     setSource(c, 'Census Bureau via FRED (RRSFS), YoY calculated'); } });
-  makeCard(us, { key: 'us_be', title: 'Inflation expectations', defaultRange: '5Y', render: c => {
-    lines(c, ['BE10Y', 'FWD5Y5Y', 'MICH', 'EXPINF1YR'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%', { hlines: [{ y: 2, label: '2% target' }] });
-    setNote(c, 'Market-based (10Y breakeven, 5y5y forward), household (University of Michigan, 1 year ahead) and model-based (Cleveland Fed, 1 year).');
-    setSource(c, 'FRED (T10YIE, T5YIFR, MICH, EXPINF1YR)'); } });
+  makeCard(us, { key: 'us_be', title: 'Market inflation expectations', defaultRange: '5Y', render: c => {
+    lines(c, ['BE5Y', 'BE10Y', 'FWD5Y5Y'].filter(id => has(id)), v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%', { hlines: [{ y: 2, label: '2% target' }] });
+    const f = has('FWD5Y5Y') ? asOf(S.FWD5Y5Y, state.to) : null, b5 = has('BE5Y') ? asOf(S.BE5Y, state.to) : null;
+    setNote(c, `${b5 ? `5-year breakeven ${fmtNum(b5.v, 2)}%` : ''}${f ? `${b5 ? ', ' : ''}5y5y forward ${fmtNum(f.v, 2)}% (${nice(f.t)})` : ''}. Breakevens = nominal minus inflation-protected Treasury yields; the 5y5y forward is expected inflation in five years' time for the five after, the Fed's favourite gauge of whether long-run expectations stay anchored near 2–2.5%. Household and survey expectations are on US → Inflation (Expectations).`);
+    setSource(c, 'FRED (T5YIE, T10YIE, T5YIFR)'); } });
   makeCard(us, { key: 'us_starts', title: 'Housing starts', defaultRange: '10Y', render: c => {
     lines(c, ['HOUST'], v => fmtNum(v, 0) + 'k', v => fmtNum(v, 0), { areas: recessionAreas(state.from, state.to) });
     setNote(c, 'New homes started, thousands a year (seasonally adjusted). Housing tends to turn early in the cycle.'); setSource(c, 'Census Bureau via FRED (HOUST)'); } });
