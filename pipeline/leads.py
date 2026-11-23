@@ -116,6 +116,25 @@ def savings_oecd() -> dict:
     return out
 
 
+def savings_japan() -> dict:
+    """Japan, quarterly (owner's request, 23 Nov 2026): the OECD's quarterly sector accounts for households (S14), seasonally
+    adjusted: net saving ÷ (net disposable income + adjustment for pension entitlements), Japan's own definition. NET, so it
+    sits with the annual net rates, not with the gross quarterly ones."""
+    key = ".".join(["Q", "Y", "JPN", "S14", "", "", "B8N+B6N+D8", "", "", "", "", "", "N", ""])
+    df = _oecd_raw("OECD.SDD.NAD,DSD_NASEC1@DF_QSA,", key, "1994-Q1")
+    df = df[(df["TRANSFORMATION"] == "N") & (df["ADJUSTMENT"] == "Y") & (df["ACCOUNTING_ENTRY"] == "C")]
+    df["t"] = pd.PeriodIndex(df["TIME_PERIOD"].astype(str), freq="Q").to_timestamp()
+    x = df.pivot_table(index="t", columns="TRANSACTION", values="OBS_VALUE").sort_index()
+    if not {"B8N", "B6N"} <= set(x.columns):
+        raise RuntimeError("OECD sector accounts: Japan saving or income missing")
+    s = (x["B8N"] / (x["B6N"] + x.get("D8", 0)) * 100).dropna()
+    if len(s) < 40:
+        raise RuntimeError("short Japan saving series")
+    return {"SAVQN_JPN": _ser(s, "Japan household saving rate (net, quarterly)", "%",
+                              "OECD quarterly sector accounts (households, seasonally adjusted): net saving ÷ (net disposable income + pension adjustment); calculated",
+                              group="Macro · Households", freq="Q")}
+
+
 def savings_china() -> dict:
     """China, trailing four quarters: 1 − per-capita consumption ÷ per-capita disposable income (NBS, nationwide).
     NBS publishes year-to-date sums; they are turned into single quarters, then summed over the last four."""
@@ -450,6 +469,7 @@ def build(status: dict) -> None:
              ("OECD money", lambda: money(fred, asia), ("LD_RNM6", "LD_RBM6")), ("Malaysia pulse", malaysia, ("MY_",)),
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
              ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),
+             ("Japan household saving (OECD sector accounts)", savings_japan, ("SAVQN_JPN",)),
              ("FINRA margin statistics", finra_margin, ("FINRA_",)),
              ("derived", lambda: derived(files, out), ("LD_OI", "LD_PP", "LD_BASKET", "CAN_", "LD_ASIA", "LD_CN")))
     for name, fn, prefixes in steps:

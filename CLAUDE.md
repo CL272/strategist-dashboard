@@ -81,7 +81,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
 - **Household saving rates** (owner's request, 20 Nov 2026) come from `pipeline/leads.py` (`savings_oecd`: OECD quarterly
   GROSS rate `SAVQ_*` and annual NET rate `SAVA_*`; `savings_china`: NBS per-capita income and spending, `SAVQ_CHN`, tried
-  each run and skipped if the site does not answer). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
+  each run and skipped if the site does not answer; `savings_japan`: OECD quarterly sector accounts, households, NET rate
+  `SAVQN_JPN` from 1994, kept apart from the gross `SAVQ_*`). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
   Household saving (table, quarterly, annual) plus one card on the US, Europe, UK, Japan, Korea and China pages (Australia's
   is in au.js). Gross and net rates differ by several points: never put them on one axis as if comparable. Malaysia,
   Singapore, Taiwan, Indonesia and India publish no household rate.
