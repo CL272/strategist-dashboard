@@ -6378,9 +6378,9 @@ function renderCbPath(c, k) {
 }
 // BNM: the 3-month Treasury bill against the OPR (owner's request, 23 Nov 2026), and its premium in the three months after the
 // last OPR move (from two weeks after it, so the market has settled) as the reference
-function billPremium() {
-  if (!has('MY_MTB_3M', 'MY_OPR')) return null;
-  const B = S.MY_MTB_3M, O = S.MY_OPR, sp = { id: 'MY_MTB_3M_SPREAD', label: '3M Treasury bill − OPR', t: [], v: [] };
+function billPremium(code = '3M') {   // code: 3M, 6M or 12M
+  if (!has('MY_MTB_' + code, 'MY_OPR')) return null;
+  const B = S['MY_MTB_' + code], O = S.MY_OPR, sp = { id: `MY_MTB_${code}_SPREAD`, label: `${code} Treasury bill − OPR`, t: [], v: [] };
   for (let i = 0; i < B.t.length; i++) { const o = asOf(O, B.t[i]); if (o) { sp.t.push(B.t[i]); sp.v.push((B.v[i] - o.v) * 100); } }
   let last = null; for (let i = O.v.length - 1; i > 0; i--) if (Math.abs(O.v[i] - O.v[i - 1]) >= 0.05) { last = { t: O.t[i], from: O.v[i - 1], to: O.v[i] }; break; }
   if (!sp.t.length || !last) return null;
@@ -6388,7 +6388,7 @@ function billPremium() {
   const med = win.length ? win[Math.floor(win.length / 2)] : null;
   const bw = B.v.filter((_, i) => B.t[i] >= a && B.t[i] <= z).sort((p, q) => p - q);
   const n = sp.v.length - 1, m1 = sp.v.filter((_, i) => sp.t[i] > sp.t[n] - 30 * DAY);
-  return { sp, last, base: med, baseBill: bw.length ? bw[Math.floor(bw.length / 2)] : null, now: sp.v[n], nowT: sp.t[n], bill: B.v[n], avg1m: m1.reduce((p, q) => p + q, 0) / m1.length, win: [a, z] };
+  return { code, sp, last, base: med, baseBill: bw.length ? bw[Math.floor(bw.length / 2)] : null, now: sp.v[n], nowT: sp.t[n], bill: B.v[n], avg1m: m1.reduce((p, q) => p + q, 0) / m1.length, win: [a, z] };
 }
 function renderCbSpread(c, k) {
   cbPrep();
@@ -6397,17 +6397,19 @@ function renderCbSpread(c, k) {
   c.titleEl.textContent = `${C.gaugeLab}`;
   c.subEl.textContent = gov ? `The ${C.headLab} rate minus the ${C.policyLab}, bp. Above zero = markets expect the ${C.policyLab} to be higher over the next ${C.tenors.find(x => x[0] === C.head)[2]}.`
     : `The ${C.headLab} rate minus the ${C.policyLab}, bp, against its normal premium (dashed). Above the dashed line = hikes priced; below = cuts.`;
-  const bill = k === 'BNM' ? billPremium() : null;
-  if (bill) c.subEl.textContent += ' Green: the 3-month Treasury bill minus the OPR, against its level after the last OPR move (green dashed).';
+  const bills = k === 'BNM' ? ['3M', '6M', '12M'].map(x => billPremium(x)).filter(Boolean) : [], bill = bills.find(x => x.code === '3M') || null;
+  const BCOL = { '3M': col(2), '6M': col(3), '12M': col(4) };
+  if (bills.length) c.subEl.textContent += ' Green, amber and purple: the 3-, 6- and 12-month Treasury bills minus the OPR; green dashed = the 3-month bill’s level after the last OPR move.';
   drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) },
-    ...(bill ? [{ name: '3M Treasury bill − OPR', data: pts(bill.sp, state.from, state.to), color: col(2) }] : [])],
+    ...bills.map(x => ({ name: `${x.code} Treasury bill − OPR`, data: pts(x.sp, state.from, state.to), color: BCOL[x.code] }))],
     { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false,
       hlines: [...(gov ? [] : [{ y: nm.v, label: `normal ${bp(nm.v)}`, color: col(1) }]), ...(bill && bill.base != null ? [{ y: bill.base, label: `bill after the ${monthLab(bill.last.t)} move ${bp(bill.base)}`, color: col(2) }] : [])] });
   const st = cbStats(k);
   const im = st && st.imp, meet = im && im.first ? `${dShort(im.first)}` : '';
   const chk = im && im.per != null && Math.abs(im.ex) > CB_DEAD ? ` Meeting check: ${im.n} decision${im.n === 1 ? '' : 's'} fall${im.n === 1 ? 's' : ''} inside this tenor (first ${meet}${im.beyond ? `; the published schedule ends ${nice(im.beyond)}, so the pace is if anything overstated` : ''}); the excess equals about ${bp(im.per)} per meeting${im.ok ? ', a plausible pace.' : ', too large to be rate pricing, so it is read as a funding or term-premium shift.'}` : '';
   const bTxt = bill && bill.base != null ? `3M Treasury bill ${fmtNum(bill.bill, 2)}% (${nice(bill.nowT)}): ${bp(bill.now)} over the OPR, against ${bp(bill.base)} (bill ${fmtNum(bill.baseBill, 2)}%) in the three months after the ${monthLab(bill.last.t)} move to ${fmtNum(bill.last.to, 2)}%, so the bill premium is ${bp(bill.now - bill.base)} wider (last month's average ${bp(bill.avg1m)}). `
-    + 'A wider bill premium means investors want more to lend to the government for three months: less room for another cut, some chance of a hike, or tighter ringgit liquidity. ' : '';
+    + (bills.length > 1 ? `Longer bills: ${bills.filter(x => x.code !== '3M' && x.base != null).map(x => `${x.code} ${fmtNum(x.bill, 2)}% (${bp(x.now)} over the OPR, ${bp(x.base)} after the move)`).join('; ')}; a 12-month premium well above the 3-month one means the market sees rates higher further out. ` : '')
+    + 'A wider bill premium means investors want more to lend to the government: less room for another cut, some chance of a hike, or tighter ringgit liquidity. ' : '';
   setNote(c, (st && st.spread ? `${bTxt}Interbank now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band).${chk} Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : bTxt));
   setSource(c, C.src + (bill ? '; Bank Negara Malaysia API (gov-sec-yield: Malaysian Treasury Bills, indicative)' : ''));
 }
