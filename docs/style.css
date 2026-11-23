@@ -956,3 +956,7 @@ textarea.vdlg-in { resize: vertical; font: inherit; line-height: 1.5; }
 .ovs-ended { margin: 8px 0 0; }
 @media (max-width: 600px) { .ovs-grid { grid-template-columns: 1fr; } }
 .card-tools .tool-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* calendar: event names link to the agency's release page */
+table.cal a.cal-link { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted); }
+table.cal a.cal-link:hover, table.cal a.cal-link:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+table.cal a.cal-link::after { content: ' ↗'; font-size: 0.8em; color: var(--muted); }

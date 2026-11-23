@@ -24,6 +24,7 @@ import time
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import requests
 
 from fetch import DIAG, fetch_fred, get, load_existing, unpack, write
 
@@ -155,6 +156,115 @@ MAS = "mas.gov.sg (Advance Release Calendar)"
 RBI = "rbi.org.in (MPC schedule for 2026-27, announced 23 Mar 2026; dates as reported by Indian press, official page unreachable from here)"
 CBC = "cbc.gov.tw (provisional 2026 board meeting schedule, as reported; check the bank's site)"
 SEP = "with Summary of Economic Projections"
+
+# official release page for each event (owner's request, 23 Nov 2026): the calendar links the event name here.
+# Keyed by (region, event name); central bank decisions by region. Topic pages, not dated releases, so they stay valid.
+BLS_EMP = "https://www.bls.gov/news.release/empsit.toc.htm"
+ABS = "https://www.abs.gov.au/statistics/"
+URLS = {
+    ("US", "Nonfarm payrolls (chg)"): BLS_EMP, ("US", "Unemployment rate"): BLS_EMP, ("US", "Average hourly earnings (YoY)"): BLS_EMP,
+    ("US", "CPI (YoY)"): "https://www.bls.gov/cpi/", ("US", "Core CPI (MoM)"): "https://www.bls.gov/cpi/", ("US", "Core CPI (YoY)"): "https://www.bls.gov/cpi/",
+    ("US", "PPI final demand (YoY)"): "https://www.bls.gov/ppi/",
+    ("US", "Core PCE (YoY)"): "https://www.bea.gov/data/income-saving/personal-income", ("US", "Personal spending (MoM)"): "https://www.bea.gov/data/income-saving/personal-income",
+    ("US", "Retail sales (MoM)"): "https://www.census.gov/retail/index.html",
+    ("US", "Real GDP (QoQ SAAR)"): "https://www.bea.gov/data/gdp/gross-domestic-product",
+    ("US", "Industrial production (MoM)"): "https://www.federalreserve.gov/releases/g17/current/default.htm",
+    ("US", "JOLTS job openings"): "https://www.bls.gov/jlt/",
+    ("US", "Initial jobless claims"): "https://www.dol.gov/ui/data.pdf",
+    ("US", "UMich consumer sentiment"): "https://www.sca.isr.umich.edu/",
+    ("US", "Housing starts"): "https://www.census.gov/construction/nrc/index.html", ("US", "Building permits"): "https://www.census.gov/construction/nrc/index.html",
+    ("US", "New home sales"): "https://www.census.gov/construction/nrs/index.html",
+    ("US", "Durable goods orders (MoM)"): "https://www.census.gov/manufacturing/m3/index.html",
+    ("US", "Empire State manufacturing survey"): "https://www.newyorkfed.org/survey/empire/empiresurvey_overview",
+    ("US", "Philadelphia Fed manufacturing survey"): "https://www.philadelphiafed.org/surveys-and-data/regional-economic-analysis/manufacturing-business-outlook-survey",
+    ("Euro area", "HICP inflation (YoY)"): "https://ec.europa.eu/eurostat/web/hicp",
+    ("Euro area", "Germany CPI flash (HICP, YoY)"): "https://www.destatis.de/EN/Themes/Economy/Prices/Consumer-Price-Index/_node.html",
+    ("Euro area", "France CPI flash (HICP, YoY)"): "https://www.insee.fr/en/statistiques/serie/001759971",
+    ("Euro area", "Italy CPI flash (HICP, YoY)"): "https://www.istat.it/en/prices",
+    ("Euro area", "Spain CPI flash (HICP, YoY)"): "https://www.ine.es/dyngs/INEbase/en/operacion.htm?c=Estadistica_C&cid=1254736176802&menu=ultiDatos&idp=1254735976607",
+    ("Euro area", "Germany GDP flash (YoY)"): "https://www.destatis.de/EN/Themes/Economy/National-Economy-Environment/Gross-Domestic-Product/_node.html",
+    ("Euro area", "France GDP flash (YoY)"): "https://www.insee.fr/en/statistiques/serie/011794859",
+    ("Euro area", "Italy GDP flash (YoY)"): "https://www.istat.it/en/national-accounts",
+    ("Euro area", "Spain GDP flash (YoY)"): "https://www.ine.es/dyngs/INEbase/en/operacion.htm?c=Estadistica_C&cid=1254736164439&menu=ultiDatos&idp=1254735576581",
+    ("UK", "CPI (YoY)"): "https://www.ons.gov.uk/economy/inflationandpriceindices",
+    ("UK", "GDP first estimate (YoY)"): "https://www.ons.gov.uk/economy/grossdomesticproductgdp",
+    ("UK", "Labour market: unemployment"): "https://www.ons.gov.uk/employmentandlabourmarket/peoplenotinwork/unemployment",
+    ("Malaysia", "CPI (YoY)"): "https://open.dosm.gov.my/dashboard/consumer-prices",
+    ("Malaysia", "Exports (YoY)"): "https://open.dosm.gov.my/dashboard/external-trade",
+    ("Malaysia", "Industrial production (YoY)"): "https://open.dosm.gov.my/dashboard/industrial-production",
+    ("Malaysia", "Unemployment rate"): "https://open.dosm.gov.my/dashboard/labour-market",
+    ("Malaysia", "Leading index (YoY)"): "https://open.dosm.gov.my/dashboard/composite-indices",
+    ("Malaysia", "Producer prices (YoY)"): "https://open.dosm.gov.my/dashboard/producer-prices",
+    ("Malaysia", "GDP advance estimate (YoY)"): "https://open.dosm.gov.my/dashboard/gdp",
+    ("Malaysia", "GDP final (YoY)"): "https://open.dosm.gov.my/dashboard/gdp",
+    ("Singapore", "CPI (YoY)"): "https://www.singstat.gov.sg/find-data/search-by-theme/economy/prices-and-price-indices/latest-data",
+    ("Singapore", "MAS core inflation (YoY)"): "https://www.mas.gov.sg/monetary-policy",
+    ("Singapore", "NODX (YoY)"): "https://www.enterprisesg.gov.sg/resources/media-centre/news",
+    ("Singapore", "GDP advance estimate (YoY)"): "https://www.singstat.gov.sg/find-data/search-by-theme/economy/national-accounts/latest-data",
+    ("Singapore", "GDP final (YoY)"): "https://www.mti.gov.sg/Resources/Economic-Survey-of-Singapore",
+    ("Australia", "CPI (monthly, YoY)"): ABS + "economy/price-indexes-and-inflation/consumer-price-index-australia",
+    ("Australia", "Labour force: unemployment"): ABS + "labour/employment-and-unemployment/labour-force-australia",
+    ("Australia", "GDP (YoY)"): ABS + "economy/national-accounts/australian-national-accounts-national-income-expenditure-and-product",
+    ("Australia", "Household spending (YoY)"): ABS + "economy/finance/monthly-household-spending-indicator",
+    ("Australia", "Wage price index (YoY)"): ABS + "economy/price-indexes-and-inflation/wage-price-index-australia",
+    ("Australia", "New home loans (lending indicators)"): ABS + "economy/finance/lending-indicators",
+    ("Australia", "Building approvals"): ABS + "industry/building-and-construction/building-approvals-australia",
+    ("Australia", "Consumer sentiment (Westpac)"): "https://melbourneinstitute.unimelb.edu.au/publications/macroeconomic-reports/westpac-melbourne-institute-survey-of-consumer-sentiment",
+    ("Australia", "RBA Statement on Monetary Policy"): "https://www.rba.gov.au/publications/smp/",
+    ("China", "CPI (YoY)"): "https://www.stats.gov.cn/english/PressRelease/", ("China", "Activity data (IP, retail, FAI)"): "https://www.stats.gov.cn/english/PressRelease/",
+    ("China", "Official PMIs"): "https://www.stats.gov.cn/english/PressRelease/", ("China", "GDP (YoY)"): "https://www.stats.gov.cn/english/PressRelease/",
+    ("China", "Exports (YoY)"): "http://english.customs.gov.cn/",
+    ("Japan", "CPI nationwide (YoY)"): "https://www.stat.go.jp/english/data/cpi/index.html", ("Japan", "Core CPI nationwide (YoY)"): "https://www.stat.go.jp/english/data/cpi/index.html",
+    ("Japan", "Tokyo CPI (advance)"): "https://www.stat.go.jp/english/data/cpi/index.html",
+    ("Japan", "Unemployment rate"): "https://www.stat.go.jp/english/data/roudou/index.html",
+    ("Japan", "Exports (YoY)"): "https://www.customs.go.jp/toukei/info/index_e.htm",
+    ("Japan", "Tankan: large manufacturers"): "https://www.boj.or.jp/en/statistics/tk/index.htm", ("Japan", "Tankan (December)"): "https://www.boj.or.jp/en/statistics/tk/index.htm",
+    ("Korea", "Exports (YoY)"): "https://www.customs.go.kr/english/main.do",
+    ("Taiwan", "Exports (YoY)"): "https://web02.mof.gov.tw/njswww/WebMain.aspx?sys=100&funid=edefjsptgl",
+    ("Taiwan", "CPI (YoY)"): "https://eng.stat.gov.tw/", ("Taiwan", "GDP advance estimate (YoY)"): "https://eng.stat.gov.tw/",
+    ("Taiwan", "Export orders (YoY)"): "https://www.moea.gov.tw/MNS/english/",
+    ("India", "CPI (YoY)"): "https://www.mospi.gov.in/", ("India", "Industrial production (YoY)"): "https://www.mospi.gov.in/", ("India", "GDP (YoY)"): "https://www.mospi.gov.in/",
+}
+CB_URLS = {"US": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "Euro area": "https://www.ecb.europa.eu/press/govcdec/mopo/html/index.en.html",
+           "Japan": "https://www.boj.or.jp/en/mopo/mpmdeci/index.htm", "Malaysia": "https://www.bnm.gov.my/monetary-stability",
+           "Australia": "https://www.rba.gov.au/monetary-policy/", "UK": "https://www.bankofengland.co.uk/monetary-policy/the-interest-rate-bank-rate",
+           "Singapore": "https://www.mas.gov.sg/monetary-policy", "India": "https://www.rbi.org.in/", "Taiwan": "https://www.cbc.gov.tw/en/",
+           "China": "http://www.pbc.gov.cn/en/3688006/index.html"}
+
+
+def check_links(urls, old: dict) -> dict:
+    """Each official page is opened about once a week from the runner. A page that is gone (404/410) or a site that does not
+    answer is left unlinked; 401/403/405/429 count as alive (several agencies turn away scripts but serve browsers)."""
+    today = dt.date.today()
+    out = {}
+    for u in sorted(set(urls)):
+        prev = old.get(u) or {}
+        if prev.get("checked") and (today - dt.date.fromisoformat(prev["checked"])).days < 7:
+            out[u] = prev
+            continue
+        try:
+            r = requests.get(u, headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html,application/pdf,*/*"}, timeout=20, stream=True, allow_redirects=True)
+            code = r.status_code
+            r.close()
+            ok = code < 400 or code in (401, 403, 405, 429)
+            if code >= 500 and prev:   # a passing server error: keep last week's verdict
+                ok = prev.get("ok", True)
+        except Exception as e:
+            code, ok = type(e).__name__, False
+        out[u] = {"ok": bool(ok), "code": code, "checked": today.isoformat()}
+        if not ok:
+            print(f"  link check: {u} -> {code}")
+    return out
+
+
+def url_for(r: dict) -> str | None:
+    u = URLS.get((r["region"], r["name"]))
+    if u:
+        return u
+    if r.get("kind") == "Policy" or "decision" in r["name"] or "statement" in r["name"] or "loan prime" in r["name"]:
+        return CB_URLS.get(r["region"])
+    return None
+
 MEETINGS = [
     # (region, event, decision date, local time (tz, HH:MM) or None, detail, source, policy-rate (source, id) or None)
     *[("US", "FOMC decision", d, ("ET", "14:00"), x, FOMC, ("fred", "DFEDTARU")) for d, x in [
@@ -472,6 +582,16 @@ def build(fred_key: str | None, asia: dict[str, pd.Series], status: dict) -> Non
         if k not in seen:
             seen.add(k)
             uniq.append(r)
+    try:   # link each event to its official release page, unless last week's check found it gone
+        links = check_links([u for u in (url_for(r) for r in uniq) if u], old.get("links") or {})
+    except Exception as e:
+        print(f"  link check failed ({type(e).__name__}); links shown unchecked")
+        links = old.get("links") or {}
+    for r in uniq:
+        u = url_for(r)
+        if u and (links.get(u) or {}).get("ok", True):
+            r["url"] = u
+    print(f"  official pages: {sum(1 for v in links.values() if v.get('ok'))} of {len(links)} answer")
     notes = []
     for region, last in COVERAGE.items():
         left = (dt.date.fromisoformat(last) - today).days
@@ -482,6 +602,6 @@ def build(fred_key: str | None, asia: dict[str, pd.Series], status: dict) -> Non
     for _, name, d, *_ in MEETINGS:
         schedules.setdefault(name.split()[0], []).append(d)
     write("calendar.json", dict(generated=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), verified_on=VERIFIED_ON,
-                                start=start.isoformat(), end=end.isoformat(), notes=notes, events=uniq, schedules=schedules))
+                                start=start.isoformat(), end=end.isoformat(), notes=notes, events=uniq, schedules=schedules, links=links))
     status["CALENDAR"] = "ok" if uniq else "missing"
     print(f"  {len(uniq)} calendar rows ({sum(r['conf'] == 'Live' for r in uniq)} live US dates)")

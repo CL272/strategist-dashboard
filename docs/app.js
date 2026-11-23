@@ -6644,7 +6644,7 @@ function calTable(list, today, { compact = false, weekly = false } = {}) {
   const heads = compact ? ['Time (SGT)', 'Region', 'Event', 'Previous'] : ['Time (SGT)', 'Region', 'Event', 'Covers', 'Actual', 'Previous', 'Timing', 'Source'];
   const hcls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
   tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: hcls[i] })))));
-  const tb = el('tbody'), csv = [['Date', ...heads]];
+  const tb = el('tbody'), csv = [['Date', ...heads, 'Official page']];
   let day = null;
   for (const { e, day: d } of list) {
     const g = weekly ? weekOf(d) : d;
@@ -6654,7 +6654,10 @@ function calTable(list, today, { compact = false, weekly = false } = {}) {
       tb.append(el('tr', { class: 'grp' + (d < today ? ' past' : '') + (d === today ? ' today' : '') }, el('td', { colspan: heads.length, text: lab })));
     }
     const [st, stTxt] = calStatus(e, today), [timing, timingTip] = calTiming(e);
-    const name = el('div', {}, el('span', { class: 'star', text: e.hi ? '★' : '', title: e.hi ? 'Key event' : '' }), el('span', { text: e.name }));
+    // the event name links to the agency's own release page (owner's request, 23 Nov 2026), in a new tab
+    const host = e.url ? e.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] : '';
+    const nameEl = e.url ? el('a', { class: 'cal-link', href: e.url, target: '_blank', rel: 'noopener noreferrer', text: e.name, title: `Open the official release page (${host})` }) : el('span', { text: e.name });
+    const name = el('div', {}, el('span', { class: 'star', text: e.hi ? '★' : '', title: e.hi ? 'Key event' : '' }), nameEl);
     if (e.detail && !compact) name.append(el('div', { class: 'muted small', text: e.detail }));
     const prev = e.prev ? e.prev + (e.prev_period && st !== 'done' ? ` (${e.prev_period})` : '') : '–';
     const actual = e.actual ? el('b', { text: e.actual }) : el('span', { class: 'muted small', text: st === 'upcoming' ? '' : stTxt || '–' });
@@ -6663,7 +6666,7 @@ function calTable(list, today, { compact = false, weekly = false } = {}) {
       : [weekly ? `${WEEKDAYS[new Date(d).getUTCDay()]} ${new Date(d).getUTCDate()}` + (e.sgt ? ' · ' + e.sgt : '') : e.sgt || '–', e.region, name, e.period || e.covers || '', actual, prev, el('span', { class: 'tag ' + e.conf.toLowerCase(), text: timing, title: timingTip }), e.src || ''];
     const cls = compact ? ['tm', 'reg', 'ev', 'num'] : ['tm', 'reg', 'ev', 'per', 'num', 'num', 'tim', 'src'];
     tb.append(el('tr', { class: 'row ' + st, title: e.src ? 'Source: ' + e.src : '' }, ...cells.map((x, i) => el('td', { class: cls[i] }, x))));   // per-event source: hover (column kept in CSV)
-    csv.push([iso(d), e.sgt || '', e.region, e.name, ...(compact ? [e.prev || ''] : [e.period || '', e.actual || '', e.prev || '', timing, e.src || ''])]);
+    csv.push([iso(d), e.sgt || '', e.region, e.name, ...(compact ? [e.prev || ''] : [e.period || '', e.actual || '', e.prev || '', timing, e.src || '']), e.url || '']);
   }
   tbl.append(tb);
   if (!list.length) tb.append(el('tr', {}, el('td', { colspan: heads.length, class: 'muted', text: 'Nothing in this period for the regions selected.' })));
