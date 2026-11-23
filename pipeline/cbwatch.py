@@ -99,61 +99,93 @@ def bnm_interbank(old: dict) -> dict[str, pd.Series]:
 # Malaysian Treasury bill yields (owner's request, 23 Nov 2026): Bank Negara's API, gov-sec-yield?date=YYYY-MM-DD
 # ("short-terms_bills", from Jan 2019, one trading day per call). Each run reads recent days first, then a weekly sample of
 # older days, then the rest, within a budget; days with no trading (holidays) are remembered so they are not asked again.
+# The same call carries the MGS benchmark closes ("malaysian_government_securities": 3Y, 5Y, 7Y, 10Y, 15Y, 20Y, 30Y; no 2Y
+# benchmark), kept as MY_MGS_* (owner's request, 23 Nov 2026). Days read before the MGS were added are read again.
 BNM_GSY = "https://api.bnm.gov.my/public/gov-sec-yield"
 BILL_TENORS = [("3M", "up to 3 months", "up_to_three_month"), ("6M", "3 to 6 months", "above_three_to_six_month"),
                ("12M", "6 to 12 months", "above_six_to_twelve_month")]
 BILL_START = "2019-01-02"
-BILL_MAX_CALLS = 200   # about 3 KB and ~1.5 s each: ~5 minutes while the history since 2019 fills in, then a few calls a day
+BILL_MAX_CALLS = 600   # about 3 KB and ~1.2 s each, four at a time: ~3 minutes while the history fills in, then a few calls a day
+MGS_TENORS = ["3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y"]
 
 
 def _bill_day(day: str):
+    """(bills, mgs) for one day: bills = [3M, 6M, 12M], [] when there were none (holiday), None on a failed call;
+    mgs = {tenor: closing yield} for the MGS benchmarks that traded."""
     r = requests.get(BNM_GSY, params={"date": day}, headers=BNM_HDR, timeout=30)
     if r.status_code != 200:
-        return None
-    rows = ((r.json() or {}).get("data") or {}).get("short-terms_bills") or []
-    for row in rows:
+        return None, {}
+    data = (r.json() or {}).get("data") or {}
+    mgs = {}
+    for row in data.get("malaysian_government_securities") or []:
+        t = str(row.get("tenure", "")).strip().upper()
+        try:
+            v = float(row["tra_yie_close"])
+            if t in MGS_TENORS and v > 0.3:   # "0.00" = the benchmark did not trade that day
+                mgs[t] = v
+        except (KeyError, TypeError, ValueError):
+            pass
+    for row in data.get("short-terms_bills") or []:
         if "treasury" in str(row.get("type", "")).lower() and "islamic" not in str(row.get("type", "")).lower():
             try:
-                return [float(row[k]) for _, _, k in BILL_TENORS]
+                return [float(row[k]) for _, _, k in BILL_TENORS], mgs
             except (KeyError, TypeError, ValueError):
-                return None
-    return []   # no bills that day: a holiday or no trading
+                return None, mgs
+    return [], mgs   # no bills that day: a holiday or no trading
 
 
-def bnm_bills(old: dict) -> tuple[dict[str, pd.Series], list[str]]:
+def bnm_bills(old: dict) -> tuple[dict[str, pd.Series], list[str], list[str]]:
+    from concurrent.futures import ThreadPoolExecutor
     pts = {code: {} for code, _, _ in BILL_TENORS}
-    for code, _, _ in BILL_TENORS:   # keep what earlier runs collected
-        sid = f"MY_MTB_{code}"
-        if sid in old:
-            for t, v in unpack(old[sid]).items():
-                pts[code][t.strftime("%Y-%m-%d")] = v
+    mg = {t: {} for t in MGS_TENORS}
+    for store, pre in ((pts, "MY_MTB_"), (mg, "MY_MGS_")):   # keep what earlier runs collected
+        for code in store:
+            if pre + code in old:
+                for t, v in unpack(old[pre + code]).items():
+                    if v > 0.3:
+                        store[code][t.strftime("%Y-%m-%d")] = v
     empty = set((old.get("MY_MTB_3M") or {}).get("no_trading", []))
+    no_mgs = set((old.get("MY_MGS_10Y") or {}).get("no_mgs", []))   # days with bills but no MGS benchmark trade
+    mgs_days = set().union(*[set(x) for x in mg.values()]) | no_mgs
     days = [d.strftime("%Y-%m-%d") for d in pd.bdate_range(BILL_START, pd.Timestamp.today())][::-1]   # newest first
-    todo = [d for d in days if d not in pts["3M"] and d not in empty]
+    todo = [d for d in days if d not in empty and (d not in pts["3M"] or d not in mgs_days)]
     recent = [d for d in todo if d >= (pd.Timestamp.today() - pd.Timedelta(days=120)).strftime("%Y-%m-%d")]
     weekly = [d for k, d in enumerate(days) if k % 5 == 0 and d in todo and d not in recent]
     rest = [d for d in todo if d not in set(recent) | set(weekly)]
     got = calls = 0
-    for d in (recent + weekly + rest)[:BILL_MAX_CALLS]:
+    week_ago = (pd.Timestamp.today() - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
+
+    def one(d):
         try:
-            v = _bill_day(d)
+            return d, _bill_day(d)
         except Exception:
-            continue
-        calls += 1
-        if v:
-            for (code, _, _), x in zip(BILL_TENORS, v):
-                pts[code][d] = x
-            got += 1
-        elif v == [] and d < (pd.Timestamp.today() - pd.Timedelta(days=7)).strftime("%Y-%m-%d"):
-            empty.add(d)   # a past day with no bills: do not ask again
-        time.sleep(0.1)
-    print(f"  BNM Treasury bills: {got} new days from {calls} calls; {len(pts['3M'])} trading days on file since {BILL_START}")
+            return d, None
+
+    with ThreadPoolExecutor(max_workers=4) as ex:   # four at a time keeps a run to a few minutes
+        for d, res in ex.map(one, (recent + weekly + rest)[:BILL_MAX_CALLS]):
+            if res is None or res[0] is None:
+                continue
+            v, mgs = res
+            calls += 1
+            if v:
+                for (code, _, _), x in zip(BILL_TENORS, v):
+                    pts[code][d] = x
+                got += 1
+                for t, x in mgs.items():
+                    mg[t][d] = x
+                if not mgs and d < week_ago:
+                    no_mgs.add(d)
+            elif d < week_ago:
+                empty.add(d)   # a past day with no bills: do not ask again
+    n_mgs = len(set().union(*[set(x) for x in mg.values()]))
+    print(f"  BNM bills and MGS: {got} new days from {calls} calls; {len(pts['3M'])} bill days and {n_mgs} MGS days on file since {BILL_START}")
     out = {}
-    for code, _, _ in BILL_TENORS:
-        sr = pd.Series({pd.Timestamp(k): v for k, v in pts[code].items()}, dtype="float64").sort_index()
-        if len(sr):
-            out[f"MY_MTB_{code}"] = sr
-    return out, sorted(empty)
+    for store, pre in ((pts, "MY_MTB_"), (mg, "MY_MGS_")):
+        for code, x in store.items():
+            sr = pd.Series({pd.Timestamp(k): v for k, v in x.items()}, dtype="float64").sort_index()
+            if len(sr):
+                out[pre + code] = sr
+    return out, sorted(empty), sorted(no_mgs)
 
 
 def ecb_series(flow: str, key: str, start: str = "2010-01-01", min_len: int = 50) -> pd.Series | None:
@@ -188,15 +220,20 @@ def build(status: dict) -> None:
         keep(f"MY_IB_{code}", got.get(f"MY_IB_{code}"), dict(label=f"Malaysia {name} interbank rate", group="Rates · Malaysia", kind="yield", unit="%",
                                                                 source="Bank Negara Malaysia API (interest-rate, interbank)"))
     try:
-        bills, no_trading = bnm_bills(old)
+        bills, no_trading, no_mgs = bnm_bills(old)
     except Exception as e:
         print(f"  BNM Treasury bills failed ({type(e).__name__}); kept previous")
-        bills, no_trading = {}, (old.get("MY_MTB_3M") or {}).get("no_trading", [])
+        bills, no_trading, no_mgs = {}, (old.get("MY_MTB_3M") or {}).get("no_trading", []), (old.get("MY_MGS_10Y") or {}).get("no_mgs", [])
     for code, name, _ in BILL_TENORS:
         keep(f"MY_MTB_{code}", bills.get(f"MY_MTB_{code}"), dict(label=f"Malaysia Treasury bill, {name}", group="Rates · Malaysia", kind="yield", unit="%",
                                                                      source="Bank Negara Malaysia API (gov-sec-yield: Malaysian Treasury Bills, indicative)"))
+    for t in MGS_TENORS:
+        keep(f"MY_MGS_{t}", bills.get(f"MY_MGS_{t}"), dict(label=f"MGS {t} yield", group="Rates · Malaysia", kind="yield", unit="%",
+                                                          source="Bank Negara Malaysia API (gov-sec-yield: Malaysian Government Securities, benchmark close)"))
     if "MY_MTB_3M" in out:
         out["MY_MTB_3M"]["no_trading"] = no_trading   # holidays already asked about
+    if "MY_MGS_10Y" in out:
+        out["MY_MGS_10Y"]["no_mgs"] = no_mgs
     import rba
     tables = {t: rba.rba_table(t) for t in ("f1", "f2")}
     for sid, t, code, label in RBA_SERIES:

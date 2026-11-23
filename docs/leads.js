@@ -725,6 +725,7 @@ const SAV_ECON = [['USA', 'US'], ['CAN', 'Canada'], ['GBR', 'UK'], ['EA', 'Euro 
   ['ESP', 'Spain'], ['AUS', 'Australia'], ['JPN', 'Japan'], ['KOR', 'Korea'], ['CHN', 'China']];
 const SAV_SRC_Q = 'OECD household dashboard (gross saving of households and NPISH, % of gross disposable income)';
 const SAV_SRC_A = 'OECD National Accounts at a Glance (net saving of households and NPISH, % of net disposable income)';
+const SAV_SRC_EA = 'Euro area: ECB quarterly sector accounts (euro area 21, households and NPISH, seasonally adjusted), calculated';
 const savName = a => (SAV_ECON.find(x => x[0] === a) || [a, a])[1];
 // one colour per economy on every saving chart; Asia-Pacific ones match COUNTRY_TOK; no two economies on the same chart share one
 const SAV_TOK = { USA: '--s1', CAN: '--s6', GBR: '--s7', DEU: '--s10', FRA: '--s2', ITA: '--s8', ESP: '--s4', EA: '--s5',
@@ -749,15 +750,15 @@ function savLines(c, list, src, extra = '') {   // list: [[id, name]]; one line 
 }
 function renderSavQ(c) {
   if (ldWait(c)) return;
-  const ids = ['USA', 'CAN', 'GBR', 'DEU', 'FRA', 'ITA', 'ESP', 'AUS'].map(a => 'SAVQ_' + a).filter(id => has(id));
+  const ids = ['USA', 'CAN', 'GBR', 'EA', 'DEU', 'FRA', 'ITA', 'ESP', 'AUS'].map(a => 'SAVQ_' + a).filter(id => has(id));
   if (!ids.length) return setEmpty(c, 'Waiting for the next data run.');
   drawLines(c, ids.map((id, i) => ({ name: savName(id.slice(5)), data: pts(S[id], state.from, state.to), color: savCol(id, i) })),
     { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false });
   const gap = ids.map(id => { const a = asOf(S[id], state.latest), n = savNorm(id); return a && n != null ? [savName(id.slice(5)), a.v - n] : null; }).filter(Boolean);
   const up = gap.filter(g => g[1] > 0.5).sort((a, b) => b[1] - a[1]).map(g => `${g[0]} (${savPts(g[1])})`), dn = gap.filter(g => g[1] < -0.5).sort((a, b) => a[1] - b[1]).map(g => `${g[0]} (${savPts(g[1])})`);
   setNote(c, `${up.length ? `Saving more than before the pandemic: ${up.join(', ')}.` : 'No economy saves clearly more than before the pandemic.'} ${dn.length ? `Saving less: ${dn.join(', ')}.` : ''} `
-    + 'Gross saving rate of households (and the charities that serve them), % of gross disposable income, quarterly. Gross rates include depreciation of homes and are adjusted for pension entitlements, so they run several points above the headline rates countries quote (US personal saving rate on the US page). Compare each line with its own past, not the levels across countries. Japan, Korea and China are not in this quarterly table: see the annual chart and the table.');
-  setSource(c, SAV_SRC_Q);
+    + 'Gross saving rate of households (and the charities that serve them), % of gross disposable income, quarterly (euro area: the ECB’s sector accounts, same definition). Gross rates include depreciation of homes and are adjusted for pension entitlements, so they run several points above the headline rates countries quote (US personal saving rate on the US page). Compare each line with its own past, not the levels across countries. Japan, Korea and China are not in this quarterly table: see the annual chart and the table.');
+  setSource(c, SAV_SRC_Q + (has('SAVQ_EA') ? '; ' + SAV_SRC_EA : ''));
 }
 function renderSavA(c) {
   savLines(c, [['SAVA_JPN', 'Japan'], ['SAVA_KOR', 'Korea'], ['SAVA_CHN', 'China'], ['SAVA_USA', 'US'], ['SAVA_EA', 'Euro area']], SAV_SRC_A,
@@ -782,7 +783,7 @@ function renderSavTable(c) {
     ...rows.map(r => [r.nm, r.q ? r.q.v.toFixed(2) : '', r.q ? savLab('SAVQ_' + r.a, r.q.t) : '', r.dq != null ? r.dq.toFixed(2) : '', r.d1 != null ? r.d1.toFixed(2) : '', r.y ? r.y.v.toFixed(2) : '', r.y ? savLab('SAVA_' + r.a, r.y.t) : '', r.dy != null ? r.dy.toFixed(2) : ''])];
   setNote(c, 'Ranked by how far each economy saves above (blue) or below (red) its own 2015–19 average. Quarterly = gross rate; annual = net rate, closest to headline figures. '
     + 'No household saving rate is published for Malaysia, Singapore, Taiwan, Indonesia or India (their statistics offices publish national saving, which mixes in companies and government).');
-  setSource(c, `${SAV_SRC_Q}; ${SAV_SRC_A}${has('SAVQ_CHN') ? '; China quarterly: National Bureau of Statistics, calculated' : ''}`);
+  setSource(c, `${SAV_SRC_Q}; ${SAV_SRC_A}${has('SAVQ_EA') ? '; ' + SAV_SRC_EA : ''}${has('SAVQ_CHN') ? '; China quarterly: National Bureau of Statistics, calculated' : ''}`);
 }
 function savTiles(box, tile) {
   const t = (lab, id) => { if (!has(id)) return; const a = asOf(S[id], state.latest), n = savNorm(id); tile(lab, fmtNum(a.v, 1) + '%', n != null ? `${savPts(a.v - n)} vs 2015–19` : '', savLab(id, a.t) + (/^SAVQ_(?!CHN)/.test(id) ? ' · gross' : /^SAVA_/.test(id) ? ' · net' : '')); };
@@ -805,7 +806,8 @@ function buildSavings() {
   const card = (grid, key, title, list, src, extra, range = 'MAX') => makeCard($('#' + grid), { key, title, defaultRange: range, earliest: Date.UTC(1995, 0, 1), render: c => savLines(c, list, src, extra) });
   makeCard($('#usGrid'), { key: 'us_sav', title: 'US personal saving rate', defaultRange: '10Y', render: c => savLines(c, [['PSAVERT', 'Personal saving rate']],
     'FRED (PSAVERT), US Bureau of Economic Analysis', 'Monthly, % of disposable personal income (the headline US rate). ') });
-  card('europeGrid', 'eu_sav', 'Household saving rates', [['SAVQ_DEU', 'Germany'], ['SAVQ_FRA', 'France'], ['SAVQ_ITA', 'Italy'], ['SAVQ_ESP', 'Spain']], SAV_SRC_Q, 'Gross rates, quarterly. ', '10Y');
+  card('europeGrid', 'eu_sav', 'Household saving rates', [['SAVQ_EA', 'Euro area'], ['SAVQ_DEU', 'Germany'], ['SAVQ_FRA', 'France'], ['SAVQ_ITA', 'Italy'], ['SAVQ_ESP', 'Spain']],
+    SAV_SRC_Q + '; ' + SAV_SRC_EA, 'Gross rates, quarterly; the euro area (21 countries, from the ECB) uses the same definition as the country lines. ', '10Y');
   card('ukGrid', 'uk_sav', 'Household saving rate', [['SAVQ_GBR', 'UK']], SAV_SRC_Q, 'Gross rate, quarterly. ', '10Y');
   card('japanGrid', 'jp_sav', 'Household saving rate', [['SAVQN_JPN', 'Japan, quarterly'], ['SAVA_JPN', 'Japan, annual (OECD)']],
     'OECD quarterly sector accounts (households, seasonally adjusted; calculated); ' + SAV_SRC_A,

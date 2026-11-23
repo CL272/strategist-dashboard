@@ -116,6 +116,26 @@ def savings_oecd() -> dict:
     return out
 
 
+def savings_ea() -> dict:
+    """Euro area, quarterly (owner's request, 23 Nov 2026): the OECD dashboard has no euro-area line, so this is the ECB's
+    quarterly sector accounts (QSA), euro area 21 (fixed composition, from 1999), households and NPISH, seasonally adjusted:
+    gross saving ÷ (gross disposable income + pension adjustment D8). The same definition as the OECD gross rates (SAVQ_*)."""
+    r = requests.get("https://data-api.ecb.europa.eu/service/data/QSA/Q.Y.I10.W0.S1M.S1..B.D8+B8G+B6G._Z._Z._Z.XDC._T.S.V.N._T",
+                     params={"format": "csvdata", "startPeriod": "1999-Q1"}, headers=UA, timeout=120)
+    r.raise_for_status()
+    df = pd.read_csv(io.StringIO(r.text)).dropna(subset=["OBS_VALUE"])
+    df["t"] = pd.PeriodIndex(df["TIME_PERIOD"].astype(str), freq="Q").to_timestamp()
+    x = df.pivot_table(index="t", columns="STO", values="OBS_VALUE").sort_index()
+    if not {"B8G", "B6G"} <= set(x.columns):
+        raise RuntimeError("ECB sector accounts: euro-area saving or income missing")
+    s = (x["B8G"] / (x["B6G"] + x.get("D8", 0)) * 100).dropna()
+    if len(s) < 40:
+        raise RuntimeError("short euro-area saving series")
+    return {"SAVQ_EA": _ser(s, "Euro area household saving rate (gross, quarterly)", "%",
+                            "ECB quarterly sector accounts (QSA, euro area 21, households and NPISH, seasonally adjusted): gross saving ÷ (gross disposable income + pension adjustment); calculated",
+                            group="Macro · Households", freq="Q")}
+
+
 def savings_japan() -> dict:
     """Japan, quarterly (owner's request, 23 Nov 2026): the OECD's quarterly sector accounts for households (S14), seasonally
     adjusted: net saving ÷ (net disposable income + adjustment for pension entitlements), Japan's own definition. NET, so it
@@ -470,6 +490,7 @@ def build(status: dict) -> None:
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
              ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),
              ("Japan household saving (OECD sector accounts)", savings_japan, ("SAVQN_JPN",)),
+             ("Euro area household saving (ECB sector accounts)", savings_ea, ("SAVQ_EA",)),
              ("FINRA margin statistics", finra_margin, ("FINRA_",)),
              ("derived", lambda: derived(files, out), ("LD_OI", "LD_PP", "LD_BASKET", "CAN_", "LD_ASIA", "LD_CN")))
     for name, fn, prefixes in steps:

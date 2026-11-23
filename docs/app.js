@@ -6786,7 +6786,7 @@ const SUBTABS = {
   australia: [['Equities', ['#sig_australia', 'au_eq']], ['Rates & bonds', ['#sa_australia_rates', 'aurates', 'au_rba']], ['Currency', ['#sa_australia_fx', 'audiff', 'cm_iron']], ['Economy', ['auinfl', 'augrowth', 'autot']]],
   fixed: [['Curves', ['curve', 'xcurve', 'slopes']], ['Yields', ['teny', 'real']], ['Spreads', ['#sa_fi_sp', 'sp_credit', 'sp_ladder', 'sp_table', 'sp_eq']], ['FX & hedging', ['diff', 'hedged']]],
   asia: [['Across Asia', ['ax_cpi', 'ax_exp', 'ax_10y', 'ax_short', 'ax_ip', 'ax_conf']], ['Asian FX', ['fx_carry', 'asiafx', 'asiaidx']], ['What leads', ['asia_now', 'asia_ll', 'asia_llchart', 'asia_mktlead', 'asia_oil']]],
-  my: [['Equities', ['#sig_my', 'eq_my', 'br_hl_MY', 'br_trend_MY', 'br_table_MY']], ['Sectors', ['#sa_my_sec', 'my_sec_table', 'my_sec_rs', 'my_sec_drv', 'cm_palm']], ['Rates & bonds', ['#sa_my_rates', 'myrates', 'my_bnm', 'mylend', 'my_gap']],
+  my: [['Equities', ['#sig_my', 'eq_my', 'br_hl_MY', 'br_trend_MY', 'br_table_MY']], ['Sectors', ['#sa_my_sec', 'my_sec_table', 'my_sec_rs', 'my_sec_drv', 'cm_palm']], ['Rates & bonds', ['#sa_my_rates', 'myrates', 'my_bnm', 'mylend', 'my_mgs', 'my_gap']],
     ['Currency', ['#sa_my_fx', 'myrfx', 'myrtbl', 'fx_my']], ['Economy', ['mylead', 'mygrowth', 'mytrade', 'myprices', 'mymoney']]],
   sg: [['Equities', ['#sig_sg', 'eq_sg', 'br_hl_SG', 'br_trend_SG', 'br_table_SG']], ['Rates & bonds', ['#sa_sg_rates', 'sgrates', 'sgust', 'sghedge']], ['Currency', ['#sa_sg_fx', 'sneer', 'fx_sg']], ['Economy', ['sginfl', 'sggrowth']]],
   cn: [['Equities', ['#sig_cn', 'eq_cn']], ['Rates & bonds', ['#sa_cn_rates', 'cn_rates', 'cn_spread']], ['Currency', ['#sa_cn_fx', 'fx_cn']], ['Economy', ['cn_infl', 'cn_trade', 'cn_conf']]],
@@ -7077,14 +7077,43 @@ function buildGapCards() {
   fxCard($('#inGrid'), 'fx_in', 'INR'); fxCard($('#japanGrid'), 'fx_jp', 'JPY');
   // Malaysia rates: BNM summary and the US 2Y − OPR gap against the ringgit
   makeCard($('#myGrid'), { key: 'my_bnm', title: 'Bank Negara Malaysia', range: false, render: c => renderPolicySummary(c, 'BNM') });
-  makeCard($('#myGrid'), { key: 'my_gap', title: 'US 2Y − OPR vs USD/MYR', defaultRange: '5Y', render: c => {
-    if (!has('UST2Y', 'MY_OPR', 'USDMYR')) return setEmpty(c, 'Waiting for data.');
-    const gap = combine(S.UST2Y, S.MY_OPR, (a, b) => a - b, {}, 400 * DAY);
-    drawPair(c, { name: 'US 2Y yield − OPR, pp', data: pts(gap, state.from, state.to) }, { name: 'USD/MYR', data: pts(S.USDMYR, state.from, state.to) },
+  // the gap: US 2Y − OPR, or US − MGS at the same tenor (owner's request, 23 Nov 2026; MGS benchmarks from Bank Negara's API,
+  // shortest 3Y: there is no 2-year MGS benchmark)
+  state.myGapVs = 'mgs3';
+  makeCard($('#myGrid'), { key: 'my_gap', title: 'Rate gap vs USD/MYR', defaultRange: '5Y', wide: true,
+    seg: { key: 'myGapVs', options: [['mgs3', '3Y vs MGS'], ['mgs10', '10Y vs MGS'], ['opr', '2Y vs OPR']] }, render: c => {
+    if (!has('USDMYR')) return setEmpty(c, 'Waiting for data.');
+    const V = { mgs3: ['UST3Y', 'MY_MGS_3Y', 'US 3Y − MGS 3Y', '3 years', 'FRED (DGS3); Bank Negara Malaysia API (MGS 3Y benchmark close)'],
+      mgs10: ['UST10Y', 'MY_MGS_10Y', 'US 10Y − MGS 10Y', '10 years', 'FRED (DGS10); Bank Negara Malaysia API (MGS 10Y benchmark close)'],
+      opr: ['UST2Y', 'MY_OPR', 'US 2Y yield − OPR', 'two years', 'FRED (DGS2); Bank Negara Malaysia (OPR)'] };
+    let k = state.myGapVs in V ? state.myGapVs : 'mgs3';
+    const wait = k !== 'opr' && !has(V[k][0], V[k][1]); if (wait) k = 'opr';
+    const [us, my, name, ten, src] = V[k];
+    if (!has(us, my)) return setEmpty(c, 'Waiting for data.');
+    const gap = k === 'opr' ? combine(S[us], S[my], (a, b) => a - b, {}, 400 * DAY) : combine(S[my], S[us], (m, u) => u - m, {}, 7 * DAY);
+    drawPair(c, { name: name + ', pp', data: pts(gap, state.from, state.to) }, { name: 'USD/MYR', data: pts(S.USDMYR, state.from, state.to) },
       { fmtA: v => sign(v) + fmtNum(Math.abs(v), 2) + 'pp', fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 2) });
-    const a = asOf(gap, state.to);
-    setNote(c, `The US pays ${a ? fmtNum(Math.abs(a.v), 2) + ' points' : '–'} ${a && a.v < 0 ? 'less' : 'more'} than the OPR at two years; a wider gap has tended to go with a weaker ringgit (USD/MYR up). Malaysian government bond (MGS) yields have no free public daily source, so the OPR stands in for local rates.`);
-    setSource(c, 'FRED (DGS2); Bank Negara Malaysia (OPR); Yahoo Finance (MYR=X)'); } });
+    const a = asOf(gap, state.to), a1 = a ? asOf(gap, addMonths(a.t, -1)) : null, u = a ? asOf(S[us], a.t) : null, m = a ? asOf(S[my], a.t) : null;
+    const lead = a ? `The US pays ${fmtNum(Math.abs(a.v), 2)} points ${a.v < 0 ? 'less' : 'more'} than ${k === 'opr' ? 'the OPR' : 'Malaysia'} at ${ten} (${u ? fmtNum(u.v, 2) + '%' : '–'} against ${m ? fmtNum(m.v, 2) + '%' : '–'}, ${nice(a.t)}${a1 && a1.t < a.t ? `; ${sign(a.v - a1.v)}${fmtNum(Math.abs(a.v - a1.v) * 100, 0)}bp on the month` : ''}). ` : '';
+    const P = pts(gap, state.from, state.to).map(([t, x]) => [x, asOf(S.USDMYR, t)]).filter(q => q[1]);
+    const r = P.length > 30 ? pearson(P.map(q => q[0]), P.map(q => q[1].v)) : null;
+    setNote(c, lead + 'In theory a wider gap weakens the ringgit (USD/MYR up), since holding dollars pays more'
+      + (r != null ? `; over the period shown the two ${r > 0.3 ? 'moved together' : r < -0.3 ? 'moved in opposite directions' : 'had little to do with each other'} (correlation ${fmtNum(r, 2)}). ` : '. ')
+      + (wait ? 'MGS history arrives with the next data runs; showing the OPR view meanwhile. ' : '')
+      + 'Bank Negara publishes MGS benchmarks from 3 years out (no 2-year benchmark), so “3Y vs MGS” is the closest like-for-like match to the US 2-year; “2Y vs OPR” uses the policy rate instead. MGS closes are the benchmark issue’s last traded yield; days it did not trade are skipped.');
+    setSource(c, src + '; Yahoo Finance (MYR=X)'); } });
+  makeCard($('#myGrid'), { key: 'my_mgs', title: 'MGS yields', defaultRange: '3Y', render: c => {
+    const ids = ['MY_MGS_3Y', 'MY_MGS_5Y', 'MY_MGS_10Y', 'MY_MGS_20Y', 'MY_MGS_30Y'].filter(id => has(id));
+    if (!ids.length) return setEmpty(c, 'MGS yields arrive with the next data run.');
+    drawLines(c, [...ids.map(id => ({ name: 'MGS ' + id.slice(7), data: pts(S[id], state.from, state.to) })),
+      ...(has('MY_OPR') ? [{ name: 'OPR', data: pts(S.MY_OPR, state.from, state.to), color: tok('--muted'), extra: { step: 'end', lineStyle: { type: 'dashed', width: 1.5 } } }] : [])],
+      { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%' });
+    const v = id => has(id) ? asOf(S[id], state.to) : null, y3 = v('MY_MGS_3Y'), y10 = v('MY_MGS_10Y'), o = v('MY_OPR');
+    const y10m = y10 ? asOf(S.MY_MGS_10Y, addMonths(y10.t, -1)) : null;
+    setNote(c, (y10 ? `MGS 10Y ${fmtNum(y10.v, 2)}%${y10m && y10m.t < y10.t ? ` (${sign(y10.v - y10m.v)}${fmtNum(Math.abs(y10.v - y10m.v) * 100, 0)}bp on the month)` : ''}` : '')
+      + (y3 && y10 ? `, 3Y ${fmtNum(y3.v, 2)}%: the 10Y − 3Y slope is ${fmtNum((y10.v - y3.v) * 100, 0)}bp` : '') + (y3 && o ? `; the 3Y sits ${fmtNum((y3.v - o.v) * 100, 0)}bp over the OPR (${fmtNum(o.v, 2)}%). ` : '. ')
+      + 'Malaysian Government Securities, benchmark issues, closing traded yield. A 3Y well above the OPR prices hikes or a term premium; a 3Y below it prices cuts. The Treasury bills (3 to 12 months) are on Central banks → BNM.');
+    setSource(c, 'Bank Negara Malaysia API (gov-sec-yield: Malaysian Government Securities, benchmark close); OPR: Bank Negara Malaysia'); } });
   // China rates (the inflation card keeps CPI only)
   makeCard($('#cnGrid'), { key: 'cn_rates', title: 'China: bond yield and money rate', sub: '10Y government bond yield and 3M interbank rate, %. Monthly.',
     render: idsCard(['CN_10Y', 'CN_3M'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%', { zero: true }) });

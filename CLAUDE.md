@@ -82,7 +82,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Household saving rates** (owner's request, 20 Nov 2026) come from `pipeline/leads.py` (`savings_oecd`: OECD quarterly
   GROSS rate `SAVQ_*` and annual NET rate `SAVA_*`; `savings_china`: NBS per-capita income and spending, `SAVQ_CHN`, tried
   each run and skipped if the site does not answer; `savings_japan`: OECD quarterly sector accounts, households, NET rate
-  `SAVQN_JPN` from 1994, kept apart from the gross `SAVQ_*`). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
+  `SAVQN_JPN` from 1994, kept apart from the gross `SAVQ_*`; `savings_ea`: ECB quarterly sector accounts, euro area 21,
+  gross rate `SAVQ_EA` from 1999, same definition as the OECD gross rates). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
   Household saving (table, quarterly, annual) plus one card on the US, Europe, UK, Japan, Korea and China pages (Australia's
   is in au.js). Gross and net rates differ by several points: never put them on one axis as if comparable. Malaysia,
   Singapore, Taiwan, Indonesia and India publish no household rate.
@@ -100,6 +101,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `gov-sec-yield?date=` ("short-terms_bills", from Jan 2019) into `MY_MTB_3M/6M/12M`, up to 200 days per full run (recent
   days, then a weekly sample, then the rest; holidays remembered in `no_trading`). Central banks → BNM's spread card adds
   the 3M bill − OPR and its premium in the three months after the last OPR move (`billPremium`).
+  The same call carries the **MGS benchmark closes** (`MY_MGS_3Y/5Y/7Y/10Y/15Y/20Y/30Y`; "0.00" = not traded, dropped;
+  no 2Y benchmark exists). Days read before MGS were added are read again (four calls at a time, 600 per full run).
+  Malaysia → Rates & bonds: "MGS yields" (`my_mgs`) and "Rate gap vs USD/MYR" (`my_gap`: US 3Y − MGS 3Y, 10Y − MGS 10Y,
+  or US 2Y − OPR, with the level correlation over the shown range in the note).
 - Several series of one country on a chart use the normal palette; `COUNTRY_TOK` colours apply only when each line is a
   different economy (`seriesCard`).
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
