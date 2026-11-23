@@ -3886,7 +3886,7 @@ function buildPosVol() {
   for (const k of ['pos_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 function renderPosVol() { posvolKpis(); ['vol_ts', 'vol_x', 'vol_ratio', 'vol_ivrv', 'pos_table', 'pos_ext', 'pos_hist', 'sent_fg', 'sent_aaii', 'sent_naaim', 'sent_table'].forEach(k => cards[k].render());
-  filterKpis('#pvKpis', l => /Fear & Greed|Put\/call|AAII|NAAIM/i.test(l) ? 'Sentiment' : /Crowded/.test(l) ? 'Positioning (CFTC)' : 'Volatility'); }
+  filterKpis('#pvKpis', l => /Fear & Greed|Put\/call|AAII|NAAIM/i.test(l) ? 'Sentiment' : /Crowded/.test(l) ? 'Positioning (CFTC)' : /^VIX/.test(l) ? ['Volatility', 'After VIX spikes'] : 'Volatility'); }
 
 // ------------------------------------------------------------------ STRESS PANEL & PEAK SIGNPOSTS (ported from the Streamlit version)
 let SIGN = null, STR = null;
@@ -6838,7 +6838,7 @@ function setSub(tab, i) {
 }
 function filterKpis(boxSel, groupOf) {   // show only the KPI tiles that belong to the open sub-tab
   const tab = $(boxSel).closest('.tab-panel').id.slice(4), groups = SUBTABS[tab], sub = groups[state.sub[tab] || 0][0];
-  $(boxSel).querySelectorAll('.kpi').forEach(k => { const g = groupOf(k.querySelector('.k-label').textContent); k.hidden = !(g === sub || g === '*'); });
+  $(boxSel).querySelectorAll('.kpi').forEach(k => { const g = [].concat(groupOf(k.querySelector('.k-label').textContent)); k.hidden = !(g.includes(sub) || g.includes('*')); });   // a tile may belong to several sub-tabs
 }
 
 // ------------------------------------------------------------------ REGION PAGES: US · Europe · Asia ex-Japan · Japan · Australia
@@ -7569,7 +7569,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

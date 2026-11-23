@@ -47,7 +47,7 @@ REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY"
 # BIS China credit about a year; regional Fed surveys, canary ratios and online payments none
 LAG2 = ("QUITS", "JOLTS", "LD_CLI_DIFF", "LD_RNM6", "LD_RBM6", "MY_CARS", "MY_ARR", "MY_ELEC", "MY_EXP_EE", "MY_EXP_VOL",
         "AU_TRIM_YOY", "AU_LOANS", "AU_HOUSE_PX", "AU_WPI_YOY")   # Australian quarterly data: published about 4 to 8 weeks after the quarter
-LAG1 = ("PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
+LAG1 = ("FINRA_", "PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
         "IMPORT_PX", "PPI_FD", "CPI_SHELTER", "CPI_GOODS", "STICKY_CPI", "AU_UNEMP", "AU_HSI", "AU_CPI_M")
 
 
@@ -171,6 +171,15 @@ def rules():
     add("baa_tight", "Extremes", "Credit spreads very tight → S&P 500", "Baa − 10Y spread in the bottom 10% of the last 10 years",
         ["BAA_10Y"], lambda M: pct_rank(M["BAA_10Y"]) < 10, "LH_SPX", -1)
     add("vix_high", "Extremes", "VIX above 30 → S&P 500", "VIX closes a month above 30", ["VIX"], lambda M: M["VIX"] > 30, "SPX", 1)
+    # margin debt at a record (owner's request, 23 Nov 2026): FINRA debit balances as a share of M2, a new high against all
+    # months since 1997; counted from 2000 so the first years are not "records" by default
+    def margin_record(M):
+        r = M["FINRA_DEBIT"] / 1000 / M["M2"] * 100
+        return (r >= r.cummax()) & (r.index >= pd.Timestamp("2000-01-01"))
+    add("margin_record", "Extremes", "Margin debt at a record → S&P 500", "FINRA margin debt as a share of M2 at its highest since 1997",
+        ["FINRA_DEBIT", "M2"], margin_record, "LH_SPX", -1)
+    add("margin_surge", "Extremes", "Margin debt surging → S&P 500", "FINRA margin debt more than 30% higher than a year earlier",
+        ["FINRA_DEBIT"], lambda M: yoy(M["FINRA_DEBIT"]) > 30, "LH_SPX", -1)
     add("vix_low", "Extremes", "VIX below 13 → S&P 500", "VIX closes a month below 13", ["VIX"], lambda M: M["VIX"] < 13, "SPX", -1)
     add("rec_prob", "Extremes", "Recession probability above 30% → S&P 500", "NY Fed yield-curve recession probability above 30%",
         ["REC_PROB_NYF"], lambda M: M["REC_PROB_NYF"] > 30, "LH_SPX", -1, gap=12)

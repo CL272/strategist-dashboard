@@ -89,6 +89,11 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   share of M2 and of currency in circulation. "FINRA monthly" (default) reads FINRA's margin statistics file in
   `pipeline/leads.py` (`finra_margin`: `FINRA_DEBIT`, free credit balances; from Jan 1997); "Fed quarterly" uses the
   Financial Accounts on FRED (`MARGIN_Z1`). FINRA updates the same .xlsx address in place; the page link is read first.
+- **After VIX spikes** (owner's request, 23 Nov 2026): Positioning & Vol → After VIX spikes (`docs/leads.js`, end of file).
+  `pipeline/events.py` writes `events.json` (VIX from FRED VIXCLS since 1990 plus Yahoo's latest days; daily closes since
+  1990 for S&P 500, Nasdaq 100, Nikkei, Hang Seng, STI, KLCI), loaded only when the card opens (`loadEvents`). An episode
+  = first close above the level after 63 trading days without one; returns at 1, 21, 63, 126, 252 trading days, against all days.
+  The margin-debt rules (`margin_record`, `margin_surge`) are in `signals.py` (Extremes); FINRA series lag one month.
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
   from `pipeline/rba.py` (RBA tables) and `pipeline/abs_au.py` (ABS Data API). The RBA's NAIRU and forecasts have no feed:
   after each Statement on Monetary Policy (Feb, May, Aug, Nov) update `RBA_SMP` in `pipeline/config.py`, including

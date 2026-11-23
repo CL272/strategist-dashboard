@@ -911,3 +911,102 @@ function buildLeads() {
   { const r = cards.sea_cycle_tbl.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard($('#pvGrid'), { key: 'sent_pc', title: 'Put/call ratios', defaultRange: '1Y', render: renderSentPc });
 }
+
+// ------------------------------------------------------------------ After VIX spikes (owner's request, 23 Nov 2026): Positioning & Vol → After VIX spikes
+// Every time VIX closed above a level for the first time in three months (63 trading days), and what each market did 1 day,
+// 1 month, 3, 6 and 12 months later, against all days. Daily history since 1990 comes from events.json (loaded on demand).
+let EVT = null, evtLoading = null;
+function loadEvents() {
+  return evtLoading || (evtLoading = loadJSON('data/events.json').then(d => {
+    EVT = {}; for (const [k, x] of Object.entries(d)) if (k[0] !== '_' && x && x.d) EVT[k] = { id: 'EV_' + k, label: x.label, source: x.source, t: x.d.map(v => v * DAY), v: x.v };
+    EVT._meta = d._meta || {}; return EVT;
+  }).catch(() => { EVT = { _meta: {} }; return EVT; }));
+}
+const EVT_H = [['1D', 1], ['1M', 21], ['3M', 63], ['6M', 126], ['1Y', 252]];
+const EVT_MKTS = [['SPX', 'S&P 500'], ['NDX', 'Nasdaq 100'], ['NKY', 'Nikkei 225'], ['HSI', 'Hang Seng'], ['STI', 'Straits Times'], ['KLCI', 'FBM KLCI']];
+state.evtThr = '35'; state.evtMkt = 'SPX';
+const evtWait = c => { if (EVT) return false; loadEvents().then(() => c.render()); setEmpty(c, 'Loading daily history since 1990…'); return true; };
+const evtCache = new Map();
+function vixEvents(thr, mkt) {   // episodes (most recent first) with forward returns, plus the same horizons over all days
+  const key = thr + '|' + mkt; if (evtCache.has(key)) return evtCache.get(key);
+  const V = EVT.VIX, M = EVT[mkt]; if (!V || !M) return null;
+  const fwd = j => EVT_H.map(([, k]) => j + k < M.v.length ? (M.v[j + k] / M.v[j] - 1) * 100 : null);
+  const eps = []; let lastAbove = -1e9;
+  for (let i = 1; i < V.t.length; i++) {
+    if (!(V.v[i] > thr)) continue;
+    if (V.v[i - 1] <= thr && i - lastAbove > 63) {
+      const j = idxLE(M, V.t[i]);   // the market's last close at or before that VIX close (Asian markets: the next session carries the reaction)
+      if (j >= 0 && V.t[i] - M.t[j] <= 5 * DAY && M.t[0] <= V.t[i]) {
+        let peak = V.v[i]; for (let k = i; k < Math.min(V.v.length, i + 22); k++) peak = Math.max(peak, V.v[k]);
+        eps.push({ t: V.t[i], vix: V.v[i], peak, r: fwd(j) });
+      }
+    }
+    lastAbove = i;
+  }
+  const all = EVT_H.map(() => []); for (let j = 0; j < M.v.length; j++) fwd(j).forEach((x, h) => { if (x != null) all[h].push(x); });
+  const med = a => { if (!a.length) return null; const s = [...a].sort((p, q) => p - q), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+  const col = h => eps.map(e => e.r[h]).filter(x => x != null);
+  const sum = { med: EVT_H.map((_, h) => med(col(h))), avg: EVT_H.map((_, h) => { const a = col(h); return a.length ? a.reduce((p, q) => p + q, 0) / a.length : null; }),
+    up: EVT_H.map((_, h) => { const a = col(h); return a.length ? [a.filter(x => x > 0).length, a.length] : null; }),
+    allMed: all.map(med), allUp: all.map(a => a.length ? a.filter(x => x > 0).length / a.length * 100 : null),
+    worst: EVT_H.map((_, h) => { const a = col(h); return a.length ? Math.min(...a) : null; }) };
+  const out = { eps: eps.reverse(), sum, M, V }; evtCache.set(key, out); return out;
+}
+const evtPc = v => v == null ? '–' : pctF1(v);
+const evtCls = v => 'num ' + (v == null ? 'muted' : v >= 0 ? 'up' : 'dn');
+function renderEvtTable(c) {
+  if (evtWait(c)) return;
+  const thr = +state.evtThr, mk = state.evtMkt, name = (EVT_MKTS.find(x => x[0] === mk) || [, mk])[1], R = vixEvents(thr, mk);
+  if (!R) return setEmpty(c, 'Event history arrives with the next data run.');
+  const b = htmlBody(c), { eps, sum } = R, H = EVT_H.map(h => h[0]);
+  if (!eps.length) { b.append(el('div', { class: 'empty', text: `VIX has not closed above ${thr} since 1990.` })); return; }
+  // summary first: what usually happened, against all days
+  const st = el('table', { class: 'perf watch' }), sb = el('tbody');
+  st.append(el('thead', {}, el('tr', {}, el('th', { class: 'l', text: `${name} after VIX > ${thr} (${eps.length} episodes)` }), ...H.map(h => el('th', { text: h })))));
+  const srow = (lab, vals, f = evtPc, cls = evtCls) => sb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: lab }), ...vals.map(v => el('td', { class: cls(v), text: f(v) }))));
+  srow('Median', sum.med); srow('Average', sum.avg);
+  srow('Higher', sum.up, x => x ? `${x[0]} of ${x[1]}` : '–', x => 'num ' + (x ? (x[0] / x[1] >= 0.5 ? 'up' : 'dn') : 'muted'));
+  srow('Worst', sum.worst);
+  srow('All days: median', sum.allMed, evtPc, () => 'num muted'); srow('All days: higher', sum.allUp, x => x == null ? '–' : fmtNum(x, 0) + '%', () => 'num muted');
+  st.append(sb);
+  // the episodes, most recent first
+  const et = el('table', { class: 'perf watch' }), tb = el('tbody');
+  et.append(el('thead', {}, el('tr', {}, el('th', { class: 'l', text: 'First close above' }), el('th', { text: 'VIX' }), el('th', { text: 'Peak (1M)' }), ...H.map(h => el('th', { text: h })))));
+  for (const e of eps) tb.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: nice(e.t) }), el('td', { class: 'num', text: fmtNum(e.vix, 1) }), el('td', { class: 'num', text: fmtNum(e.peak, 1) }),
+    ...e.r.map(v => el('td', { class: evtCls(v), text: evtPc(v) }))));
+  et.append(tb);
+  b.append(el('div', { class: 'table-wrap' }, st), el('div', { class: 'table-wrap', style: 'margin-top:10px' }, et)); capRows(tb, 'evt_' + thr + mk, 10);
+  c.csv = [['First close above', 'VIX', 'Peak VIX within a month', ...H.map(h => h + ' %')], ...eps.map(e => [iso(e.t), e.vix, e.peak, ...e.r.map(v => v == null ? '' : v.toFixed(2))]),
+    [], ['Median', '', '', ...sum.med.map(v => v == null ? '' : v.toFixed(2))], ['All days: median', '', '', ...sum.allMed.map(v => v == null ? '' : v.toFixed(2))]];
+  const y = sum.up[4], v = asOf(EVT.VIX, Infinity), lastEp = eps[0];
+  setNote(c, `${y ? `A year after VIX first closed above ${thr}, the ${name} was higher ${y[0]} of ${y[1]} times (median ${evtPc(sum.med[4])}, against ${evtPc(sum.allMed[4])} for all days); a month after, ${sum.up[1] ? `${sum.up[1][0]} of ${sum.up[1][1]}` : '–'} times (median ${evtPc(sum.med[1])}).` : `The ${name}'s record after VIX first closed above ${thr}.`} `
+    + `VIX is ${fmtNum(v.v, 1)} (${nice(v.t)}); the latest episode began ${nice(lastEp.t)}. `
+    + `An episode starts on the first close above ${thr} after at least three months (63 trading days) without one, so a single sell-off counts once. Returns run from the market's close on or before that day (for Asian markets the US close comes after theirs, so their "1D" is the first session that could react). `
+    + 'Prices in local currency without dividends; months are 21 trading days. Few episodes and very different causes: a guide to the range of outcomes, not a forecast.');
+  setSource(c, `${EVT.VIX.source}; ${R.M.source}; calculated`);
+}
+function renderEvtBars(c) {
+  if (evtWait(c)) return;
+  const thr = +state.evtThr, mk = state.evtMkt, name = (EVT_MKTS.find(x => x[0] === mk) || [, mk])[1], R = vixEvents(thr, mk);
+  if (!R || !R.eps.length) return setEmpty(c, 'No episodes.');
+  const o = baseOpt(), H = EVT_H.map(h => h[0]);
+  o.xAxis = { type: 'category', data: H, axisLabel: { color: tok('--muted'), fontSize: 11 }, axisTick: { show: false } };
+  o.yAxis = valAxis(v => fmtNum(v, 0) + '%');
+  o.series = [{ name: `After VIX > ${thr}: median`, type: 'bar', data: R.sum.med, itemStyle: { color: tok('--s1') }, barGap: '10%' },
+    { name: 'All days: median', type: 'bar', data: R.sum.allMed, itemStyle: { color: hexA(tok('--muted'), 0.55) } }];
+  o.legend.show = true; o.grid.top = 34; o.tooltip = { ...o.tooltip, trigger: 'axis', valueFormatter: v => evtPc(v) };
+  inst(c).setOption(o, true);
+  c.csv = [['Horizon', `After VIX > ${thr}: median %`, 'All days: median %'], ...H.map((h, i) => [h, R.sum.med[i] == null ? '' : R.sum.med[i].toFixed(2), R.sum.allMed[i] == null ? '' : R.sum.allMed[i].toFixed(2)])];
+  setNote(c, `Median ${name} return after VIX first closed above ${thr}, against the median for any day since ${new Date(R.M.t[0]).getUTCFullYear()}. Bars above the grey ones mean buying into the spike did better than usual over that horizon.`);
+  setSource(c, `${EVT.VIX.source}; ${R.M.source}; calculated`);
+}
+SUBTABS.posvol.push(['After VIX spikes', ['evt_table', 'evt_bars']]);   // added last so existing bookmarks keep their place
+EXTRA_RENDER.posvol = [...(EXTRA_RENDER.posvol || []), 'evt_table', 'evt_bars'];
+function buildVixEvents() {
+  const g = $('#pvGrid') || cards.vol_ts.root.parentElement;
+  const segs = { seg: { key: 'evtThr', select: true, label: 'VIX level', prefix: 'VIX above', options: [['25', '25'], ['30', '30'], ['35', '35'], ['40', '40'], ['45', '45']], onchange: () => { cards.evt_table.render(); cards.evt_bars.render(); } },
+    seg2: { key: 'evtMkt', select: true, label: 'Market', options: EVT_MKTS, onchange: () => { cards.evt_table.render(); cards.evt_bars.render(); } } };
+  makeCard(g, { key: 'evt_table', title: 'After VIX spikes: what came next', wide: true, range: false, ...segs, render: renderEvtTable });
+  makeCard(g, { key: 'evt_bars', title: 'Median return after a spike', wide: true, range: false, render: renderEvtBars });
+  for (const k of ['evt_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
