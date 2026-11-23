@@ -2573,7 +2573,7 @@ function regionKpis(box = $('#asiaKpis')) {
 }
 function seriesCard(ids, fmt, axisFmt, opts = {}) {
   return c => { const ok = ids.filter(id => has(id)); if (!ok.length) return setEmpty(c, 'Waiting for data.');
-    const byCountry = ok.length >= 3 && ok.every(id => countryCol(id));   // country comparisons: each economy keeps its colour
+    const cc = ok.map(id => id.slice(0, 3)), byCountry = ok.length >= 3 && ok.every(id => countryCol(id)) && new Set(cc).size === ok.length;   // country comparisons (one series per economy): each keeps its colour; several series of one economy get the normal palette
     drawLines(c, ok.map((id, i) => ({ name: S[id].label, data: pts(S[id], state.from, state.to), color: byCountry ? countryCol(id) : col(i) })), { fmt, axisFmt, endLabels: ok.length < 3, ...opts });
     setSource(c, srcOf(ok)); if (opts.note) setNote(c, opts.note); };
 }
@@ -6376,6 +6376,20 @@ function renderCbPath(c, k) {
   setNote(c, `Latest ${C.policyLab}: ${fmtNum(latest.v, 2)}%. Tenors vs their normal spread: ${rows.join(' · ') || 'n/a'}. ${dropped.length ? `Left out as not rate pricing: ${dropped.join('; ')}; more likely a funding or term-premium shift. ` : ''}${C.tenors.some(([t]) => !CB_GOV.test(t)) ? 'Money-market rates are net of their usual credit premium (median spread in past no-move periods); government-curve rates are read as is.' : 'Government-curve rates are read as is (little term premium at these horizons).'} A rough read of direction; not OIS pricing, not a probability.`);
   setSource(c, C.src);
 }
+// BNM: the 3-month Treasury bill against the OPR (owner's request, 23 Nov 2026), and its premium in the three months after the
+// last OPR move (from two weeks after it, so the market has settled) as the reference
+function billPremium() {
+  if (!has('MY_MTB_3M', 'MY_OPR')) return null;
+  const B = S.MY_MTB_3M, O = S.MY_OPR, sp = { id: 'MY_MTB_3M_SPREAD', label: '3M Treasury bill − OPR', t: [], v: [] };
+  for (let i = 0; i < B.t.length; i++) { const o = asOf(O, B.t[i]); if (o) { sp.t.push(B.t[i]); sp.v.push((B.v[i] - o.v) * 100); } }
+  let last = null; for (let i = O.v.length - 1; i > 0; i--) if (Math.abs(O.v[i] - O.v[i - 1]) >= 0.05) { last = { t: O.t[i], from: O.v[i - 1], to: O.v[i] }; break; }
+  if (!sp.t.length || !last) return null;
+  const a = last.t + 14 * DAY, z = addMonths(last.t, 3) + 14 * DAY, win = sp.v.filter((_, i) => sp.t[i] >= a && sp.t[i] <= z).sort((p, q) => p - q);
+  const med = win.length ? win[Math.floor(win.length / 2)] : null;
+  const bw = B.v.filter((_, i) => B.t[i] >= a && B.t[i] <= z).sort((p, q) => p - q);
+  const n = sp.v.length - 1, m1 = sp.v.filter((_, i) => sp.t[i] > sp.t[n] - 30 * DAY);
+  return { sp, last, base: med, baseBill: bw.length ? bw[Math.floor(bw.length / 2)] : null, now: sp.v[n], nowT: sp.t[n], bill: B.v[n], avg1m: m1.reduce((p, q) => p + q, 0) / m1.length, win: [a, z] };
+}
 function renderCbSpread(c, k) {
   cbPrep();
   const C = CBS[k], sp = cbSpreadSeries(k, C.head); if (!sp) return setEmpty(c, 'Waiting for data.');
@@ -6383,13 +6397,19 @@ function renderCbSpread(c, k) {
   c.titleEl.textContent = `${C.gaugeLab}`;
   c.subEl.textContent = gov ? `The ${C.headLab} rate minus the ${C.policyLab}, bp. Above zero = markets expect the ${C.policyLab} to be higher over the next ${C.tenors.find(x => x[0] === C.head)[2]}.`
     : `The ${C.headLab} rate minus the ${C.policyLab}, bp, against its normal premium (dashed). Above the dashed line = hikes priced; below = cuts.`;
-  drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) }], { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false,
-    hlines: gov ? [] : [{ y: nm.v, label: `normal ${bp(nm.v)}`, color: col(1) }] });
+  const bill = k === 'BNM' ? billPremium() : null;
+  if (bill) c.subEl.textContent += ' Green: the 3-month Treasury bill minus the OPR, against its level after the last OPR move (green dashed).';
+  drawLines(c, [{ name: C.gaugeLab, data: pts(sp, state.from, state.to) },
+    ...(bill ? [{ name: '3M Treasury bill − OPR', data: pts(bill.sp, state.from, state.to), color: col(2) }] : [])],
+    { fmt: v => bp(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false,
+      hlines: [...(gov ? [] : [{ y: nm.v, label: `normal ${bp(nm.v)}`, color: col(1) }]), ...(bill && bill.base != null ? [{ y: bill.base, label: `bill after the ${monthLab(bill.last.t)} move ${bp(bill.base)}`, color: col(2) }] : [])] });
   const st = cbStats(k);
   const im = st && st.imp, meet = im && im.first ? `${dShort(im.first)}` : '';
   const chk = im && im.per != null && Math.abs(im.ex) > CB_DEAD ? ` Meeting check: ${im.n} decision${im.n === 1 ? '' : 's'} fall${im.n === 1 ? 's' : ''} inside this tenor (first ${meet}${im.beyond ? `; the published schedule ends ${nice(im.beyond)}, so the pace is if anything overstated` : ''}); the excess equals about ${bp(im.per)} per meeting${im.ok ? ', a plausible pace.' : ', too large to be rate pricing, so it is read as a funding or term-premium shift.'}` : '';
-  setNote(c, st && st.spread ? `Now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band).${chk} Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : '');
-  setSource(c, C.src);
+  const bTxt = bill && bill.base != null ? `3M Treasury bill ${fmtNum(bill.bill, 2)}% (${nice(bill.nowT)}): ${bp(bill.now)} over the OPR, against ${bp(bill.base)} (bill ${fmtNum(bill.baseBill, 2)}%) in the three months after the ${monthLab(bill.last.t)} move to ${fmtNum(bill.last.to, 2)}%, so the bill premium is ${bp(bill.now - bill.base)} wider (last month's average ${bp(bill.avg1m)}). `
+    + 'A wider bill premium means investors want more to lend to the government for three months: less room for another cut, some chance of a hike, or tighter ringgit liquidity. ' : '';
+  setNote(c, (st && st.spread ? `${bTxt}Interbank now ${bp(st.spread.v)}${gov ? '' : `, normal ${bp(st.avg)}`}: ${st.read.toLowerCase()} (±${CB_DEAD}bp band).${chk} Normal premium: ${nm.how}. A market-rate read, not OIS pricing or a probability.` : bTxt));
+  setSource(c, C.src + (bill ? '; Bank Negara Malaysia API (gov-sec-yield: Malaysian Treasury Bills, indicative)' : ''));
 }
 function renderCbInfo(c, k) {
   const b = htmlBody(c), C = CBS[k], st = cbStats(k);

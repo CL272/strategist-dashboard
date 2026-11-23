@@ -94,6 +94,12 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   1990 for S&P 500, Nasdaq 100, Nikkei, Hang Seng, STI, KLCI), loaded only when the card opens (`loadEvents`). An episode
   = first close above the level after 63 trading days without one; returns at 1, 21, 63, 126, 252 trading days, against all days.
   The margin-debt rules (`margin_record`, `margin_surge`) are in `signals.py` (Extremes); FINRA series lag one month.
+- **Malaysian Treasury bills** (owner's request, 23 Nov 2026): `pipeline/cbwatch.py` reads Bank Negara's API
+  `gov-sec-yield?date=` ("short-terms_bills", from Jan 2019) into `MY_MTB_3M/6M/12M`, up to 200 days per full run (recent
+  days, then a weekly sample, then the rest; holidays remembered in `no_trading`). Central banks → BNM's spread card adds
+  the 3M bill − OPR and its premium in the three months after the last OPR move (`billPremium`).
+- Several series of one country on a chart use the normal palette; `COUNTRY_TOK` colours apply only when each line is a
+  different economy (`seriesCard`).
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data
   from `pipeline/rba.py` (RBA tables) and `pipeline/abs_au.py` (ABS Data API). The RBA's NAIRU and forecasts have no feed:
   after each Statement on Monetary Policy (Feb, May, Aug, Nov) update `RBA_SMP` in `pipeline/config.py`, including
