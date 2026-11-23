@@ -181,6 +181,8 @@ def rules():
     add("margin_surge", "Extremes", "Margin debt surging → S&P 500", "FINRA margin debt more than 30% higher than a year earlier",
         ["FINRA_DEBIT"], lambda M: yoy(M["FINRA_DEBIT"]) > 30, "LH_SPX", -1)
     add("vix_low", "Extremes", "VIX below 13 → S&P 500", "VIX closes a month below 13", ["VIX"], lambda M: M["VIX"] < 13, "SPX", -1)
+    add("vix_inverted", "Extremes", "VIX curve inverted → S&P 500", "VIX 3-month below spot VIX at month-end (VIX3M ÷ VIX under 1)",
+        ["VIX", "VIX3M"], lambda M: M["VIX3M"] / M["VIX"] < 1, "SPX", 1)
     add("rec_prob", "Extremes", "Recession probability above 30% → S&P 500", "NY Fed yield-curve recession probability above 30%",
         ["REC_PROB_NYF"], lambda M: M["REC_PROB_NYF"] > 30, "LH_SPX", -1, gap=12)
     add("fg_fear", "Extremes", "Extreme fear (CNN index below 25) → S&P 500", "CNN Fear & Greed index below 25", ["FG"], lambda M: M["FG"] < 25, "SPX", 1, gap=3)

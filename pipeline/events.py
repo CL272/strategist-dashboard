@@ -42,6 +42,12 @@ def build(status: dict) -> None:
         if "VIX" in old:
             out["VIX"] = old["VIX"]
         print(f"  VIX failed ({type(e).__name__}); kept previous")
+    # VIX 3-month (for the curve: VIX3M ÷ VIX below 1 = inverted), Yahoo from Jul 2006
+    if "VIX3M" in yahoo:
+        out["VIX3M"] = _ser(unpack(yahoo["VIX3M"]), "VIX 3-month", "Cboe VIX3M via Yahoo Finance (^VIX3M)")
+        status["EV_VIX3M"] = "ok"
+    elif "VIX3M" in old:
+        out["VIX3M"] = old["VIX3M"]
     for sid, sym, lab in MARKETS:
         try:
             s = fetch_yahoo(sym, START)
