@@ -560,6 +560,17 @@ function drawPair(c, A, B, { fmtA, fmtB, axisA, axisB, zeroA = false, zeroB = fa
   setZoomable(c, o);
   c.csv = toCSV([A, B]);
 }
+function drawTriple(c, L) {   // one chart, three axes: L = [{ name, data, color, fmt, axis }] (left, right, outer right)
+  const o = baseOpt(); o.legend.show = true;
+  const tint = (axis, color) => { axis.axisLabel = { ...axis.axisLabel, color }; axis.axisLine = { show: true, lineStyle: { color, width: 2 } }; return axis; };
+  o.grid = { left: 8, right: 62, top: 12 + 22 * legendRows(c, L.map(x => x.name)), bottom: 8, containLabel: true };
+  o.xAxis = timeAxis();
+  o.yAxis = L.map((x, i) => tint(valAxis(x.axis, i ? { position: 'right', splitLine: { show: false }, ...(i === 2 ? { offset: 54 } : {}) } : {}), x.color));
+  o.tooltip.formatter = tipFormatter((v, n) => (L.find(x => x.name === n) || L[0]).fmt(v));
+  o.series = L.map((x, i) => line(x.name, x.data, x.color, i ? { yAxisIndex: i } : {}));
+  setZoomable(c, o);
+  c.csv = toCSV(L);
+}
 function pairToggle(c) {   // card tool: switch between one chart with two axes and stacked panels
   c.pairMode = 'overlay';
   const b = el('button', { class: 'menu-item', type: 'button', text: '⇅ Show as two panels', title: 'Switch between one chart with two axes and two stacked panels' });
@@ -6790,7 +6801,7 @@ const SUBTABS = {
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
-  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_dxy']],
+  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_usd_drv', 'us_dxy']],
     ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
     ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
   europe: [['Equities', ['#sig_europe', 'eu_eq']], ['Rates & bonds', ['#sa_europe_rates', 'eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['#sa_europe_fx', 'eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']], ['Countries compared', ['#sa_eu_cmp', 'eu_cmp']]],
@@ -6974,7 +6985,32 @@ function buildRegions() {
   makeCard(us, { key: 'us_margin', title: 'Margin debt vs money supply', defaultRange: 'MAX', earliest: Date.UTC(1997, 0, 1), render: renderUsMargin,   // FINRA starts Jan 1997
     seg: { key: 'usMarginSrc', options: [['finra', 'FINRA monthly'], ['z1', 'Fed quarterly']] } });
   makeCard(us, { key: 'us_eq', title: 'US equities, rebased', defaultRange: '1Y', render: c => { rebasedCard(c, ['SPX', 'NDX', 'RTY', 'SPXEW']); setSource(c, 'Yahoo Finance'); } });
-  makeCard(us, { key: 'us_dxy', title: 'US dollar index', defaultRange: '3Y', render: c => { lines(c, ['DXY'], v => fmtNum(v, 2), v => fmtNum(v, 0)); setSource(c, 'ICE via Yahoo Finance (DX-Y.NYB)'); } });
+  makeCard(us, { key: 'us_dxy', title: 'US dollar index', defaultRange: '3Y', wide: true, render: c => { lines(c, ['DXY'], v => fmtNum(v, 2), v => fmtNum(v, 0)); setSource(c, 'ICE via Yahoo Finance (DX-Y.NYB)'); } });
+  // the dollar, real yields and commodities on one chart (owner's request, 24 Nov 2026, after a house chart with the
+  // Bloomberg indices: the DXY or the Fed's broad dollar, and the ETN tracking the Bloomberg Commodity Index or the GSCI)
+  state.usdDrvUsd = 'dxy'; state.usdDrvCmd = 'bcom';
+  makeCard(us, { key: 'us_usd_drv', title: 'USD, real yields & commodities', wide: true, defaultRange: '1Y',
+    seg: { key: 'usdDrvUsd', options: [['dxy', 'DXY'], ['broad', 'Broad dollar']] }, seg2: { key: 'usdDrvCmd', options: [['bcom', 'Bloomberg (DJP)'], ['gsci', 'S&P GSCI']] }, render: c => {
+    const U = { dxy: ['DXY', 'US Dollar Index (DXY)', 'ICE via Yahoo Finance (DX-Y.NYB)'], broad: ['USD_BROAD', 'US dollar, broad (Fed)', 'Federal Reserve via FRED (DTWEXBGS)'] }[state.usdDrvUsd] || [];
+    const K = { bcom: ['DJP', 'Bloomberg Commodity TR (DJP)', 'iPath Bloomberg Commodity Index Total Return ETN via Yahoo Finance (DJP)'], gsci: ['SPGSCI', 'S&P GSCI', 'S&P Dow Jones Indices via Yahoo Finance (^SPGSCI)'] }[state.usdDrvCmd] || [];
+    if (!has(K[0], 'REAL10Y', U[0])) return setEmpty(c, 'The commodity index and dollar series arrive with the next data run.');
+    const f = state.from, t = state.to;
+    drawTriple(c, [{ name: K[1] + ' (left)', data: pts(S[K[0]], f, t), color: col(0), fmt: v => fmtNum(v, 1), axis: v => fmtNum(v, 0) },
+      { name: '10Y US real yield (right)', data: pts(S.REAL10Y, f, t), color: col(1), fmt: v => fmtNum(v, 2) + '%', axis: v => fmtNum(v, 1) + '%' },
+      { name: U[1] + ' (outer right)', data: pts(S[U[0]], f, t), color: col(2), fmt: v => fmtNum(v, 2), axis: v => fmtNum(v, 0) }]);
+    const ch = (id, pct) => { const a = asOf(S[id], t), b = a ? asOf(S[id], addMonths(a.t, -3)) : null; return a && b ? (pct ? a.v / b.v * 100 - 100 : (a.v - b.v) * 100) : null; };
+    const r = asOf(S.REAL10Y, t), u = asOf(S[U[0]], t), k = asOf(S[K[0]], t), dr = ch('REAL10Y'), du = ch(U[0], 1), dk = ch(K[0], 1);
+    // weekly changes over the period shown: real yield in bp against the dollar, the dollar against commodities
+    const wk = (s, pct) => { const m = new Map(); for (const [x, v] of pts(s, f, t)) m.set(Math.floor((x / DAY + 3) / 7), v); const o = new Map(), ks = [...m.keys()].sort((a, b) => a - b);
+      for (let i = 1; i < ks.length; i++) if (ks[i] === ks[i - 1] + 1) o.set(ks[i], pct ? m.get(ks[i]) / m.get(ks[i - 1]) - 1 : m.get(ks[i]) - m.get(ks[i - 1])); return o; };
+    const cw = (A, B) => { const x = [], y = []; for (const [w, v] of A) if (B.has(w)) { x.push(v); y.push(B.get(w)); } return x.length >= 20 ? pearson(x, y) : null; };
+    const R = wk(S.REAL10Y, 0), D = wk(S[U[0]], 1), Kw = wk(S[K[0]], 1), c1 = cw(R, D), c2 = cw(D, Kw);
+    const word = v => v == null ? '–' : `${v > 0.3 ? 'together' : v < -0.3 ? 'opposite ways' : 'loosely'} (${corrF(v)})`;
+    setNote(c, `Over three months the 10-year real yield ${dr == null ? 'moved –' : `${dr >= 0 ? 'rose' : 'fell'} ${fmtNum(Math.abs(dr), 0)}bp to ${fmtNum(r.v, 2)}%`}, the dollar ${du == null ? '–' : `${du >= 0 ? 'gained' : 'lost'} ${fmtNum(Math.abs(du), 1)}%`} and commodities ${dk == null ? '–' : `${dk >= 0 ? 'gained' : 'lost'} ${fmtNum(Math.abs(dk), 1)}%`} (to ${nice(Math.min(r.t, u.t, k.t))}). `
+      + `Week to week over the period shown, the real yield and the dollar moved ${word(c1)}; the dollar and commodities moved ${word(c2)}. `
+      + 'Higher real yields raise the return on holding dollars and the cost of carrying commodities, so a stronger dollar and softer commodity prices usually follow; commodities are priced in dollars, so a stronger dollar also makes them dearer for everyone else. '
+      + 'Bloomberg’s own indices have no free feed. Commodities: DJP is an exchange-traded note that tracks the Bloomberg Commodity Index’s total return (prices plus the T-bill yield on the collateral, less a 0.75% fee), so its level differs from the index quoted on terminals but its moves match; the S&P GSCI is weighted by world production, mostly energy. Dollar: the DXY (six currencies, mostly the euro) or the Fed’s broad dollar (26 currencies, closer to Bloomberg’s basket, updated weekly).');
+    setSource(c, `${K[2]}; FRED (DFII10); ${U[2]}`); } });
   makeCard(us, { key: 'us_fed', title: 'Federal Reserve', range: false, render: c => renderPolicySummary(c, 'Fed') });
   // Europe
   makeCard(eu, { key: 'eu_infl', title: 'Euro area inflation', defaultRange: '5Y', render: c => { cbPrep();

@@ -112,6 +112,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   national indicators (UK, Korea), the Tankan, Singapore's business expectations (`SG_BEXP_MFG/SVC`, SingStat, quarterly).
   S&P Global PMIs (HCOB, au Jibun Bank, Caixin/RatingDog, Malaysia, India, Taiwan, ASEAN) are licensed: never scrape or show them.
   Balances are read against their own record since 2005 (percentile and z-score), never against 50.
+- **USD, real yields & commodities** (owner's request, 24 Nov 2026): US → Currency, `us_usd_drv`, three axes (`drawTriple`):
+  the Bloomberg Commodity Index via the iPath ETN that tracks its total return (`DJP`, Yahoo) or the S&P GSCI (`SPGSCI`), the 10Y
+  TIPS yield (`REAL10Y`), and the DXY or the Fed's broad dollar (`USD_BROAD`, DTWEXBGS). Bloomberg's own indices have no free feed.
 - Several series of one country on a chart use the normal palette; `COUNTRY_TOK` colours apply only when each line is a
   different economy (`seriesCard`).
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data

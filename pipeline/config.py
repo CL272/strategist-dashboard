@@ -117,6 +117,10 @@ YAHOO = [
     ("NATGAS",   "NG=F",      "US natural gas",       "Commodities",          "price", "USD/MMBtu"),
     ("IRONORE",  "TIO=F",     "Iron ore (62% Fe)",    "Commodities",          "price", "USD/t"),
     ("BDRY",     "BDRY",      "Dry bulk shipping (BDRY ETF)", "Commodities",  "price", "USD"),
+    # broad commodity indices (owner's request, 24 Nov 2026; the Bloomberg Commodity Index itself has no free feed): the iPath
+    # ETN that tracks its total return (DJP, from 2006), and the S&P GSCI, weighted by world production (energy-heavy)
+    ("DJP",      "DJP",       "Bloomberg Commodity Index TR (iPath ETN, DJP)", "Commodities", "price", "USD"),
+    ("SPGSCI",   "^SPGSCI",   "S&P GSCI commodity index", "Commodities",      "price", "idx"),
     # Crypto
     ("BTC",      "BTC-USD",   "Bitcoin",              "Crypto",               "price", "USD"),
     ("ETH",      "ETH-USD",   "Ether",                "Crypto",               "price", "USD"),
@@ -215,6 +219,7 @@ FRED = [
     ("PALM",        "PPOILUSDM",   "Palm oil (IMF, monthly)",     "Commodities", "price", "USD/t", MACRO_START),
     # Real effective exchange rates (BIS broad, monthly) for FX valuation
     ("REER_USD",    "RBUSBIS",     "US dollar REER",              "Valuation · FX", "level", "idx", MACRO_START),
+    ("USD_BROAD",   "DTWEXBGS",    "US dollar, broad trade-weighted (Fed)", "Valuation · FX", "level", "idx"),   # daily, from 2006; a free stand-in for the Bloomberg dollar index
     ("REER_EUR",    "RBXMBIS",     "Euro REER",                   "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_JPY",    "RBJPBIS",     "Japanese yen REER",           "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_CNY",    "RBCNBIS",     "Chinese yuan REER",           "Valuation · FX", "level", "idx", MACRO_START),
