@@ -35,6 +35,11 @@ SG = [
     ("SG_NODX_CN","M451301", "1.10", "NODX to Mainland China",      "Macro · Singapore", "level", "S$ k", "Enterprise Singapore via SingStat (M451301)"),
     ("SG_NODX_US","M451301", "1.11", "NODX to United States",       "Macro · Singapore", "level", "S$ k", "Enterprise Singapore via SingStat (M451301)"),
     ("SG_UNEMP",  "M182342", "1",  "Singapore unemployment rate (SA)", "Macro · Singapore", "level", "%", "MOM via SingStat (M182342)"),
+    # business surveys, quarterly (owner's request, 24 Nov 2026; Singapore's PMI from SIPMM has no data feed)
+    ("SG_BEXP_MFG", "M250142", "1", "Singapore manufacturers' business expectations (next 6 months, SA)", "Macro · Singapore", "level", "% balance",
+     "EDB via SingStat (M250142, general business expectations, net weighted balance, SA)"),
+    ("SG_BEXP_SVC", "M250431", "1", "Singapore services business outlook (next 6 months)", "Macro · Singapore", "level", "% balance",
+     "SingStat (M250431, services general business outlook, net weighted balance)"),
 ]
 
 # (id, dataset, filter, value column, label, group, unit)

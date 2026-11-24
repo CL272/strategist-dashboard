@@ -1052,3 +1052,127 @@ function buildVixEvents() {
   makeCard(g, { key: 'evt_bars', title: 'Median return after a spike', wide: true, range: false, render: renderEvtBars });
   for (const k of ['evt_table']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
+
+// ------------------------------------------------------------------ PMIs and business surveys (owner's request, 24 Nov 2026)
+// Regime & Leading → PMIs & surveys. Free PMIs exist for the US (ISM, via the OECD) and China (the NBS official PMI, via the
+// OECD as a balance: PMI = 50 + balance / 2, exact). S&P Global's PMIs (HCOB euro area, UK, au Jibun Bank Japan, Korea,
+// Taiwan, India, Malaysia, ASEAN, Caixin/RatingDog China) are licensed and are not republished on this public site; each
+// economy shows its official survey instead. Rows: [side, economy, id, survey, kind, [tab, sub]]; kind 'pmi' (50 = no
+// change), 'bal' (% balance: compare with its own past) or 'di' (Tankan diffusion index).
+const PMI_ROWS = [
+  ['m', 'US', 'ISM_PMI', 'ISM manufacturing PMI', 'pmi', ['us', 'ISM']],
+  ['m', 'China', 'CN_PMI', 'NBS official manufacturing PMI', 'pmi', ['cn', 'Economy']],
+  ['m', 'Euro area', 'BTS_IND_EA20', 'EC industrial confidence', 'bal', ['europe', 'Economy']],
+  ['m', 'Germany', 'DE_BCI', 'EC industrial confidence', 'bal', ['de', 'Economy']],
+  ['m', 'France', 'FR_BCI', 'EC industrial confidence', 'bal', ['fr', 'Economy']],
+  ['m', 'Italy', 'IT_BCI', 'EC industrial confidence', 'bal', ['it', 'Economy']],
+  ['m', 'Spain', 'ES_BCI', 'EC industrial confidence', 'bal', ['es', 'Economy']],
+  ['m', 'UK', 'UK_BCI', 'Manufacturing confidence (OECD)', 'bal', ['uk', 'Economy']],
+  ['m', 'Korea', 'KR_BCI', 'Manufacturing confidence (OECD)', 'bal', ['kr', 'Economy']],
+  ['m', 'Japan', 'JP_TANKAN_LM', 'BoJ Tankan, large manufacturers (Q)', 'di', ['japan', 'Economy']],
+  ['m', 'Singapore', 'SG_BEXP_MFG', 'Manufacturers’ 6-month outlook (Q)', 'bal', ['sg', 'Economy']],
+  ['s', 'Euro area', 'BTS_SVC_EA20', 'EC services confidence', 'bal', ['europe', 'Economy']],
+  ['s', 'Germany', 'BTS_SVC_DEU', 'EC services confidence', 'bal', ['europe', 'Economy']],
+  ['s', 'France', 'BTS_SVC_FRA', 'EC services confidence', 'bal', ['europe', 'Economy']],
+  ['s', 'Italy', 'BTS_SVC_ITA', 'EC services confidence', 'bal', ['europe', 'Economy']],
+  ['s', 'Singapore', 'SG_BEXP_SVC', 'Services 6-month outlook (Q)', 'bal', ['sg', 'Economy']],
+];
+const PMI_TOK = { US: '--s1', 'Euro area': '--s5', Germany: '--s10', France: '--s3', Italy: '--s8', Spain: '--s7', UK: '--s7',
+  China: COUNTRY_TOK.CN, Korea: COUNTRY_TOK.KR, Japan: COUNTRY_TOK.JP, Singapore: COUNTRY_TOK.SG };
+const PMI_FROM = Date.UTC(2005, 0, 1);
+const PMI_SRC = 'ISM and NBS PMIs via OECD (business tendency national indicators; PMI = 50 + balance / 2); European Commission business surveys via OECD; '
+  + 'OECD national indicators (UK, Korea); Bank of Japan (Tankan); SingStat (business expectations)';
+function pmiPrep() { ismPrep(); cnPmiPrep(); }
+function pmiNorm(id) {   // mean and spread since 2005, the yardstick for "normal"
+  const s = S[id], v = []; for (let i = 0; i < s.t.length; i++) if (s.t[i] >= PMI_FROM) v.push(s.v[i]);
+  if (v.length < 12) return null; const m = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+  return sd > 0 ? { m, sd } : null;
+}
+function pmiStat(r) {
+  const [, , id, , kind] = r; if (!has(id)) return null;
+  const s = S[id], a = asOf(s, state.latest); if (!a) return null;
+  const prev = a.i > 0 ? s.v[a.i - 1] : null, ch = prev == null ? null : a.v - prev, n = pmiNorm(id), z = n ? (a.v - n.m) / n.sd : null;
+  const pc = pctile(s, a.t, PMI_FROM), q = /^(JP_TANKAN|SG_BEXP)/.test(id);
+  const up = ch != null && ch > 0.05, dn = ch != null && ch < -0.05, mv = up ? ' · rising' : dn ? ' · falling' : '';
+  let short, good;
+  if (kind === 'pmi') { good = a.v >= 50; short = (good ? 'Expanding' : 'Contracting') + mv; }
+  else { good = z != null && z >= 0; short = (z == null ? '–' : z >= 0.25 ? 'Above normal' : z <= -0.25 ? 'Below normal' : 'Near normal') + mv; }
+  const near = kind !== 'pmi' && z != null && Math.abs(z) < 0.25;
+  const tk = near ? '--warning' : good ? (dn ? '--warning' : '--good') : (up ? '--warning' : '--critical');
+  return { a, ch, z, pc: pc ? pc.p : null, short, tk, q };
+}
+const pmiVal = (kind, v) => kind === 'pmi' ? fmtNum(v, 1) : (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), kind === 'di' ? 0 : 1);
+function renderPmiTable(c) {
+  pmiPrep();
+  const b = htmlBody(c), rows = PMI_ROWS.map(r => ({ r, st: pmiStat(r) })).filter(x => x.st);
+  if (!rows.length) { b.append(el('div', { class: 'empty', text: 'Waiting for data.' })); return; }
+  const heads = ['Economy', 'Survey', 'Latest', 'Change', 'vs history', 'Reading', 'Period'];
+  const tbl = el('table', { class: 'perf watch' });
+  tbl.append(el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i < 2 || i === 5 ? 'l' : '' })))));
+  const tb = el('tbody');
+  for (const side of ['m', 's']) {
+    const R = rows.filter(x => x.r[0] === side); if (!R.length) continue;
+    tb.append(el('tr', {}, el('td', { class: 'l muted small', colspan: heads.length, text: side === 'm' ? 'Manufacturing' : 'Services', style: 'font-weight:600;padding-top:10px' })));
+    for (const { r, st } of R) {
+      const [, nm, id, sv, kind, go] = r;
+      tb.append(el('tr', { class: 'row', title: `Open ${nm}`, style: 'cursor:pointer', onclick: () => goSub(go[0], go[1]) },
+        el('td', { class: 'l', text: nm }), el('td', { class: 'l muted', text: sv }), el('td', { class: 'num', text: pmiVal(kind, st.a.v) }),
+        el('td', { class: 'num', text: st.ch == null ? '–' : sign(st.ch) + fmtNum(Math.abs(st.ch), kind === 'di' ? 0 : 1) }),
+        el('td', { class: 'num', text: st.pc == null ? '–' : ordinal(st.pc) + ' pct' }),
+        el('td', { class: 'l' }, el('span', { class: 'chip', style: `--st:${tok(st.tk)}` }, st.short)),
+        el('td', { class: 'muted', text: st.q ? savLab('SAVQ_', st.a.t) : monthLab(st.a.t).replace(/ 20(\d\d)$/, ' $1') })));
+    }
+  }
+  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
+  c.csv = [['Sector', ...heads, 'z-score vs 2005+'], ...rows.map(({ r, st }) => [r[0] === 'm' ? 'Manufacturing' : 'Services', r[1], r[3], st.a.v, st.ch == null ? '' : st.ch.toFixed(2),
+    st.pc == null ? '' : st.pc.toFixed(0), st.short, iso(st.a.t), st.z == null ? '' : st.z.toFixed(2)])];
+  const M = rows.filter(x => x.r[0] === 'm'), good = M.filter(x => x.st.tk === '--good').length, rising = rows.filter(x => x.st.ch > 0.05).length;
+  const pm = rows.filter(x => x.r[4] === 'pmi').map(({ r, st }) => `${r[1]} ${fmtNum(st.a.v, 1)} (${st.a.v >= 50 ? 'expanding' : 'contracting'})`);
+  setNote(c, `${pm.length ? pm.join(', ') + '. ' : ''}${good} of ${M.length} manufacturing surveys are above 50 or above normal and not falling; ${rising} of ${rows.length} surveys rose at the latest reading. `
+    + 'PMIs: above 50 = more firms report growth than decline. The other surveys are balances (% of firms answering better minus worse) whose normal level differs by country, so “vs history” ranks each reading against its own record since 2005 (50th pct = typical). Click a row to open that economy. '
+    + 'Why not a PMI everywhere: the PMIs for the euro area, UK, Japan, Korea, Taiwan, India, Malaysia, Australia and the private China PMI are S&P Global’s licensed data and cannot be republished on this public site; the official surveys here come from the same firms’ answers and move closely with them. Malaysia, Taiwan, India and Australia publish no free monthly business survey (Malaysia’s DOSM leading index is on Malaysia → Economy).');
+  setSource(c, PMI_SRC);
+}
+function renderPmiChart(c) {
+  pmiPrep();
+  const v = state.pmiView;
+  if (v === 'pmi') {
+    const L = [['ISM_PMI', 'US ISM manufacturing PMI', 'US'], ['CN_PMI', 'China NBS manufacturing PMI', 'China']].filter(x => has(x[0]));
+    if (!L.length) return setEmpty(c, 'Waiting for data.');
+    drawLines(c, L.map(([id, nm, k]) => ({ name: nm, data: pts(S[id], state.from, state.to), color: tok(PMI_TOK[k]) })),
+      { fmt: x => fmtNum(x, 1), axisFmt: x => fmtNum(x, 0), hlines: [{ y: 50, label: '50 = no change' }] });
+    c.subEl.textContent = 'The two free official PMIs: above 50 = expanding.';
+    const t = L.map(([id, nm]) => { const a = asOf(S[id], state.to), b = a ? asOf(S[id], addMonths(a.t, -3)) : null;
+      return a ? `${nm.replace(' manufacturing PMI', '')} ${fmtNum(a.v, 1)} (${monthLab(a.t)}${b ? `; ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 1)} over 3 months` : ''})` : ''; }).filter(Boolean);
+    setNote(c, t.join('; ') + '. China’s official PMI covers about 3,000 firms, weighted to large state companies; the ISM covers about 400 US manufacturers.');
+    return setSource(c, 'ISM and NBS PMIs via OECD (business tendency national indicators; PMI = 50 + balance / 2)');
+  }
+  const R = PMI_ROWS.filter(r => r[0] === v && has(r[2]) && !(v === 'm' && ['France', 'Italy', 'Spain'].includes(r[1])));
+  if (!R.length) return setEmpty(c, 'Waiting for data.');
+  const L = R.map(r => { const n = pmiNorm(r[2]); if (!n) return null; const p = pts(S[r[2]], state.from, state.to);
+    return { name: r[1], data: p.map(([t, x]) => [t, (x - n.m) / n.sd]), color: tok(PMI_TOK[r[1]] || '--s1') }; }).filter(Boolean);
+  drawLines(c, L, { fmt: x => sign(x) + fmtNum(Math.abs(x), 2) + ' sd', axisFmt: x => fmtNum(x, 1), hlines: [{ y: 0, label: 'average' }], endLabels: false });
+  c.subEl.textContent = `${v === 'm' ? 'Manufacturing' : 'Services'} surveys on one scale: standard deviations from each survey’s own 2005–today average.`;
+  const now = L.map(x => [x.name, x.data.length ? x.data[x.data.length - 1][1] : null]).filter(x => x[1] != null).sort((a, b) => b[1] - a[1]);
+  setNote(c, `Strongest now: ${now.slice(0, 2).map(x => `${x[0]} (${sign(x[1])}${fmtNum(Math.abs(x[1]), 1)} sd)`).join(', ')}; weakest: ${now.slice(-2).reverse().map(x => `${x[0]} (${sign(x[1])}${fmtNum(Math.abs(x[1]), 1)} sd)`).join(', ')}. `
+    + 'Each survey is scaled against its own history, so a reading of +1 means as unusually strong for that economy as +1 elsewhere. Japan and Singapore are quarterly.' + (v === 'm' ? ' France, Italy and Spain are in the table.' : ''));
+  setSource(c, PMI_SRC);
+}
+function pmiTiles(box, tile) {
+  pmiPrep();
+  const one = (lab, id) => { const r = PMI_ROWS.find(x => x[2] === id); const st = r && pmiStat(r); if (!st) return;
+    tile(lab, pmiVal(r[4], st.a.v), st.ch == null ? '' : `${sign(st.ch)}${fmtNum(Math.abs(st.ch), 1)} · ${st.short.replace(/ · .*/, '').toLowerCase()}`, monthLab(st.a.t)); };
+  one('US ISM PMI', 'ISM_PMI'); one('China PMI', 'CN_PMI'); one('Euro area industry', 'BTS_IND_EA20'); one('Euro area services', 'BTS_SVC_EA20');
+  const all = PMI_ROWS.map(r => pmiStat(r)).filter(Boolean);
+  if (all.length) tile('Surveys improving', `${all.filter(x => x.ch > 0.05).length} of ${all.length}`, 'rose at the latest reading', '');
+}
+SUBTABS.regime.push(['PMIs & surveys', ['pmi_table', 'pmi_chart'], 'Business']);   // added last so existing bookmarks keep their place
+Object.assign(TILE_SETS.regime, { 'PMIs & surveys': ['US ISM PMI', 'China PMI', 'Euro area industry', 'Euro area services', 'Surveys improving'] });
+EXTRA_HOOKS.regime.push(() => { if (ldSub('regime') === 'PMIs & surveys') ldTiles('#regKpis', pmiTiles); });
+state.pmiView = 'pmi';
+function buildPmi() {
+  const g = $('#regGrid');
+  makeCard(g, { key: 'pmi_table', title: 'PMIs and business surveys', wide: true, range: false, render: renderPmiTable });
+  makeCard(g, { key: 'pmi_chart', title: 'Surveys over time', wide: true, defaultRange: '10Y',
+    seg: { key: 'pmiView', options: [['pmi', 'US & China PMIs'], ['m', 'Manufacturing'], ['s', 'Services']] }, render: renderPmiChart });
+}

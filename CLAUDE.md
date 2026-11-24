@@ -105,6 +105,13 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   no 2Y benchmark exists). Days read before MGS were added are read again (four calls at a time, 600 per full run).
   Malaysia → Rates & bonds: "MGS yields" (`my_mgs`) and "Rate gap vs USD/MYR" (`my_gap`: US 3Y − MGS 3Y, 10Y − MGS 10Y,
   or US 2Y − OPR, with the level correlation over the shown range in the note).
+- **PMIs and business surveys** (owner's request, 24 Nov 2026): Regime & Leading → PMIs & surveys (`docs/leads.js`, `PMI_ROWS`:
+  one registry drives the table, the chart and the tiles). Free PMIs: US ISM (`ISM_PMI`) and China NBS (`CN_PMI` = 50 +
+  `CN_BCI` / 2, `cnPmiPrep`; exact, checked against NBS releases). Other economies use official surveys: EC industrial and services
+  confidence (`BTS_IND_EA20`, `BTS_SVC_*` from the OECD's DF_BTS in `cnjp.py`; country industry lines are `DE_BCI` etc.), OECD
+  national indicators (UK, Korea), the Tankan, Singapore's business expectations (`SG_BEXP_MFG/SVC`, SingStat, quarterly).
+  S&P Global PMIs (HCOB, au Jibun Bank, Caixin/RatingDog, Malaysia, India, Taiwan, ASEAN) are licensed: never scrape or show them.
+  Balances are read against their own record since 2005 (percentile and z-score), never against 50.
 - Several series of one country on a chart use the normal palette; `COUNTRY_TOK` colours apply only when each line is a
   different economy (`seriesCard`).
 - **Australia's RBA pages** live in `docs/au.js` (What the RBA is watching, Labour market, Housing & households) with data

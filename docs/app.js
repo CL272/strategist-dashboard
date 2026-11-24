@@ -1839,6 +1839,12 @@ state.chipLead = '0';
 // a few tenths (seasonal-factor revisions). ISM services has no free history.
 state.ismLeadIp = '0'; state.ismLeadSv = '0';
 const ISM_SRC = 'ISM manufacturing survey via OECD / FRED (BSCICP02USM460S; PMI = 50 + balance / 2)';
+const PMI_SRC_CN = 'NBS official manufacturing PMI via OECD (business tendency national indicator; PMI = 50 + balance / 2)';
+function cnPmiPrep() {   // China's official PMI: the OECD holds it as a balance (% better − % worse), so PMI = 50 + balance / 2, exact
+  if (S.CN_PMI || !has('CN_BCI')) return;
+  const b = S.CN_BCI;
+  S.CN_PMI = { ...b, id: 'CN_PMI', label: 'China official manufacturing PMI (NBS)', unit: 'idx', source: PMI_SRC_CN, t: b.t.slice(), v: b.v.map(x => 50 + x / 2) };
+}
 function ismPrep() {
   if (S.ISM_PMI || !has('ISM_BAL')) return;
   const b = S.ISM_BAL;
@@ -2699,9 +2705,10 @@ function buildAsia() {
   makeCard(g, { key: 'sneer', title: 'S$NEER proxy', sub: 'Trade-weighted SGD (dashboard estimate) and its pace of appreciation.',
     source: 'Dashboard estimate from Yahoo Finance FX (SGD=X, CNY=X, MYR=X, EURUSD=X, TWD=X, JPY=X, IDR=X, KRW=X, HKD=X, THB=X, INR=X, AUDUSD=X, PHP=X, GBPUSD=X)', render: renderSneer });
   makeCard(g, { key: 'sginfl', title: 'Singapore inflation', sub: 'Headline CPI and MAS core inflation, year-on-year %.', render: seriesCard(['SG_CPI_YOY', 'SG_CORE_YOY'], pct1, pct1, { zero: true }) });
-  makeCard(g, { key: 'sggrowth', title: 'Singapore activity', seg: { key: 'sgGrowth', options: [['nodx', 'NODX'], ['gdp', 'GDP'], ['jobs', 'Unemployment']] },
+  makeCard(g, { key: 'sggrowth', title: 'Singapore activity', seg: { key: 'sgGrowth', options: [['nodx', 'NODX'], ['gdp', 'GDP'], ['jobs', 'Jobs'], ['bexp', 'Surveys']] },
     render: segCard('sgGrowth', { nodx: [['SG_NODX_YOY', 'SG_NODX_CN_YOY', 'SG_NODX_US_YOY'], 'Non-oil domestic exports, YoY % of 3-month sums: total, to China, to the US.'],
-      gdp: [['SG_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'], jobs: [['SG_UNEMP'], 'Unemployment rate, seasonally adjusted (quarterly).', { zero: false, fmt: pct1, axisFmt: pct1 }] }) });
+      gdp: [['SG_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'], jobs: [['SG_UNEMP'], 'Unemployment rate, seasonally adjusted (quarterly).', { zero: false, fmt: pct1, axisFmt: pct1 }],
+      bexp: [['SG_BEXP_MFG', 'SG_BEXP_SVC'], 'Six-month business outlook, quarterly: net % of firms expecting better minus worse (Singapore’s PMI has no data feed).', { fmt: v => sign(v) + fmtNum(Math.abs(v), 0), axisFmt: v => fmtNum(v, 0) }] }) });
   // ---------------- Australia
   g.append(el('h3', { class: 'section', text: 'Australia' }));
   makeCard(g, { key: 'aurates', title: 'Australia: RBA cash rate and bond yields', sub: 'Cash rate target, 3M bank bills, 2Y and 10Y government bonds.', render: seriesCard(['AU_CASH', 'AU_3M', 'AU_2Y', 'AU_10Y'], pct2, pct1, { endLabels: false }) });
@@ -3293,10 +3300,20 @@ function buildCnJp() {
     render: idsCard(['CN_CPI_YOY'], p1, p1, { zero: true, hlines: [{ y: 3, label: '3% target' }] }) });
   makeCard(g, { key: 'cn_trade', title: 'China: trade', sub: 'Merchandise exports and imports, USD, seasonally adjusted, year-on-year %.',
     render: idsCard(['CN_EXP_YOY', 'CN_IMP_YOY'], p1, a0, { zero: true }) });
-  makeCard(g, { key: 'cn_conf', title: 'China: confidence', seg: { key: 'cnConf', options: [['bci', 'Business (PMI)'], ['cci', 'Consumer']] },
+  makeCard(g, { key: 'cn_conf', title: 'China: PMI and confidence', seg: { key: 'cnConf', options: [['bci', 'Official PMI'], ['cci', 'Consumer']] },
     render: c => { const b = state.cnConf === 'bci';
-      c.subEl.textContent = b ? 'OECD business confidence for China, built from the official NBS manufacturing PMI. 0 = long-run average.' : 'OECD consumer confidence for China (index, 100 = long-run average).';
-      idsCard([b ? 'CN_BCI' : 'CN_CCI'], v => fmtNum(v, 1), v => fmtNum(v, 0), b ? { zero: true } : { hlines: [{ y: 100, label: 'average' }] })(c); } });
+      if (b) {   // the NBS manufacturing PMI on its own scale (owner's request, 24 Nov 2026)
+        cnPmiPrep(); if (!has('CN_PMI')) return setEmpty(c, 'Waiting for data.');
+        c.subEl.textContent = 'Official manufacturing PMI (National Bureau of Statistics): above 50 = expanding, below 50 = contracting.';
+        drawLines(c, [{ name: 'China official manufacturing PMI', data: pts(S.CN_PMI, state.from, state.to) }], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 50, label: '50 = no change' }] });
+        const s = S.CN_PMI, a = asOf(s, state.to); let k = 0; for (let i = a.i; i >= 0 && (s.v[i] >= 50) === (a.v >= 50); i--) k++;
+        const b3 = asOf(s, addMonths(a.t, -3));
+        setNote(c, `${fmtNum(a.v, 1)} in ${monthLab(a.t)}: ${a.v >= 50 ? 'expanding' : 'contracting'} for ${k} month${k === 1 ? '' : 's'} in a row${b3 ? `; ${sign(a.v - b3.v)}${fmtNum(Math.abs(a.v - b3.v), 1)} over 3 months` : ''}. `
+          + 'The official PMI surveys about 3,000 manufacturers, weighted to large and state-owned firms; the private China PMI (smaller, export-oriented firms) is S&P Global’s licensed data and is not shown. All economies’ surveys side by side: Regime & Leading → PMIs & surveys.');
+        return setSource(c, PMI_SRC_CN);
+      }
+      c.subEl.textContent = 'OECD consumer confidence for China (index, 100 = long-run average).';
+      idsCard(['CN_CCI'], v => fmtNum(v, 1), v => fmtNum(v, 0), { hlines: [{ y: 100, label: 'average' }] })(c); } });
   makeCard(g, { key: 'cn_spread', title: 'US − China 10Y spread vs USD/CNY', tall: true, render: renderCnSpread });
   g.append(el('h3', { class: 'section', text: 'Japan' }));
   makeCard(g, { key: 'jp_infl', title: 'Japan: inflation', sub: 'CPI headline, core (ex fresh food, the BoJ focus) and core-core, plus producer prices; year-on-year %.',
@@ -6967,8 +6984,21 @@ function buildRegions() {
     if (!has('EA_GDP')) return setEmpty(c, NO_FRED);
     lines(c, [{ name: 'Real GDP, % YoY', data: pts(yoyOf('EA_GDP', 4), state.from, state.to) }], pctF1, v => fmtNum(v, 0) + '%', { zero: true });
     setSource(c, 'Eurostat via FRED (CLVMNACSCAB1GQEA19), quarterly, YoY calculated'); } });
-  makeCard(eu, { key: 'eu_bci', title: 'Business confidence: euro area and Germany', defaultRange: '10Y', render: c => {
-    lines(c, ['BCI_EA20', 'BCI_DEU'], v => fmtNum(v, 1), v => fmtNum(v, 1), { hlines: [{ y: 100, label: 'long-run average' }] }); setSource(c, BC_SRC); } });
+  state.euBci = 'ind';
+  makeCard(eu, { key: 'eu_bci', title: 'Business confidence', defaultRange: '10Y', seg: { key: 'euBci', options: [['ind', 'Industry'], ['svc', 'Services']] }, render: c => {
+    if (state.euBci !== 'svc') {
+      c.subEl.textContent = 'Manufacturing, euro area and Germany: OECD index, 100 = long-run average.';
+      lines(c, ['BCI_EA20', 'BCI_DEU'], v => fmtNum(v, 1), v => fmtNum(v, 1), { hlines: [{ y: 100, label: 'long-run average' }] }); setNote(c, ''); return setSource(c, BC_SRC);
+    }
+    // services confidence, European Commission survey (owner's request, 24 Nov 2026: no free services PMI)
+    const L = [['BTS_SVC_EA20', 'Euro area'], ['BTS_SVC_DEU', 'Germany'], ['BTS_SVC_FRA', 'France'], ['BTS_SVC_ITA', 'Italy']].filter(x => has(x[0]));
+    if (!L.length) return setEmpty(c, 'Services confidence arrives with the next data run.');
+    c.subEl.textContent = 'Services confidence (European Commission survey): % of firms answering better minus worse, seasonally adjusted.';
+    drawLines(c, L.map(([id, nm], i) => ({ name: nm, data: pts(S[id], state.from, state.to), color: tok(['--s5', '--s10', '--s3', '--s8'][i]) })), { fmt: v => sign(v) + fmtNum(Math.abs(v), 1), axisFmt: v => fmtNum(v, 0) });
+    const a = asOf(S[L[0][0]], state.to), n = pmiNorm(L[0][0]);
+    setNote(c, `${L[0][1]} ${sign(a.v)}${fmtNum(Math.abs(a.v), 1)} in ${monthLab(a.t)}${n ? `, against a 2005–today average of ${sign(n.m)}${fmtNum(Math.abs(n.m), 1)}` : ''}. `
+      + 'Services are about 70% of the euro-area economy. Business activity, demand over the past three months and expected demand, averaged; compare each line with its own past. The HCOB services PMI is S&P Global’s licensed data and is not shown.');
+    setSource(c, 'European Commission business surveys via OECD (business tendency, national indicator)'); } });
   makeCard(eu, { key: 'eu_yields', title: 'Euro AAA yields', defaultRange: '3Y', render: c => {
     const L = [2, 10, 30].map(y => { const s = curveSeries('EA', y); return s ? { name: `Euro AAA ${y}Y`, data: pts(s, state.from, state.to) } : null; }).filter(Boolean);
     if (has('DE_10Y')) L.push({ name: 'Germany 10Y (monthly)', data: pts(S.DE_10Y, state.from, state.to) });
@@ -7630,7 +7660,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();
