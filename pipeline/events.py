@@ -1,9 +1,11 @@
-"""Daily history for event studies (owner's request, 23 Nov 2026): what markets did after VIX closed above a level.
+"""Daily history for event studies (owner's request, 23 Nov 2026): what markets did after VIX (and, since Design plan 3, the MOVE)
+closed above a level.
 
 Writes docs/data/events.json, loaded by the page only when the "After VIX spikes" card is opened:
   VIX   daily close from 1990: FRED VIXCLS (Cboe's VIX via FRED), topped up with Yahoo's ^VIX for the latest days
   markets: daily closes from 1990 (or each index's first year on Yahoo): S&P 500, Nasdaq 100, Nikkei 225, Hang Seng,
-  Straits Times, FBM KLCI. Prices, local currency, no dividends.
+  Straits Times, FBM KLCI (prices, local currency, no dividends), and UST 7-10Y (IEF, adjusted close: coupons included).
+  MOVE  ICE BofA MOVE index (Treasury implied volatility), Yahoo ^MOVE from its first year; the dashboard copy if that fails.
 Isolated: a failure keeps the previous file's series.
 """
 from __future__ import annotations
@@ -16,7 +18,7 @@ from fetch import fetch_yahoo, load_existing, pack, unpack, write
 
 START = "1990-01-01"
 MARKETS = [("SPX", "^GSPC", "S&P 500"), ("NDX", "^NDX", "Nasdaq 100"), ("NKY", "^N225", "Nikkei 225"), ("HSI", "^HSI", "Hang Seng"),
-           ("STI", "^STI", "Straits Times"), ("KLCI", "^KLSE", "FBM KLCI")]
+           ("STI", "^STI", "Straits Times"), ("KLCI", "^KLSE", "FBM KLCI"), ("IEF", "IEF", "UST 7-10Y (IEF)")]
 
 
 def _ser(s: pd.Series, label: str, source: str) -> dict:
@@ -48,12 +50,25 @@ def build(status: dict) -> None:
         status["EV_VIX3M"] = "ok"
     elif "VIX3M" in old:
         out["VIX3M"] = old["VIX3M"]
+    # MOVE (Design plan 3, Step 8): when bond volatility spikes, what do equities do?
+    try:
+        m = fetch_yahoo("^MOVE", START)
+        if m is None or len(m) < 2500:
+            raise RuntimeError("short")
+        out["MOVE"] = _ser(m, "MOVE (Treasury implied volatility)", "ICE BofA MOVE index via Yahoo Finance (^MOVE)")
+        status["EV_MOVE"] = "ok"
+    except Exception as e:
+        if "MOVE" in old:
+            out["MOVE"] = old["MOVE"]
+        elif "MOVE" in yahoo:
+            out["MOVE"] = _ser(unpack(yahoo["MOVE"]), "MOVE (Treasury implied volatility)", "ICE BofA MOVE index via Yahoo Finance (^MOVE)")
+        print(f"  MOVE failed ({type(e).__name__}); kept previous")
     for sid, sym, lab in MARKETS:
         try:
             s = fetch_yahoo(sym, START)
             if s is None or len(s) < 2500:
                 raise RuntimeError("short")
-            out[sid] = _ser(s, lab, f"Yahoo Finance ({sym}), daily close")
+            out[sid] = _ser(s, lab, f"Yahoo Finance ({sym}), daily " + ("adjusted close" if sid == "IEF" else "close"))
             status[f"EV_{sid}"] = "ok"
         except Exception as e:
             if sid in old:
