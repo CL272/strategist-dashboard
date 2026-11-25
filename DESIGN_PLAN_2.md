@@ -1,10 +1,11 @@
 # Design plan 2: a front page, a one-page brief, fewer clicks
 
-**Status (25 Nov 2026): planned, not built.** Written after the owner said the Strategist View and the Weekly brief
+**Status (25 Nov 2026): approved by the owner, not built.** All five decisions at the end were answered "yes, as
+recommended", so every step, including Step 4, can be built. Written after the owner said the Strategist View and the Weekly brief
 are "too messy and clunky" and that some pages are "not very clean to click through". This plan adds no data: it
 rearranges what exists. The earlier clean-up (`DESIGN_PLAN.md`, D1–D9) fixed the cards; this one fixes the two
 pages read every day and the path through the rest. `CLAUDE.md` rules still apply; where a step changes a standing
-rule it says so and waits for the owner (see "Decisions for the owner").
+rule it says so (see "Decisions for the owner", all approved).
 
 **Reference mockups** (static pages that use the real stylesheet; serve the repository root and open them):
 
@@ -161,7 +162,8 @@ every multi-tab page shows the pager; heights stay within the budget.
 
 ## Step 4. Country pages: Markets · Economy (mockup B in `design/click-through.html`)
 
-**Needs the owner's yes** (it changes his 12 Nov rule "Equities · Rates & bonds · Currency · Economy").
+**Approved by the owner on 25 Nov 2026** (it replaces his 12 Nov rule "Equities · Rates & bonds · Currency · Economy" on
+the pages in the table; update that rule in `CLAUDE.md` when this step ships).
 
 Rule: on a country or region page, asset-class sub-tabs with fewer than three cards merge, in the fixed order, into
 one **Markets** sub-tab. Inside it each card carries its asset class as an eyebrow above the title
@@ -257,8 +259,7 @@ touched, which no step should need).
 | 6 | Menu | low | small |
 | 7 | Guardrails and notes | none | small |
 
-Steps 1 and 2 answer the owner's first complaint and can ship on their own. Steps 3, 5, 6 and 7 need no decision.
-Step 4 waits for the owner's answer to decision 1.
+Steps 1 and 2 answer the owner's first complaint and can ship on their own. Build in the order 1 to 7.
 
 ## Do not change
 
@@ -268,12 +269,12 @@ Step 4 waits for the owner's answer to decision 1.
 - The source and date line under every card; chart colours and tokens; card keys; data files and the pipeline.
 - "Where we are", Markets → Performance and every page not named above.
 
-## Decisions for the owner (defaults in brackets)
+## Decisions for the owner (all approved as recommended, 25 Nov 2026)
 
 1. **Country pages become "Markets · Economy"** on the eleven smaller pages, replacing the four asset-class
    sub-tabs you asked for on 12 Nov; the US and Malaysia keep theirs, Singapore merges only rates and currency.
-   [Yes. If no: skip Step 4; Step 3 still removes the half-empty screens.]
-2. **What moved becomes a six-row list** with small bars, and the 14-bar chart goes. [Yes]
-3. **Talking points fold away** at the foot of the Strategist View, one click to open and copy. [Yes]
-4. **The brief loses Headlines and the Structures line**, and has three takeaways instead of nine. [Yes]
-5. **A pager under every sub-tab** ("← previous · next →"). [Yes]
+   **Approved.**
+2. **What moved becomes a six-row list** with small bars, and the 14-bar chart goes. **Approved.**
+3. **Talking points fold away** at the foot of the Strategist View, one click to open and copy. **Approved.**
+4. **The brief loses Headlines and the Structures line**, and has three takeaways instead of nine. **Approved.**
+5. **A pager under every sub-tab** ("← previous · next →"). **Approved.**
