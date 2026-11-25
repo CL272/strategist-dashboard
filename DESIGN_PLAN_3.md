@@ -1,6 +1,7 @@
 # Design plan 3: a menu that reads as a tree, a leaner tool, and the "so what" layer
 
-**Status (25 Nov 2026): planned, waiting for the owner's answers to the decisions at the end. Nothing is built.**
+**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
+Nothing is built yet. Build Steps 1 to 9 in order, one step per commit.**
 Written after the owner said the side panel makes it "hard to differentiate between the main tab and sub tab", that he
 no longer needs the Idea log and the Notebook ("I can keep that on my local drive"), and asked what else would help a
 top-down investment decision. He then added: study what happens to US equities when the MOVE index spikes.
@@ -65,7 +66,7 @@ at 1440 × 900 with the region trees closed the list scrolls at most 200px; `nod
 | My notes (structured products) | Structured products → My notes | What changed (knock-in alerts) |
 | Signal watch and dismiss | Signals page | Strategist View → Signals |
 
-### Step 2. Remove the diaries, keep the tools (the recommended scope; decision 2 can widen or narrow it)
+### Step 2. Remove the diaries, keep the tools (the scope the owner approved; House views go too, decision 3)
 
 Remove:
 - The Idea log page: Open ideas, Closed, Scorecard, their form, P&L code, backup export/import, the `ideas` tab id
@@ -246,7 +247,7 @@ Bloomberg's own indices.
 
 One step per commit; run the design check before each push, and the two vault checks after Step 2.
 
-| Step | What | Needs a decision | Risk | Size |
+| Step | What | Decision (all approved) | Risk | Size |
 |---|---|---|---|---|
 | 1 | Menu as a tree | 1 | low | small |
 | 2 | Remove the Idea log and Notebook; re-home Watchlist and Model portfolio | 2, 3 | medium: vault code and old links | medium |
@@ -266,16 +267,19 @@ Steps 1, 2 and 8 answer what the owner asked for directly. Step 3 is the one tha
 - Signal and structured-products wording; the source and date line under every card; card keys of cards that stay.
 - Design plan 2's rules (say each thing once, no lone cards, the pager, page caps, Markets · Economy).
 
-## Decisions for the owner (defaults in brackets)
+## Decisions (answered by the owner, 25 Nov 2026: "go with the defaults")
+
+Every default in brackets below is approved. The alternatives were not chosen: do not build them.
 
 1. **The menu as in `design/menu.html`**: group names as headers with the arrow on the left, pages on a rail,
-   countries on a second rail. [Yes]
+   countries on a second rail. [Yes] **Approved.**
 2. **How much personal tracking to remove.** [Remove the Idea log (open, closed, scorecard), the Notebook and
    "+ Note"; keep the Watchlist (moved to Markets), the Model portfolio (moved to Allocation), structured-product
    notes and the signal watch buttons.] Alternative: remove all of those too, and the vault with them, so the tool
-   stores nothing of yours.
+   stores nothing of yours. **Approved as the default: the vault stays, for the items that are kept.**
 3. **House views.** [Remove, as you track views yourself.] Alternative: keep them as a "My view" column on the
-   Evidence board, to see where your stance and the evidence disagree.
+   Evidence board, to see where your stance and the evidence disagree. **Approved as the default: remove; no "My view"
+   column.** Stored views (`sd-views-v1`) are left untouched and included in the export.
 4. **The Evidence board's rules and wording**: a count of marks for and against, no score, never a recommendation.
-   [Yes]
-5. **Which additions to build**: In ringgit, Drawdowns, Profits, Malaysia flows and finances. [All four]
+   [Yes] **Approved.**
+5. **Which additions to build**: In ringgit, Drawdowns, Profits, Malaysia flows and finances. [All four] **Approved: build all four** (Steps 4 to 7), plus Step 8, which the owner asked for.
