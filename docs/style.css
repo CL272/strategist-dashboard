@@ -1132,3 +1132,58 @@ table.alloc tr.row td:first-child { font-weight: 500; }
 @media (max-width: 640px) { .ev > li { grid-template-columns: 18px minmax(0, 1fr); } .ev > li > span:last-child { grid-column: 2; } }
 #alLead h2 { max-width: none; }   /* the lead fits one line at 1280 and wider */
 .dd-mark { color: var(--neg); font-size: 9px; margin-right: 6px; vertical-align: 1px; }   /* Drawdowns: 20% or more below the record high */
+
+/* ===== Design plan 4, Step 3: Allocation → Portfolio (from design/redesign4.css, P1 to P4) ===== */
+/* ---- P1 · the portfolio bar: which portfolio, currency, window; one line above the tiles */
+.po-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; font-size: 12.5px; color: var(--ink-2); }
+.po-bar label { display: inline-flex; align-items: center; gap: 6px; }
+.po-bar .mini-select { font-size: 13px; padding: 3px 6px; font-weight: 600; color: var(--ink); }
+.po-bar .ghost { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+.po-bar .sp { flex: 1 1 auto; }
+
+/* ---- P2 · mix by asset class: the portfolio (solid) over the benchmark (outline) */
+.po-h { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.po-mix { display: grid; grid-template-columns: 76px minmax(0, 1fr) 96px; align-items: center; column-gap: 10px; font-size: 12.5px; padding: 3px 0; }
+.po-mix .bar { position: relative; height: 12px; background: var(--wash); border-radius: 3px; }
+.po-mix .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--s1); border-radius: 3px; }
+.po-mix .bar b { position: absolute; left: 0; top: -2px; bottom: -2px; border-right: 2px solid var(--ink); }
+.po-mix .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- P3 · share of tracking error per holding (a negative share offsets) */
+.po-share { display: block; width: 110px; height: 8px; background: var(--wash); border-radius: 2px; }
+.po-share i { display: block; height: 100%; background: var(--s1); border-radius: 2px; }
+.po-share.neg i { background: var(--muted); }
+
+/* ---- P4 · what if: the controls, then before → after */
+.po-what { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+.po-what label { display: inline-flex; align-items: center; gap: 7px; }
+.po-what .mini-select { font-size: 13px; padding: 3px 6px; }
+.po-ba { border-top: 1px solid var(--grid); }
+.po-ba > div { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.po-ba .k { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.po-ba .v { font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.po-ba .v b { color: var(--ink); font-weight: 700; }
+.po-ba .arr { color: var(--muted); margin: 0 2px; }
+.po-ba .d { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.po-bar:empty { display: none; }
+.po-bar .seg-chips button { padding: 2px 10px; font-size: 12px; }
+.po-bar .mini-select { max-width: 240px; }
+.po-find { position: relative; margin-top: 8px; }
+.po-find .perf-search { width: 100%; }
+.po-sugg { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 2px); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(15, 27, 51, .16); max-height: 280px; overflow-y: auto; padding: 4px; }
+.po-sugg button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.po-sugg button:hover { background: var(--wash); color: var(--ink); }
+.po-sugg .small { padding: 6px 8px; }
+.po-thin { display: inline-block; margin-left: 6px; padding: 0 5px; border: 1px solid var(--serious); border-radius: 4px; color: var(--serious); font-size: 10.5px; line-height: 15px; }
+.po-scaled { display: inline-block; min-width: 38px; margin-left: 6px; font-size: 11.5px; text-align: right; }
+.po-presets { margin-bottom: 8px; }
+tr.po-total td { border-top: 1px solid var(--axis); }
+@media (max-width: 640px) {   /* phones: the portfolio bar on as few lines as possible */
+  .po-bar { gap: 5px; margin-bottom: 8px; }
+  .po-bar > .muted.small { display: none; }
+  .po-bar .ghost { padding: 2px 7px; font-size: 11.5px; }
+  .po-bar .sp { display: none; }
+  .po-bar .mini-select { max-width: 170px; }
+}

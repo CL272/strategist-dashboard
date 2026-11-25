@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------ PRIVATE VAULT AND SYNC (WP70, WP71, owner's request, 17 Nov 2026)
-// Everything the owner writes (watchlist, model portfolio, signal watch/dismiss, structured notes, the sync settings, and
+// Everything the owner writes (watchlist, saved portfolios, signal watch/dismiss, structured notes, the sync settings, and
 // what is kept from the Idea log, house views and Notebook removed on 25 Nov 2026) is encrypted in this browser with a
 // passphrase only the owner knows:
 //   key  = PBKDF2-SHA-256(passphrase, random 16-byte salt, 600,000 rounds)   (Web Crypto, no library)
@@ -13,7 +13,8 @@
 const VAULT_KEY = 'sd-vault-v1', VAULT_CFG_KEY = 'sd-vault-cfg', VAULT_ITER = 600000;
 // sd-ideas-v1, sd-views-v1 and sd-notebook-v1 belong to pages removed in Design plan 3: no page reads them, but they stay
 // listed so what is stored keeps being encrypted, synced and exportable (vaultExportOld). Never drop them from this list.
-const VAULT_ITEMS = ['sd-ideas-v1', 'sd-watch-v1', 'sd-views-v1', 'sd-model-v1', 'sd-signals-v1', 'sd-notes-v1', 'sd-notebook-v1', 'sd-sync-v1'];
+// sd-ports-v1: the saved portfolios of the allocator (Design plan 4); sd-model-v1 is the old model portfolio it started from
+const VAULT_ITEMS = ['sd-ideas-v1', 'sd-watch-v1', 'sd-views-v1', 'sd-model-v1', 'sd-signals-v1', 'sd-notes-v1', 'sd-notebook-v1', 'sd-sync-v1', 'sd-ports-v1'];
 const VAULT_LOCAL_ONLY = ['sd-sync-v1'];   // per-device: never copied to the synced file
 const V = { key: null, salt: null, items: null, mtime: {}, rev: 0, lastAct: Date.now(), timer: null, syncTimer: null, sync: { state: '', at: 0, msg: '' } };
 
@@ -76,7 +77,7 @@ async function vaultUnlock(pass) {
 }
 function vaultLock() {
   Object.assign(V, { key: null, items: null, mtime: {} });
-  Object.assign(state, { watchMem: null, sigMem: null, mpMem: null });   // copies kept in memory go too
+  Object.assign(state, { watchMem: null, sigMem: null, mpMem: null, poRes: null });   // copies kept in memory go too
   closeVDialog(); vaultRefresh();
 }
 function vaultSaveSoon() { clearTimeout(V.timer); V.timer = setTimeout(vaultSave, 300); }

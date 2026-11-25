@@ -5710,84 +5710,10 @@ function buildWatch() {   // card keys kept from the Idea log, so old CSV names 
   makeCard(g, { key: 'idea_chart', title: 'Ticker chart', wide: true, defaultRange: '1Y', render: renderWatchChart });
   const r = cards.idea_watch.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
-// stored only through pstore() (the private vault once it is set up); never published
-const MODEL_KEY = 'sd-model-v1';
-const MP_ASSETS = [['ACWI', 'World equities (ACWI)'], ['SPX', 'S&P 500'], ['AAXJ', 'Asia ex-Japan (AAXJ)'], ['EEM', 'Emerging markets (EEM)'], ['KLCI', 'FBM KLCI'], ['STI', 'Straits Times'],
-  ['IEF', 'US Treasuries 7-10Y (IEF)'], ['TLT', 'US Treasuries 20Y+ (TLT)'], ['LQD', 'US investment grade (LQD)'], ['HYG', 'US high yield (HYG)'], ['EMB', 'EM USD bonds (EMB)'], ['GOLD', 'Gold'], ['BTC', 'Bitcoin'], ['CASH', 'Cash (local short rate)']];
-const MP_PRESETS = { '60/40 global': [['ACWI', 60], ['IEF', 40]], 'Malaysian balanced': [['KLCI', 35], ['AAXJ', 15], ['ACWI', 15], ['IEF', 20], ['GOLD', 5], ['CASH', 10]] };
-const CASH_RATE = { MYR: 'MY_OPR', SGD: 'SORA3M', USD: 'UST3M' };
-function mpLoad() { try { return JSON.parse(pstore().getItem(MODEL_KEY) || 'null') || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } catch (e) { return state.mpMem || { ccy: 'MYR', rows: MP_PRESETS['Malaysian balanced'] }; } }
-function mpSave(o) { state.mpMem = o; try { pstore().setItem(MODEL_KEY, JSON.stringify(o)); } catch (e) { /* session only */ } }
-function mpSeries(o, from, to) {   // weekly, rebalanced weekly; returns [[t, value]] and the per-asset weekly returns used
-  const ccy = o.ccy, rows = o.rows.filter(([id, w]) => w > 0 && (id === 'CASH' || has(id))); const tot = rows.reduce((a, [, w]) => a + w, 0); if (!tot) return null;
-  const fr = []; for (let t = lastFriday(from); t <= to; t += 7 * DAY) fr.push(t);
-  const ser = Object.fromEntries(rows.filter(([id]) => id !== 'CASH').map(([id]) => [id, inCcy(id, ccy)]));
-  let v = 100; const out = [[fr[0], v]];
-  for (let k = 1; k < fr.length; k++) { let r = 0;
-    for (const [id, w] of rows) { let x = 0;
-      if (id === 'CASH') { const cr = CASH_RATE[ccy]; const a = has(cr) ? asOf(S[cr], fr[k]) : null; x = a ? a.v / 100 / 52 : 0; }
-      else { const a = asOf(ser[id], fr[k]), b0 = asOf(ser[id], fr[k - 1]); x = a && b0 && b0.v ? a.v / b0.v - 1 : 0; }
-      r += w / tot * x; }
-    v *= 1 + r; out.push([fr[k], v]); }
-  return out;
-}
-function mpStats(p) {
-  if (!p || p.length < 10) return null;
-  const r = []; for (let i = 1; i < p.length; i++) r.push(p[i][1] / p[i - 1][1] - 1);
-  const yrs = (p[p.length - 1][0] - p[0][0]) / (365.25 * DAY), tot = p[p.length - 1][1] / p[0][1] - 1;
-  const m = r.reduce((a, x) => a + x, 0) / r.length, sd = Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(52);
-  let peak = -Infinity, dd = 0; for (const [, v] of p) { peak = Math.max(peak, v); dd = Math.min(dd, v / peak - 1); }
-  const ann = yrs > 0.9 ? Math.pow(1 + tot, 1 / yrs) - 1 : null;
-  return { tot: tot * 100, ann: ann == null ? null : ann * 100, vol: sd * 100, dd: dd * 100, ratio: ann != null && sd ? ann / sd : null };
-}
-const mpLocked = () => typeof vaultOn === 'function' && vaultOn() && !vaultOpen();
-function renderModel(c) {
-  if (typeof vaultLockedCard === 'function' && vaultLockedCard(c)) return;
-  const o = mpLoad(), b = htmlBody(c);
-  const top = el('div', { class: 'mp-top' });
-  const ccy = el('select', { class: 'mini-select', 'aria-label': 'Currency' }, ...['MYR', 'SGD', 'USD'].map(x => el('option', { value: x, text: 'In ' + x }))); ccy.value = o.ccy;
-  ccy.addEventListener('change', () => { o.ccy = ccy.value; mpSave(o); c.render(); });
-  top.append(ccy, ...Object.keys(MP_PRESETS).map(k => el('button', { type: 'button', class: 'ghost', text: 'Preset: ' + k, onclick: () => { o.rows = MP_PRESETS[k].map(x => x.slice()); mpSave(o); c.render(); } })));
-  b.append(top);
-  const tbl = el('table', { class: 'perf asset-table mp-table' }), tb = el('tbody');
-  tbl.append(el('thead', {}, el('tr', {}, ...['Asset', 'Weight %', 'Return over range', ''].map(h => el('th', { text: h })))));
-  const used = new Set(o.rows.map(r => r[0]));
-  o.rows.forEach((r, i) => {
-    const w = el('input', { type: 'number', min: 0, max: 100, step: 1, value: r[1], class: 'mp-w' });
-    w.addEventListener('change', () => { o.rows[i][1] = Math.max(0, +w.value || 0); mpSave(o); c.render(); });
-    const ser = r[0] === 'CASH' ? null : has(r[0]) ? inCcy(r[0], o.ccy) : null, a = ser && asOf(ser, state.to), b0 = ser && asOf(ser, state.from);
-    tb.append(el('tr', { class: 'row' }, el('td', { text: (MP_ASSETS.find(x => x[0] === r[0]) || [, r[0]])[1] }), el('td', { class: 'num' }, w),
-      el('td', { class: 'num', text: a && b0 ? pctF1((a.v / b0.v - 1) * 100) : r[0] === 'CASH' ? 'short rate' : '–' }),
-      el('td', {}, el('button', { type: 'button', class: 'ghost', text: '✕', title: 'Remove', onclick: () => { o.rows.splice(i, 1); mpSave(o); c.render(); } }))));
-  });
-  const add = el('select', { class: 'mini-select' }, el('option', { value: '', text: '＋ Add asset…' }), ...MP_ASSETS.filter(([id]) => !used.has(id)).map(([id, l]) => el('option', { value: id, text: l })));
-  add.addEventListener('change', () => { if (add.value) { o.rows.push([add.value, 0]); mpSave(o); c.render(); } });
-  const tot = o.rows.reduce((a, r) => a + r[1], 0);
-  tb.append(el('tr', { class: 'row' }, el('td', {}, add), el('td', { class: 'num ' + (Math.abs(tot - 100) > 0.5 ? 'dn' : ''), text: `${fmtNum(tot, 0)}%` }), el('td', { class: 'muted small', text: Math.abs(tot - 100) > 0.5 ? 'weights are scaled to 100%' : '' }), el('td', {})));
-  tbl.append(tb); b.append(el('div', { class: 'table-wrap' }, tbl));
-  const p = mpSeries(o, state.from, state.to), st = mpStats(p);
-  if (st) b.append(el('div', { class: 'mp-stats' }, ...[['Return', pctF1(st.tot)], ['A year', st.ann == null ? '–' : pctF1(st.ann)], ['Volatility', fmtNum(st.vol, 1) + '%'], ['Worst fall', pctF1(st.dd)], ['Return ÷ vol', st.ratio == null ? '–' : fmtNum(st.ratio, 2)]]
-    .map(([k, v]) => el('div', { class: 'mp-stat' }, el('span', { class: 'muted small', text: k }), el('b', { text: v })))));
-  c.csv = [['Asset', 'Weight %'], ...o.rows];
-  setNote(c, `Weights rebalanced weekly, everything converted to ${o.ccy} at daily FX; cash earns the ${o.ccy} short rate (${CASH_RATE[o.ccy]}). Over the page’s date range, set at the top of the page (${nice(state.from)} to ${nice(state.to)}). Prices only for equity indices (no dividends); ETFs include their payouts only through price. Stored only in this browser.`);
-  setSource(c, 'Your weights; Yahoo Finance, FRED, Bank Negara, MAS; calculated');
-}
-function renderModelChart(c) {
-  if (mpLocked()) return setEmpty(c, 'Locked: unlock the vault (foot of the menu) to see your model portfolio.');
-  const o = mpLoad(), p = mpSeries(o, state.from, state.to); if (!p) return setEmpty(c, 'Add weights to see the portfolio.');
-  const L = [{ name: `Model portfolio (${o.ccy})`, data: p }];
-  if (has('ACWI')) { const w = rebase(inCcy('ACWI', o.ccy), state.from, state.to); if (w.length) L.push({ name: `World equities (ACWI, ${o.ccy})`, data: w, extra: { lineStyle: { type: 'dashed', width: 1.5 } } }); }
-  drawLines(c, L, { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
-  setNote(c, '= 100 at the start of the range; weekly.');
-}
-
-function buildAlloc() {   // Allocation: the Evidence board (alloc.js), then In ringgit and Drawdowns (Steps 4, 5), then the Model portfolio
+function buildAlloc() {   // Allocation: the Evidence board, In ringgit and Drawdowns (alloc.js), then Portfolio (port.js, Design plan 4)
   const g = $('#allocGrid');
   if (typeof buildEvidence === 'function') { buildEvidence(g); buildRinggit(g); buildDrawdowns(g); }   // alloc.js
-  makeCard(g, { key: 'idea_model', range: false, title: 'Model portfolio', render: renderModel });
-  makeCard(g, { key: 'idea_modelchart', range: false, title: 'Model portfolio vs world equities', render: renderModelChart });
-  if (typeof buildModelStress === 'function') buildModelStress(g);   // WP47 (more.js)
-  const r = cards.idea_model.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+  if (typeof buildPortfolio === 'function') buildPortfolio(g);   // port.js: saved portfolios, benchmark, tracking error (replaces the Model portfolio)
 }
 
 // ------------------------------------------------------------------ WEEKLY ONE-PAGE BRIEF
@@ -6547,7 +6473,7 @@ function renderCalNext(c) {   // Design plan 2: at most six key events in the ne
 const SUBTABS = {
   overview: [['Today', ['#ovLead', 'moved', 'changes', 'ov_signals', 'fragile', 'cal_next', 'headlines', 'points']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  alloc: [['Model portfolio', ['idea_model', 'idea_modelchart', 'idea_stress']]],
+  alloc: [['Portfolio', ['#poBar', '#poKpis', 'idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress']]],   // Design plan 4 (was "Model portfolio")
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],

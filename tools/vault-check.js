@@ -51,6 +51,14 @@ const PASS = 'correct horse battery staple 42', NEWPASS = 'another long passphra
   ok(!r3.write, 'locked: writes are refused (nothing is overwritten)');
   ok(r3.wrong, 'a wrong passphrase is refused');
   ok(r3.after === 2 && r3.old === 1 && !r3.gate, 'the right passphrase opens everything, including changes saved earlier');
+  const r3b = await p.evaluate(async () => {   // Design plan 4: saved portfolios (sd-ports-v1) start from the old model portfolio, inside the vault
+    await new Promise(r => setTimeout(r, 3000)); await vaultSave();
+    const P = JSON.parse(pstore().getItem('sd-ports-v1') || 'null'), lockedBar = (vaultLock(), document.querySelector('#poBar').textContent);
+    return { rows: P && JSON.stringify(P.ports[0].rows), plain: localStorage.getItem('sd-ports-v1'), leak: /IX:KLCI|My model portfolio/.test(localStorage.getItem(VAULT_KEY)), lockedBar }; });
+  await p.evaluate(P => vaultUnlock(P), PASS);
+  ok(r3b.rows === '[["IX:KLCI",40]]', 'saved portfolios start from the old model portfolio (same weights), inside the vault');
+  ok(r3b.plain === null && !r3b.leak, 'saved portfolios are stored encrypted only');
+  ok(/locked vault/.test(r3b.lockedBar), 'locked: the portfolio bar shows the lock, not a portfolio');
   const r4 = await p.evaluate(async P => {
     const good = localStorage.getItem(VAULT_KEY), rec = JSON.parse(good); vaultLock();
     const ct = atob(rec.ct).split(''); ct[5] = String.fromCharCode(ct[5].charCodeAt(0) ^ 1); rec.ct = btoa(ct.join(''));
