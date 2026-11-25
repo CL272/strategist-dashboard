@@ -2933,7 +2933,7 @@ function cnjpKpis(box) {
   const lv = (id, label, fmt, dl) => { if (!has(id)) return; const s = S[id], a = asOf(s, state.to); if (!a) return; const b = asOf(s, addMonths(a.t, -3));
     tile(label, fmt(a.v), b ? `3M ${dl(a.v - b.v)}` : '', (s.source || '').split(' (')[0] + ' · ' + monthLab(a.t)); };
   const pp = d => sign(d) + fmtNum(Math.abs(d), 1) + 'pp', bp = d => sign(d) + fmtNum(Math.abs(d) * 100, 0) + 'bp', pt = d => sign(d) + fmtNum(Math.abs(d), 0) + 'pts';
-  for (const [id, l, d] of [['CSI300', 'CSI 300', 0], ['USDCNY', 'USD/CNY', 4]]) if (has(id)) { const s2 = S[id], a = asOf(s2, state.to), b = asOf(s2, addMonths(a.t, -1));
+  for (const [id, l, d] of [['CSI300', 'CSI 300 (ETF)', 3], ['USDCNY', 'USD/CNY', 4]]) if (has(id)) { const s2 = S[id], a = asOf(s2, state.to), b = asOf(s2, addMonths(a.t, -1));
     tile(l, fmtNum(a.v, d), b ? `1M ${fmtChg(s2, chg(s2, b.v, a.v))}` : '', 'Yahoo Finance · ' + nice(a.t)); }
   lv('CN_CPI_YOY', 'China CPI YoY', v => fmtNum(v, 1) + '%', pp);
   lv('CN_10Y', 'China 10Y yield', v => fmtNum(v, 2) + '%', bp);
@@ -6966,6 +6966,39 @@ function syncSub(tab) {
   panel.querySelectorAll('.subtabs button').forEach(b => { const on = +b.dataset.i === cur; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1;
     if (on && !panel.hidden) { const nav = b.parentElement, l = b.offsetLeft - nav.offsetLeft; if (l < nav.scrollLeft || l + b.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = l - (nav.clientWidth - b.offsetWidth) / 2; } });
   panel.querySelectorAll('[data-sub]').forEach(n => { if (n.dataset.subtab === tab) n.hidden = +n.dataset.sub !== cur; });
+  layoutLone(panel); updatePager(tab);
+}
+// Design plan 2, Step 3: a half-width card alone on its row takes the whole row (for that view only), so no screen ends
+// with a blank half. Worked out from the order of the visible cards; charts that change width are resized.
+function layoutLone(panel) {
+  if (!panel) return;
+  const shown = x => !x.hidden && getComputedStyle(x).display !== 'none';
+  for (const g of panel.querySelectorAll('.grid:not(.g3)')) {
+    const lone = new Set(); let open = null;
+    for (const x of g.children) {
+      if (!shown(x)) continue;
+      const half = x.classList.contains('card') && !x.classList.contains('wide') && !x.classList.contains('focus');
+      if (half) { if (open) open = null; else open = x; }
+      else { if (open) lone.add(open); open = null; }
+    }
+    if (open) lone.add(open);
+    for (const x of g.querySelectorAll(':scope > .card')) {
+      const want = lone.has(x); if (x.classList.contains('span2') === want) continue;
+      x.classList.toggle('span2', want);
+      const c = Object.values(cards).find(k => k.root === x);
+      if (c && c.inst && !c.chartEl.hidden) requestAnimationFrame(() => c.inst.resize());
+    }
+  }
+}
+// "← previous · next →" at the foot of every sub-tab, so a page reads through without going back up to the bar
+function updatePager(tab) {
+  const panel = $('#tab-' + tab), groups = SUBTABS[tab]; if (!panel || !groups || groups.length < 2) return;
+  let pg = panel.querySelector(':scope > .pager');
+  if (!pg) { pg = el('nav', { class: 'pager', 'aria-label': 'Previous and next section' }); panel.append(pg); }
+  const i = state.sub[tab] || 0;
+  const mk = (j, cls) => el('button', { type: 'button', class: cls, title: cls === 'prev' ? 'Previous section ( [ )' : 'Next section ( ] )', onclick: () => setSub(tab, j) },
+    el('small', { text: cls === 'prev' ? 'Previous' : 'Next' }), el('b', { text: cls === 'prev' ? '← ' + groups[j][0] : groups[j][0] + ' →' }));
+  pg.replaceChildren(...(i > 0 ? [mk(i - 1, 'prev')] : []), ...(i < groups.length - 1 ? [mk(i + 1, 'next')] : []));
 }
 function setSub(tab, i) {
   state.sub[tab] = i; syncSub(tab);
@@ -7498,7 +7531,7 @@ function buildSearch() {
   const list = el('ul', { id: 'searchList', role: 'listbox' });
   const dlg = el('div', { id: 'searchDlg', class: 'search-dlg', hidden: true, role: 'dialog', 'aria-label': 'Search' },
     el('div', { class: 'search-box' }, input, list, el('div', { id: 'searchEmpty', class: 'muted small search-empty', text: 'Nothing found. Try a market, a country, a data source or a chart name.', hidden: true }),
-      el('div', { class: 'search-foot' }, '↑↓ to move · Enter to open · Esc to close')));
+      el('div', { class: 'search-foot' }, '↑↓ to move · Enter to open · Esc to close · on a page, [ and ] go to the previous and next section')));
   dlg.addEventListener('click', e => { if (e.target === dlg) closeSearch(); });
   input.addEventListener('input', () => renderSearch(input.value));
   input.addEventListener('keydown', e => {
@@ -7515,6 +7548,10 @@ function buildSearch() {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable);
     if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openSearch(); }
     else if (e.key === '/' && !typing) { e.preventDefault(); openSearch(); }
+    else if ((e.key === '[' || e.key === ']') && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && $('#searchDlg').hidden) {   // previous / next sub-tab
+      const g = SUBTABS[state.tab], i = state.sub[state.tab] || 0, j = i + (e.key === ']' ? 1 : -1);
+      if (g && g.length > 1 && j >= 0 && j < g.length) { e.preventDefault(); setSub(state.tab, j); }
+    }
   });
 }
 // ------------------------------------------------------------------ range, tabs, theme
@@ -7628,6 +7665,7 @@ function renderTab() {
   if (typeof EXTRA_RENDER !== 'undefined') (EXTRA_RENDER[state.tab] || []).forEach(k => cards[k] && cards[k].render());   // cards added by more.js
   if (typeof EXTRA_HOOKS !== 'undefined') (EXTRA_HOOKS[state.tab] || []).forEach(f => f());   // tiles added by leads.js
   fitTiles(state.tab);
+  layoutLone($('#tab-' + state.tab));   // cards a render hid or showed change the rows
   if (typeof afterRenderNotes === 'function') afterRenderNotes();   // "+ Note" count and dots on cards with notes (vault.js)
 }
 const TAB_TITLES = { scorecard: 'Country scorecard', signals: 'Signals: ideas to investigate', overview: 'Strategist View', news: 'News', calendar: 'Economic calendar', ideas: 'Idea log', weekly: 'Weekly one-page brief', cbwatch: 'Central banks', regime: 'Regime & Leading Indicators', liquidity: 'Liquidity', asia: 'Asia ex-Japan', my: 'Malaysia', sg: 'Singapore', cn: 'China', kr: 'Korea', tw: 'Taiwan', in: 'India', de: 'Germany', fr: 'France', it: 'Italy', es: 'Spain', uk: 'United Kingdom', us: 'United States', europe: 'Europe', japan: 'Japan', australia: 'Australia',

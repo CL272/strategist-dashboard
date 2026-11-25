@@ -49,6 +49,10 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
           tiles: [...P.querySelectorAll('.kpi')].filter(vis).length,
           tables: [...P.querySelectorAll('table')].filter(vis).map(tb => [...tb.querySelectorAll('tbody tr.row')].filter(vis).length),
           titles: cards.map(c => { const h = c.querySelector('.card-head h2'); return h ? [h.textContent, lines(h)] : null; }).filter(Boolean),
+          // a half-width card alone on its row (Design plan 2, Step 3: layoutLone should have widened it)
+          lone: [...P.querySelectorAll('.grid:not(.g3)')].filter(vis).flatMap(g => { const W = g.clientWidth, rows = {};
+            [...g.children].filter(x => x.classList.contains('card') && vis(x)).forEach(x => { const r = x.getBoundingClientRect(); (rows[Math.round(r.top)] = rows[Math.round(r.top)] || []).push([r.width, (x.querySelector('h2') || {}).textContent]); });
+            return Object.values(rows).filter(a => a.length === 1 && a[0][0] < W * 0.7).map(a => a[0][1]); }),
           controls: cards.map(c => { const head = c.querySelector('.card-head'); if (!head) return null;
             const n = [...head.querySelectorAll('.card-tools > *, .card-actions > *')].filter(vis).length; return [(c.querySelector('h2') || {}).textContent, n]; }).filter(Boolean),
         };
@@ -60,6 +64,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       if (m.firstCard > LIMITS.firstCard && !allowed(t, subs[i], 'first')) problems.push(`${where}: the first card starts ${m.firstCard}px down (limit ${LIMITS.firstCard})`);
       const maxRows = Math.max(0, ...m.tables);
       if (maxRows > LIMITS.rows && !allowed(t, subs[i], 'rows')) problems.push(`${where}: a table shows ${maxRows} rows at rest (limit ${LIMITS.rows}; add "Show all")`);
+      if (m.lone.length && !allowed(t, subs[i], 'lone')) problems.push(`${where}: a half-width card sits alone on its row (${m.lone.join(', ')})`);
       for (const [title, n] of m.titles) if (n > LIMITS.titleLines) problems.push(`${where}: card title "${title}" wraps to ${n} lines`);
       for (const [title, n] of m.controls) if (n > LIMITS.controls) problems.push(`${where}: card "${title}" shows ${n} controls in its header (limit ${LIMITS.controls})`);
     }

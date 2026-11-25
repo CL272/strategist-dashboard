@@ -1023,3 +1023,14 @@ table.cal a.cal-link::after { content: ' ↗'; font-size: 0.8em; color: var(--mu
   .wb-foot { margin-top: 7px; padding-top: 4px; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ===== Design plan 2, Step 3: no lone half-width cards; a pager at the foot of every sub-tab ===== */
+.grid > .card.span2 { grid-column: 1 / -1; }
+.pager { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 16px; }
+.pager button { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 6px 14px; font-size: 13px; color: var(--ink-2);
+  display: flex; align-items: baseline; gap: 8px; max-width: 48%; min-width: 0; text-align: left; }
+.pager button:hover { border-color: var(--accent); color: var(--ink); }
+.pager button.next { margin-left: auto; }
+.pager small { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); flex: 0 0 auto; }
+.pager b { font-weight: 600; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print { .pager { display: none; } }
