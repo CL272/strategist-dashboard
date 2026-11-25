@@ -222,12 +222,14 @@ async function vaultSync(askPass = true) {
       const m = vMerge(V.items, V.mtime, p.items || {}, p.mtime || {}, cfg.last || 0);
       V.items = { ...m.items, ...keepLocal }; V.mtime = m.mtime;
     } else if (r.status !== 404) throw new Error(`reading the synced copy failed (${r.status})`);
-    const out = await vEncrypt(V.key, V.salt, vPayload(true));
+    // "last synced" = the moment this upload's contents are read, not when the upload ends: an edit made while the upload is in
+    // flight is not in it and must still count as changed (it was being lost when the other device had changed the same item)
+    const snap = Date.now() - 1, out = await vEncrypt(V.key, V.salt, vPayload(true));
     const put = await fetch(url, { method: 'PUT', headers: { ...vGh(cfg), 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: 'vault update', content: btoa(JSON.stringify(out)), ...(sha ? { sha } : {}) }) });
     if (put.status === 409 || put.status === 422) continue;   // someone else wrote first: read again and merge
     if (!put.ok) throw new Error(`saving the synced copy failed (${put.status})`);
-    vSyncSet({ ...vSyncCfg(), last: Date.now() });
+    vSyncSet({ ...vSyncCfg(), last: snap });
     const rec = await vEncrypt(V.key, V.salt, vPayload()); localStorage.setItem(VAULT_KEY, JSON.stringify(rec));
     vSyncStatus('ok'); if (['sp', 'markets', 'alloc', 'signals'].includes(state.tab)) renderTab();
     return;

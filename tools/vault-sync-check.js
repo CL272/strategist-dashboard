@@ -17,7 +17,8 @@ const PASS = 'correct horse battery staple 42';
       if (u.pathname === '/repos/me/public-repo') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ private: false }) });
       if (u.pathname === '/repos/me/strategist-private/contents/vault.json') {
         if (req.method() === 'GET') return repo.file ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sha: repo.sha, content: repo.file }) }) : route.fulfill({ status: 404, body: '{}' });
-        if (req.method() === 'PUT') { const j = JSON.parse(req.postData()); if ((repo.sha || null) !== (j.sha || null)) return route.fulfill({ status: 409, body: '{}' });
+        if (req.method() === 'PUT') { if (repo.delay) await new Promise(r => setTimeout(r, repo.delay));   // a slow upload, for the in-flight test
+          const j = JSON.parse(req.postData()); if ((repo.sha || null) !== (j.sha || null)) return route.fulfill({ status: 409, body: '{}' });
           repo.file = j.content; repo.sha = 's' + (++repo.writes); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: repo.sha } }) }); }
       }
       return route.fulfill({ status: 404, body: '{}' });
@@ -52,6 +53,13 @@ const PASS = 'correct horse battery staple 42';
   await phone.evaluate(async () => { nsave([...nload(), { id: 'p3', title: 'Second phone note', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); });
   const both = await laptop.evaluate(async () => { await vaultSync(); return nload().map(n => n.id).sort().join(','); });
   ok(both === 'l2,p1,p3', 'edits made on both devices between syncs are joined (' + both + ')');
+  // an edit made while an upload is in flight is kept (it used to be marked as synced, then lost when the other device changed the same item)
+  repo.delay = 400;
+  await laptop.evaluate(async () => { const s = vaultSync(); await new Promise(r => setTimeout(r, 150)); nsave([...nload(), { id: 'l9', title: 'Written during an upload', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await s; });
+  repo.delay = 0;
+  await phone.evaluate(async () => { await vaultSync(); nsave([...nload(), { id: 'p9', title: 'Phone, meanwhile', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); });
+  const inflight = await laptop.evaluate(async () => { await vaultSync(); return nload().map(n => n.id).sort().join(','); });
+  ok(/l9/.test(inflight) && /p9/.test(inflight), 'an edit made while an upload is in flight survives the other device changing the same item (' + inflight + ')');
   const tokLocal = await phone.evaluate(() => !!vSyncCfg() && vSyncCfg().repo === 'me/strategist-private');
   ok(tokLocal, 'each device keeps its own sync settings');
   const badTok = await laptop.evaluate(async () => { vSyncSet({ ...vSyncCfg(), token: 'expired' }); try { await vaultSync(); return false; } catch (e) { return /refused/.test(e.message); } });
