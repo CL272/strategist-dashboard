@@ -279,3 +279,65 @@ function buildEvidence(g) {
 SUBTABS.alloc.unshift(['Evidence board', ['#alLead', '#alKpis', 'al_board', 'al_detail', 'al_pillars']]);
 TILE_SETS.alloc = { 'Evidence board': ['Equity markets leaning for', 'Equity markets leaning against', 'Most supportive pillar', 'Most adverse pillar', 'Regime'] };
 EXTRA_HOOKS.alloc = [alLeadTiles];
+
+// ------------------------------------------------------------------ ALLOCATION → IN RINGGIT (Design plan 3, Step 4)
+// For Malaysian clients the return that matters is in ringgit, and the question after that is whether to hedge the dollar.
+const RG_ROWS = ['SPX', 'NDX', 'ACWI', 'SX5E', 'NKY', 'CSI300', 'HSI', 'AAXJ', 'STI', 'KLCI', 'IEF', 'HYG', 'GOLD', 'BTC'];
+const RG_PER = [['1M', '1 month'], ['3M', '3 months'], ['YTD', 'year to date'], ['1Y', '1 year']];
+state.rgPer = '1M';
+function rgStart(t1, per) { const y = new Date(t1).getUTCFullYear(); return per === 'YTD' ? Date.UTC(y - 1, 11, 31) : addMonths(t1, -{ '1M': 1, '3M': 3, '1Y': 12 }[per]); }
+function rgSplit(id, per) {   // own-currency return, currency effect against the ringgit, return in ringgit (all %)
+  if (!has(id)) return null;
+  const s = S[id], a1 = asOf(s, state.latest), a0 = a1 && asOf(s, rgStart(a1.t, per)); if (!a0 || a0.t >= a1.t) return null;
+  const ccy = LOCAL_CCY[id] || 'USD', m = inCcy(id, 'MYR'), m1 = asOf(m, a1.t), m0 = asOf(m, a0.t);
+  if (!m1 || !m0 || m1.t !== a1.t || m0.t !== a0.t) return null;
+  const own = (a1.v / a0.v - 1) * 100, myr = (m1.v / m0.v - 1) * 100;
+  const fx = ccy === 'MYR' ? null : ((1 + myr / 100) / (1 + own / 100) - 1) * 100;   // the currency's move against the ringgit
+  return { id, ccy, own, fx, myr, t0: a0.t, t1: a1.t };
+}
+function renderRgTable(c) {
+  const per = state.rgPer, rows = RG_ROWS.map(id => rgSplit(id, per)).filter(Boolean).sort((a, b) => b.myr - a.myr);
+  if (!rows.length) return setEmpty(c, 'Waiting for prices.');
+  const b = htmlBody(c), pc = v => v == null ? '–' : pctF1(v), cls = v => v == null ? 'muted' : v > 0 ? 'up' : v < 0 ? 'dn' : '';
+  const lab = RG_PER.find(x => x[0] === per)[1];
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' },
+    el('thead', {}, el('tr', {}, ...[`Over ${lab}`, 'Currency', 'In its own currency', 'Currency effect', 'In ringgit'].map((h, i) => el('th', { class: i < 2 ? 'l' : '', text: h })))),
+    el('tbody', {}, ...rows.map(r => el('tr', { class: 'row', title: `${dShort(r.t0)} ${new Date(r.t0).getUTCFullYear()} to ${dShort(r.t1)}` },
+      el('td', { class: 'l', text: S[r.id].label }), el('td', { class: 'l muted', text: r.ccy }),
+      el('td', { class: 'num ' + cls(r.own), text: pc(r.own) }), el('td', { class: 'num ' + cls(r.fx), text: pc(r.fx) }), el('td', { class: 'num strong ' + cls(r.myr), text: pc(r.myr) })))))));
+  c.csv = [['Asset', 'Currency', 'From', 'To', 'Own currency %', 'Currency effect %', 'In ringgit %'], ...rows.map(r => [S[r.id].label, r.ccy, iso(r.t0), iso(r.t1), r.own.toFixed(2), r.fx == null ? '' : r.fx.toFixed(2), r.myr.toFixed(2)])];
+  const u = rows.find(r => r.ccy === 'USD'), fxd = u && u.fx;
+  setNote(c, (fxd == null ? '' : `Over ${lab} the dollar ${fxd >= 0 ? 'rose' : 'fell'} ${fmtNum(Math.abs(fxd), 1)}% against the ringgit, ${fxd >= 0 ? 'adding' : 'taking'} about ${fmtNum(Math.abs(fxd), 1)} points ${fxd >= 0 ? 'to' : 'from'} every dollar asset’s return in ringgit. `)
+    + 'Currency effect = the move of the asset’s own currency against the ringgit over the same days, so (1 + own return) × (1 + currency effect) = 1 + the ringgit return. Price indices leave out dividends; the funds (URTH, AAXJ, IEF, HYG and the CSI 300 fund) include them. Ringgit assets have no currency effect.');
+  setSource(c, srcOf([...RG_ROWS.filter(id => has(id)), 'USDMYR']) + '; calculated');
+}
+function rgHedgeSeries() {   // ringgit 3M interbank − US 3M bill, % a year: what hedging dollars back into ringgit earns (+) or costs (−)
+  if (!has('MY_IB_3M', 'UST3M')) return null;
+  return combine(S.MY_IB_3M, S.UST3M, (a, b) => a - b, { label: 'Hedging USD into MYR, 3M (% a year)', unit: '%' }, 7 * DAY);
+}
+function renderRgHedge(c) {
+  const h = rgHedgeSeries(); if (!h || !h.t.length) return setEmpty(c, 'Waiting for the ringgit interbank rate.');
+  drawLines(c, [{ name: 'Ringgit 3M interbank − US 3M bill', data: pts(h, state.from, state.to) }], { fmt: v => sign(v) + fmtNum(Math.abs(v), 2) + '% a year', axisFmt: v => fmtNum(v, 1) + '%', zero: true, endLabels: false });
+  const a = asOf(h, state.latest), my = asOf(S.MY_IB_3M, a.t), us = asOf(S.UST3M, a.t);
+  setNote(c, `Hedging dollars back into ringgit for 3 months ${a.v < 0 ? 'costs' : 'earns'} about ${fmtNum(Math.abs(a.v), 2)}% a year today (${dShort(a.t)}): the ringgit 3M interbank rate ${fmtNum(my.v, 2)}% against the US 3M bill ${fmtNum(us.v, 2)}%. `
+    + 'This is the interest-rate gap that sets forward points (covered interest parity): an estimate, not a dealer’s forward quote, which also carries a basis and a spread. The ringgit interbank series on file starts in December 2023.');
+  setSource(c, 'Bank Negara Malaysia API (3-month interbank rate); US Treasury via FRED (DGS3MO); calculated');
+}
+function renderRgUst(c) {
+  const h = rgHedgeSeries(); if (!h || !has('UST10Y', 'MY_MGS_10Y')) return setEmpty(c, 'Waiting for data.');
+  const hedged = combine(h, S.UST10Y, (x, u) => u + x, { label: 'UST 10Y hedged to ringgit', unit: '%' }, 7 * DAY);   // on the hedge line's dates: UST 10Y + the line beside
+  drawLines(c, [{ name: 'UST 10Y (unhedged)', data: pts(S.UST10Y, state.from, state.to) }, { name: 'UST 10Y hedged to ringgit', data: pts(hedged, state.from, state.to) },
+    { name: 'MGS 10Y', data: pts(S.MY_MGS_10Y, state.from, state.to) }], { fmt: v => fmtNum(v, 2) + '%', axisFmt: v => fmtNum(v, 1) + '%', endLabels: false });
+  const u = asOf(S.UST10Y, state.latest), hh = asOf(hedged, state.latest), g = asOf(S.MY_MGS_10Y, state.latest);
+  if (hh && g) { const d = hh.v - g.v;
+    setNote(c, `Hedged to ringgit, the 10-year Treasury yields ${fmtNum(hh.v, 2)}%, ${fmtNum(Math.abs(d), 2)} points ${d >= 0 ? 'more' : 'less'} than MGS 10Y at ${fmtNum(g.v, 2)}% (${dShort(Math.min(hh.t, g.t))}). Unhedged it yields ${fmtNum(u.v, 2)}% but carries the dollar’s swings against the ringgit. `
+      + 'Hedged yield = UST 10Y plus the hedging line on the card beside (rolling 3-month hedges; an interest-parity estimate, not a quote).'); }
+  setSource(c, 'US Treasury via FRED (DGS10, DGS3MO); Bank Negara Malaysia API (3-month interbank rate, MGS 10Y benchmark close); calculated');
+}
+function buildRinggit(g) {
+  makeCard(g, { key: 'rg_table', title: 'Returns in ringgit', wide: true, range: false, seg: { key: 'rgPer', options: RG_PER.map(([k]) => [k, k]) }, render: renderRgTable });
+  makeCard(g, { key: 'rg_hedge', title: 'Cost of hedging USD to MYR', defaultRange: 'MAX', earliest: Date.UTC(2023, 11, 1), render: renderRgHedge });
+  makeCard(g, { key: 'rg_ust', title: 'US 10Y for a ringgit investor', defaultRange: '3Y', render: renderRgUst });
+  const r = cards.rg_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
+}
+SUBTABS.alloc.splice(1, 0, ['In ringgit', ['rg_table', 'rg_hedge', 'rg_ust']]);
