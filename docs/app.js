@@ -6938,27 +6938,38 @@ function buildSeeAlso() {
 // there carries its asset class above its title. Old labels stay valid through SUB_ALIAS (links, "See also", bookmarks).
 const MARKETS_MERGE = { de: 'Markets', fr: 'Markets', it: 'Markets', es: 'Markets', uk: 'Markets', cn: 'Markets', kr: 'Markets', tw: 'Markets', in: 'Markets',
   japan: 'Markets', europe: 'Markets', australia: 'Markets', sg: 'Rates & currency' };
-const SUB_ALIAS = {}, SUB_V3 = {}, CARD_CLASS = {};
+// Design plan 2, Step 5: thin US sub-tabs join a neighbour (12 → 9). [new name, [labels merged, in order]]
+const SUB_MERGES = { us: [['Rates & dollar', ['Rates & bonds', 'Currency']], ['Growth & recession', ['Growth & jobs', 'Recession watch']], ['Inflation', ['Inflation', 'Inflation pipeline']]] };
+const SUB_ALIAS = {}, SUB_V3 = {}, CARD_CLASS = {}, MERGED = {};
+function mergeSubs(tab, name, labels, eyebrows) {   // one merged sub-tab at the place of the first part; strips, then "See also", then cards
+  const G = SUBTABS[tab]; if (!G) return;
+  if (!SUB_V3[tab]) SUB_V3[tab] = G.map(x => x[0]);   // the order old (v=3) bookmarks were made with
+  const parts = labels.map(l => G.find(x => x[0] === l)).filter(Boolean); if (parts.length < 2) return;
+  const head = [], sees = [], body = [];
+  for (const [lab, keys] of parts) for (const k of keys) {
+    if (k.startsWith('#sig_')) head.push(k); else if (k.startsWith('#sa_')) sees.push(k); else { body.push(k); if (eyebrows && k[0] !== '#') CARD_CLASS[k] = lab; } }
+  const at = G.indexOf(parts[0]), entry = [name, [...head, ...sees, ...body], parts[0][2]];
+  if (!entry[2]) entry.length = 2;
+  SUBTABS[tab] = [...G.slice(0, at), entry, ...G.slice(at).filter(x => !parts.includes(x))];
+  SUB_ALIAS[tab] = { ...(SUB_ALIAS[tab] || {}), ...Object.fromEntries(parts.filter(x => x[0] !== name).map(x => [x[0], name])) };
+  (MERGED[tab] = MERGED[tab] || []).push(name);
+  const ts = TILE_SETS[tab]; if (ts && !ts[name]) { const src = parts.map(x => ts[x[0]]).find(Boolean); if (src) ts[name] = src; }
+}
 function mergeMarkets() {   // runs once in init, after every script has added its sub-tabs and before the URL is read
+  for (const [tab, list] of Object.entries(SUB_MERGES)) for (const [name, labels] of list) mergeSubs(tab, name, labels, false);
+  for (const x of SUBTABS.us) if (!x[2]) x[2] = 'Markets';   // two-level bars (Step 5): every sub-tab belongs to a group
+  for (const x of SUBTABS.regime) if (['Household saving', 'PMIs & surveys'].includes(x[0])) x[2] = 'Surveys';
+  if (TILE_SETS.us) TILE_SETS.us['Inflation'] = ['CPI', 'Core PCE', '10Y breakeven', 'Prices paid', 'Asking rents'];
   for (const [tab, name] of Object.entries(MARKETS_MERGE)) {
-    const G = SUBTABS[tab]; if (!G || G.some(x => x[0] === name)) continue;
-    SUB_V3[tab] = G.map(x => x[0]);   // the order old (v=3) bookmarks were made with
-    const which = name === 'Markets' ? ['Equities', 'Rates & bonds', 'Currency'] : ['Rates & bonds', 'Currency'];
-    const parts = G.filter(x => which.includes(x[0])); if (parts.length < 2) continue;
-    const head = [], sees = [], body = [];
-    for (const [lab, keys] of parts) for (const k of keys) {
-      if (k.startsWith('#sig_')) head.push(k); else if (k.startsWith('#sa_')) sees.push(k); else { body.push(k); if (k[0] !== '#') CARD_CLASS[k] = lab; } }
-    const at = G.indexOf(parts[0]);
-    SUBTABS[tab] = [...G.slice(0, at), [name, [...head, ...sees, ...body]], ...G.slice(at).filter(x => !parts.includes(x))];
-    SUB_ALIAS[tab] = Object.fromEntries(parts.map(x => [x[0], name]));
-    const ts = TILE_SETS[tab]; if (ts && !ts[name]) { const src = parts.map(x => ts[x[0]]).find(Boolean); if (src) ts[name] = src; }
+    if (!SUBTABS[tab] || SUBTABS[tab].some(x => x[0] === name)) continue;
+    mergeSubs(tab, name, name === 'Markets' ? ['Equities', 'Rates & bonds', 'Currency'] : ['Rates & bonds', 'Currency'], true);
   }
 }
 const subIndexOf = (tab, lab) => { const G = SUBTABS[tab] || []; let i = G.findIndex(x => x[0] === lab);
   if (i < 0 && SUB_ALIAS[tab] && SUB_ALIAS[tab][lab]) i = G.findIndex(x => x[0] === SUB_ALIAS[tab][lab]); return i; };
 function mergeSeeAlso() {   // a merged sub-tab shows one "See also" row: the links of the others join the first
-  for (const tab of Object.keys(SUB_ALIAS)) {
-    const G = SUBTABS[tab], m = G.find(x => x[0] === MARKETS_MERGE[tab]), ids = m[1].filter(k => k.startsWith('#sa_')); if (ids.length < 2) continue;
+  for (const [tab, names] of Object.entries(MERGED)) for (const nm of names) {
+    const G = SUBTABS[tab], m = G.find(x => x[0] === nm), ids = m ? m[1].filter(k => k.startsWith('#sa_')) : []; if (ids.length < 2) continue;
     const first = $(ids[0]); if (!first) continue;
     const have = new Set([...first.querySelectorAll('a')].map(a => a.textContent));
     for (const id of ids.slice(1)) { const x = $(id); if (!x) continue;
@@ -6980,6 +6991,12 @@ function buildSubtabs() {
     panel.querySelectorAll('.grid > h3.section').forEach(h => h.remove());
     const nav = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Sections' });
     panel.prepend(nav);   // sub-tabs first, then tiles, then cards (WP64): the bar never moves when tiles change
+    if (twoLevel(tab)) {   // Design plan 2, Step 5: a row of groups, then only the open group's sub-tabs
+      const names = [...new Set(groups.map(x => x[2]))];
+      panel.prepend(el('div', { class: 'subgroups', role: 'tablist', 'aria-label': 'Groups' }, ...names.map(g => el('button', { type: 'button', role: 'tab', 'data-g': g,
+        onclick: () => { const last = ((state.subLast || {})[tab] || {})[g]; setSub(tab, last != null ? last : groups.findIndex(x => x[2] === g)); } },
+        g, el('span', { class: 'cnt', text: String(groups.filter(x => x[2] === g).length) })))));
+    }
     const edge = () => nav.classList.toggle('at-end', nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 4);
     nav.addEventListener('scroll', edge, { passive: true }); addEventListener('resize', edge); setTimeout(edge, 0);
     nav.addEventListener('keydown', e => {   // left and right arrows move between sub-tabs
@@ -6987,8 +7004,10 @@ function buildSubtabs() {
       const n = groups.length, i = ((state.sub[tab] || 0) + (e.key === 'ArrowRight' ? 1 : n - 1)) % n;
       e.preventDefault(); setSub(tab, i); const b = nav.querySelector(`button[data-i="${i}"]`); if (b) b.focus();
     });
+    const two = twoLevel(tab);
     groups.forEach(([label, , grp], i) => {
-      if (grp && grp !== (groups[i - 1] || [])[2]) nav.append(el('span', { class: 'subtab-group', text: grp }));
+      if (two) { /* the group row names the groups */ }
+      else if (grp && grp !== (groups[i - 1] || [])[2]) nav.append(el('span', { class: 'subtab-group', text: grp }));
       else if (!grp && i && groups[i - 1][2]) nav.append(el('span', { class: 'subtab-group', text: '' }));
       nav.append(el('button', { type: 'button', role: 'tab', text: label, 'data-i': i, onclick: () => setSub(tab, i) }));
       for (const n of nodes[i]) {
@@ -6999,8 +7018,15 @@ function buildSubtabs() {
     syncSub(tab);
   }
 }
+const twoLevel = tab => (SUBTABS[tab] || []).length > 8 && SUBTABS[tab].every(x => x[2]);
 function syncSub(tab) {
   const panel = $('#tab-' + tab), cur = state.sub[tab] || 0;
+  if (twoLevel(tab)) {   // show the open group's sub-tabs only, and remember the last one opened in each group
+    const G = SUBTABS[tab], g = (G[cur] || G[0])[2];
+    state.subLast = state.subLast || {}; (state.subLast[tab] = state.subLast[tab] || {})[g] = cur;
+    panel.querySelectorAll('.subgroups button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.g === g)));
+    panel.querySelectorAll('.subtabs button').forEach(b => { b.hidden = G[+b.dataset.i][2] !== g; });
+  }
   panel.querySelectorAll('.subtabs button').forEach(b => { const on = +b.dataset.i === cur; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1;
     if (on && !panel.hidden) { const nav = b.parentElement, l = b.offsetLeft - nav.offsetLeft; if (l < nav.scrollLeft || l + b.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = l - (nav.clientWidth - b.offsetWidth) / 2; } });
   panel.querySelectorAll('[data-sub]').forEach(n => { if (n.dataset.subtab === tab) n.hidden = +n.dataset.sub !== cur; });

@@ -1041,3 +1041,11 @@ table.cal a.cal-link::after { content: ' ↗'; font-size: 0.8em; color: var(--mu
   .see-also { white-space: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
   .see-also::-webkit-scrollbar { display: none; }
 }
+
+/* ===== Design plan 2, Step 5: a group row above the sub-tab bar on pages with more than eight sub-tabs (US, Regime) ===== */
+.subgroups { display: flex; gap: 6px; padding: 8px 0 0; flex-wrap: wrap; }
+.subgroups button { border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; font-weight: 500; }
+.subgroups button:hover { color: var(--ink); border-color: var(--axis); }
+.subgroups button[aria-selected="true"] { background: var(--sel); border-color: var(--sel); color: #fff; font-weight: 600; }
+.subgroups .cnt { opacity: .7; font-weight: 400; margin-left: 5px; }
+@media print { .subgroups { display: none; } }

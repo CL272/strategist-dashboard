@@ -1,6 +1,6 @@
 # Design plan 2: a front page, a one-page brief, fewer clicks
 
-**Status (25 Nov 2026): approved by the owner; Steps 1–4 built.** Departures: Step 4 made Australia's "AUD/USD vs the Australia − US 2Y gap" half-width so it pairs with iron ore
+**Status (25 Nov 2026): approved by the owner; Steps 1–5 built.** Departures: Step 4 made Australia's "AUD/USD vs the Australia − US 2Y gap" half-width so it pairs with iron ore
 (Markets stayed under 2,300px), and on phones a merged "See also" row stays on one line. Step 2: "My open ideas" (the owner's
 own, shown only when the Idea log has open ideas) stays on the brief, at most three rows, under Week ahead. All five decisions at the end were answered "yes, as
 recommended", so every step, including Step 4, can be built. Written after the owner said the Strategist View and the Weekly brief

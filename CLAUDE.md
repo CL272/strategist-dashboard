@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–4 built): Strategist View, Weekly brief and
+**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–5 built): Strategist View, Weekly brief and
 click-through, in seven steps, with reference mockups in `design/`. Build it in order, one step per commit; when a step
 ships, note it in the plan's status line and update the rules below that it changes.
 
@@ -47,7 +47,11 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   greys only lines beyond ten (home markets first) and shortens legend names; give series full names and let it shorten them.
   Slots `--s1`…`--s10` in `style.css`. Asia-Pacific economies keep one colour on every chart (`COUNTRY_TOK`; `seriesCard`
   uses it when every id has a country prefix). The Playbook's faint past-episode fan is deliberate and stays grey.
-- **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`).
+- **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`). A page
+  with more than eight sub-tabs, all grouped, gets a row of group pills above the bar and shows only the open group's
+  sub-tabs (`twoLevel`; US: Markets · Economy, Regime: Regime · Leading · Surveys); no bar may hide tabs off-screen on a
+  desktop (design check `bar-hidden`). US merges (`SUB_MERGES`): Rates & dollar, Growth & recession, Inflation (with the
+  pipeline); old labels work through `SUB_ALIAS`.
 - **Region and country pages hold everything about one place, split by asset class.** Sub-tabs in this order, leaving
   out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one in two to stay within the
   height budget, e.g. Malaysia "Sectors", US "Sectors & styles", the US Economy group). On the smaller pages (owner's

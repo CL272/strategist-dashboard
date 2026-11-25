@@ -392,7 +392,7 @@ function infTiles(box, tile) {
 }
 function usLeadTiles() {   // appended to the US tiles; TILE_SETS picks five per sub-tab
   const box = $('#usKpis'); if (!box) return;
-  const sub = (SUBTABS.us[state.sub.us || 0] || [])[0]; if (!['Cycle sequence', 'Labour leads', 'Inflation pipeline'].includes(sub)) return;
+  const sub = (SUBTABS.us[state.sub.us || 0] || [])[0]; if (!['Cycle sequence', 'Labour leads', 'Inflation pipeline', 'Inflation'].includes(sub)) return;   // "Inflation" holds the pipeline since Design plan 2
   if (!LEADS) { loadLeads().then(() => state.tab === 'us' && renderTab()); if (sub !== 'Labour leads') return; }
   const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
   if (sub === 'Cycle sequence') csTiles(box, tile); else if (sub === 'Labour leads') labTiles(box, tile); else infTiles(box, tile);

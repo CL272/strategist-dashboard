@@ -16,6 +16,8 @@ const ALLOW = [
   ['health', '*', 'rows'],                       // a diagnostics page
   ['ideas', 'Watchlist', 'rows'],                // 20 rows: ten risers plus ten fallers
   ['fixed', 'Income menu', 'rows'],              // grouped by asset class (cash, government, credit, equity income, options)
+  ['us', '*', 'first300'],                       // Design plan 2, Step 5: a group row sits above the sub-tab bar (limit 300px)
+  ['regime', '*', 'first300'],
 ];
 const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*' || b === sub) && r === rule);
 
@@ -45,6 +47,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
         return {
           height: document.documentElement.scrollHeight,
           subtabBar: (P.querySelector('.subtabs') || { offsetHeight: 0 }).offsetHeight,
+          barHidden: (() => { const n = P.querySelector('.subtabs'); return !!n && n.scrollWidth > n.clientWidth + 2; })(),   // a sub-tab off-screen on a desktop
           firstCard: cards.length ? Math.round(cards[0].getBoundingClientRect().top + scrollY) : 0,
           tiles: [...P.querySelectorAll('.kpi')].filter(vis).length,
           tables: [...P.querySelectorAll('table')].filter(vis).map(tb => [...tb.querySelectorAll('tbody tr.row')].filter(vis).length),
@@ -61,7 +64,9 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       if (m.height > LIMITS.height) problems.push(`${where}: page is ${m.height}px tall (limit ${LIMITS.height})`);
       if (m.tiles > LIMITS.tiles) problems.push(`${where}: ${m.tiles} tiles (limit ${LIMITS.tiles})`);
       if (m.subtabBar > LIMITS.subtabBar) problems.push(`${where}: the sub-tab bar wraps (${m.subtabBar}px; it must stay on one line)`);
-      if (m.firstCard > LIMITS.firstCard && !allowed(t, subs[i], 'first')) problems.push(`${where}: the first card starts ${m.firstCard}px down (limit ${LIMITS.firstCard})`);
+      const firstLimit = allowed(t, subs[i], 'first300') ? 300 : LIMITS.firstCard;
+      if (m.firstCard > firstLimit && !allowed(t, subs[i], 'first')) problems.push(`${where}: the first card starts ${m.firstCard}px down (limit ${firstLimit})`);
+      if (m.barHidden) problems.push(`${where}: the sub-tab bar hides tabs off-screen (Design plan 2, Step 5: group them)`);
       const maxRows = Math.max(0, ...m.tables);
       if (maxRows > LIMITS.rows && !allowed(t, subs[i], 'rows')) problems.push(`${where}: a table shows ${maxRows} rows at rest (limit ${LIMITS.rows}; add "Show all")`);
       if (m.lone.length && !allowed(t, subs[i], 'lone')) problems.push(`${where}: a half-width card sits alone on its row (${m.lone.join(', ')})`);
