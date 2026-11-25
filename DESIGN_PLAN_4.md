@@ -1,6 +1,7 @@
 # Design plan 4: a portfolio allocator (tracking error against a benchmark you choose)
 
-**Status (25 Nov 2026): planned, waiting for the owner's answers to the decisions at the end. Nothing is built.**
+**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
+Nothing is built yet. Build Steps 1 to 5 in order, one step per commit.**
 Written after the owner asked for "a portfolio allocator": start a new portfolio or open an existing one, add an ETF,
 and see the tracking error against a benchmark that can be customised ("like 60/40"). `CLAUDE.md` rules still apply;
 where a step changes a standing rule it says so.
@@ -162,7 +163,7 @@ benchmark is built from funds that track them; live or intraday prices.
 
 One step per commit; run the design check before each push, `port-check.js` from Step 2 on, and the two vault checks in Step 3.
 
-| Step | What | Decision | Risk | Size |
+| Step | What | Decision (all approved) | Risk | Size |
 |---|---|---|---|---|
 | 1 | Fund data: weekly closes with dividends for about 52 funds | 2 | low: one new isolated module | small |
 | 2 | The maths and its check | none | low | small |
@@ -176,14 +177,19 @@ One step per commit; run the design check before each push, `port-check.js` from
 - The Watchlist and `tickers.json` (prices for browsing); the allocator reads `funds.json`.
 - The Evidence board, In ringgit and Drawdowns sub-tabs; signal and structured-products wording.
 
-## Decisions for the owner (defaults in brackets)
+## Decisions (answered by the owner, 25 Nov 2026: "go with the defaults")
+
+Every default in brackets below is approved. The alternatives were not chosen: do not build them.
 
 1. **Where it lives.** [Two sub-tabs on Allocation, "Portfolio" and "Add a fund", replacing "Model portfolio".]
    Alternative: its own page in the menu ("Portfolios"); the menu's scroll limit would rise from 200px to about 230px.
+   **Approved as the default: sub-tabs on Allocation; the menu does not change.**
 2. **The fund list.** [The 52 funds above, plus anything in `watchlist.txt`.] Tell me any fund you want in from day one.
+   **Approved as the default; the owner named no extra funds.**
 3. **The standard benchmark's bond half.** [Global aggregate bonds hedged to the dollar (AGGU), history from late 2017.]
    Alternative: US aggregate bonds (AGG), history from 2008. Either way every benchmark stays editable.
+   **Approved as the default: AGGU.L for the world mixes; AGG stays in the fund list for a custom benchmark.**
 4. **Saved portfolios.** [Several, each with a name and its own benchmark, kept in the private vault.]
-   Alternative: one portfolio only, as today.
+   Alternative: one portfolio only, as today. **Approved as the default: several saved portfolios.**
 5. **The ranked table** ("What 10% of each fund would do"). [Include it, worded as arithmetic, never a recommendation.]
-   Alternative: leave it out and keep only the one-fund what-if.
+   Alternative: leave it out and keep only the one-fund what-if. **Approved as the default: include the table.**

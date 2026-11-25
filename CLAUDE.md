@@ -7,9 +7,9 @@ the Idea log and Notebook removed, the Allocation page (Evidence board, In ringg
 Malaysia flows and finances, and the MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html` (not
 published). Its rules are folded into the list below.
 
-**Open design work:** `DESIGN_PLAN_4.md` (planned 25 Nov 2026, waiting for the owner's answers; nothing built): a portfolio
+**Open design work:** `DESIGN_PLAN_4.md` (approved by the owner 25 Nov 2026, all five decisions as recommended; not built yet): a portfolio
 allocator on Allocation (saved portfolios, a custom benchmark, tracking error, "Add a fund" what-if), with weekly fund data
-in a new `funds.json`. Mockup: `design/portfolio.html`. Build only what the owner approves, one step per commit.
+in a new `funds.json`. Mockup: `design/portfolio.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.
 
 **Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
 the reference mockups stay in `design/` (not published). Its rules are folded into the list below.
