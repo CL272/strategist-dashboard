@@ -5,6 +5,8 @@ const { chromium } = require('playwright');
 
 const URL = process.argv[2] || 'http://localhost:8765/';
 const LIMITS = { height: 2300, tiles: 5, rows: 16, titleLines: 2, controls: 4, subtabBar: 48, firstCard: 260, phoneFirstCard: 380 };
+// Design plan 2: the two pages read every day stay short (checked at 1440x900 and again at 1280x720)
+const PAGE_CAPS = { 'overview|Today': 1350, 'weekly|weekly': 1500 };
 // deliberate exceptions: [page, sub-tab label, rule]
 const ALLOW = [
   ['overview', 'Where we are', 'rows'],          // the one-screen cross-asset snapshot is meant to show every asset class at once
@@ -62,6 +64,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       }, t);
       const where = `${t} › ${subs[i]}`;
       if (m.height > LIMITS.height) problems.push(`${where}: page is ${m.height}px tall (limit ${LIMITS.height})`);
+      const cap = PAGE_CAPS[`${t}|${subs[i]}`]; if (cap && m.height > cap) problems.push(`${where}: page is ${m.height}px tall (Design plan 2 cap ${cap})`);
       if (m.tiles > LIMITS.tiles) problems.push(`${where}: ${m.tiles} tiles (limit ${LIMITS.tiles})`);
       if (m.subtabBar > LIMITS.subtabBar) problems.push(`${where}: the sub-tab bar wraps (${m.subtabBar}px; it must stay on one line)`);
       const firstLimit = allowed(t, subs[i], 'first300') ? 300 : LIMITS.firstCard;
@@ -74,6 +77,21 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       for (const [title, n] of m.controls) if (n > LIMITS.controls) problems.push(`${where}: card "${title}" shows ${n} controls in its header (limit ${LIMITS.controls})`);
     }
   }
+  // the daily pages again on a small laptop (1280x720), and the brief on one A4 page
+  const lap = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  lap.on('pageerror', e => errors.push(e.message));
+  await lap.goto(URL + '#tab=overview'); await lap.waitForTimeout(5000);
+  for (const [key, cap] of Object.entries(PAGE_CAPS)) {
+    const [t, sub] = key.split('|');
+    await lap.evaluate(([t, sub]) => { setTab(t); if (SUBTABS[t]) setSub(t, Math.max(0, SUBTABS[t].findIndex(x => x[0] === sub))); }, [t, sub]); await lap.waitForTimeout(1200);
+    const h = await lap.evaluate(() => document.documentElement.scrollHeight);
+    if (h > cap) problems.push(`${t} › ${sub} (1280x720): page is ${h}px tall (Design plan 2 cap ${cap})`);
+  }
+  await lap.evaluate(() => setTab('weekly')); await lap.waitForTimeout(1500);
+  const pdf = await lap.pdf({ format: 'A4', printBackground: true });
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  if (pages !== 1) problems.push(`weekly: the printed brief runs to ${pages} A4 pages (it must fit on one)`);
+  await lap.close();
   // phone width (390px): sub-tab bars on one line, first card within reach, nothing scrolls the page sideways
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
   phone.on('pageerror', e => errors.push(e.message));

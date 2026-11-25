@@ -2,9 +2,8 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–6 built): Strategist View, Weekly brief and
-click-through, in seven steps, with reference mockups in `design/`. Build it in order, one step per commit; when a step
-ships, note it in the plan's status line and update the rules below that it changes.
+**Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
+the reference mockups stay in `design/` (not published). Its rules are folded into the list below.
 
 ## Layout and design rules (the owner's standing request)
 
@@ -25,6 +24,16 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
   "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages); on a desktop only the page list scrolls
   (brand, search and the foot stay put); groups: Overview · Macro · Regions · Markets & themes; Data health opens from the foot.
+- **Strategist View → Today** (Design plan 2, 25 Nov 2026): the week in one sentence (`weekLine`, shared with the brief)
+  above the five tiles; then two rows of three equal cards (What moved · What changed · Signals; Stress gauges · Week ahead ·
+  Headlines) written as quiet lists (`.rows`); Talking points fold into a bar at the foot. At most 1,350px at 1440 and 1280.
+- **Weekly brief** (Design plan 2): masthead, the same `weekLine`, three takeaways, five tiles, a 25-row scoreboard (`WK_ROWS`,
+  numbers in colour, a faint tint only on a 2σ week) beside Asia focus, unusual moves, signals and the week ahead. At most
+  1,500px on screen and exactly one A4 page in print (the design check prints it).
+- **Say each thing once on a page**: a fact lives in one card; other places link to it (What changed leaves market moves to
+  What moved; the stress composite is in the tile, the gauges in the card).
+- **No lone half-width card** (`layoutLone` widens it for that view; design check `lone`), and every sub-tab ends with a
+  pager (previous · next; keys `[` and `]`).
 - **Sources and dates sit under every card** (owner's request, 19 Nov 2026): one muted line, source on the left (click to
   show in full), "Data to …" on the right. `setSource` sets the source; the date is worked out after each render (`showAsOf`)
   from the series the card read (`idxLE`/`pts` record them), one date per frequency, with each series listed in the date's
@@ -142,7 +151,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - **Before every push**: serve `docs/` and run `node tools/design-check.js`. It fails on height, tiles, rows, title
   wrapping, header controls, a wrapping sub-tab bar, the first card starting more than 260px down, and script errors;
   then repeats at phone width (390px: bar, first card within 380px, no sideways scroll, no squeezed titles).
-  Deliberate exceptions are listed in its `ALLOW` table.
+  Since Design plan 2 it also fails on a lone half-width card (`lone`), a desktop sub-tab bar that hides tabs (`bar-hidden`),
+  the Strategist View over 1,350px or the Weekly brief over 1,500px (at 1440 and 1280), and a brief that prints on more than
+  one A4 page. Deliberate exceptions are listed in its `ALLOW` table (`first300` for the two pages with a group row).
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.
 - Dual-axis charts are the owner's preference for two-series comparisons (`drawPair`).
