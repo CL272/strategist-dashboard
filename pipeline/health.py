@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json", "leads.json", "events.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json", "leads.json", "events.json", "funds.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
@@ -70,7 +70,10 @@ def build_health(status: dict) -> dict:
         p = OUT / fname
         if not p.exists():
             continue
-        for sid, s in json.loads(p.read_text()).items():
+        data = json.loads(p.read_text())
+        if fname == "funds.json":   # Design plan 4: the allocator's funds sit under "funds", keyed by ticker
+            data = {f"FUND_{k}": {**v, "label": v.get("short") or k, "source": f"Yahoo Finance ({k}), weekly adjusted close"} for k, v in (data.get("funds") or {}).items()}
+        for sid, s in data.items():
             if not isinstance(s, dict) or not s.get("d") or sid in IGNORE or sid.startswith(IGNORE_PREFIX):   # structured.json also holds lists
                 continue
             last = (EPOCH + pd.Timedelta(days=s["d"][-1])).date()
