@@ -7540,6 +7540,7 @@ async function init() {
   ismPrep();
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildUncertainty(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   SUBTABS.markets.push(['Watchlist', ['idea_watch', 'idea_chart']]);   // Design plan 3, Step 2: moved from the Idea log, the last sub-tab
+  if (typeof PF_SUB !== 'undefined') SUBTABS.us.push(PF_SUB);   // Design plan 3, Step 6: US → Economy → Profits, last so older links keep their place
   mergeMarkets();   // Design plan 2, Step 4: the indexes below are the merged ones
   if (['ideas', 'notebook'].includes(h.get('tab'))) {   // Design plan 3, Step 2: the Idea log and the Notebook were removed
     const s = h.get('tab') === 'ideas' ? +h.get('sub') || 0 : -1, to = s === 1 ? ['markets', 'Watchlist'] : s === 5 ? ['alloc', 'Model portfolio'] : ['overview', ''];
@@ -7559,7 +7560,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildProfits === 'function') buildProfits(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly();

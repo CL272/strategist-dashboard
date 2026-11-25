@@ -153,7 +153,7 @@ FRED = [
     # margin statistics are not on FRED
     ("MARGIN_Z1",   "BOGZ1FL663067003Q", "Broker margin loans to customers (Fed Financial Accounts)", "Liquidity", "level", "USD mn", "1980-01-01"),
     ("CURRCIR_M",   "MBCURRCIR",   "Currency in circulation",     "Liquidity", "level", "USD bn", "1980-01-01"),
-    ("GDP",         "GDP",         "US nominal GDP (SAAR)",       "Liquidity", "level", "USD bn"),
+    ("GDP",         "GDP",         "US nominal GDP (SAAR)",       "Liquidity", "level", "USD bn", MACRO_START),   # long: profit margin (Design plan 3)
     ("BANK_ASSETS", "TLAACBW027SBOG", "Commercial bank total assets", "Liquidity", "level", "USD bn"),
     # Other central banks
     ("ECB_ASSETS",  "ECBASSETSW",  "ECB total assets",            "Global CBs", "level", "EUR mn"),

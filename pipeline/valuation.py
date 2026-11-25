@@ -113,6 +113,8 @@ def build(status: dict) -> dict[str, tuple[pd.Series, dict]]:
         out["SH_FWD10"] = ((sh["FWD10_STOCK"] * 100).dropna(), dict(label="Realised next-10-year real return, US stocks", unit="%", kind="level",
                            group="Valuation", source=src))
         out["SH_P"] = (sh["P"].dropna(), dict(label="S&P composite (Shiller, monthly average)", unit="idx", kind="price", group="Valuation", source=src))
+        out["SH_EPS"] = (sh["E"].dropna(), dict(label="S&P 500 trailing 12-month earnings per share (Shiller)", unit="USD", kind="level",
+                         group="Valuation", source=src))   # Design plan 3, Step 6: US → Economy → Profits
         print(f"  SHILLER      {status['SHILLER']} (to {sh['CAPE'].dropna().index[-1]:%b %Y})")
     tp = acm(status)
     if tp is not None:

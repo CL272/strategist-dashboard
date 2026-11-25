@@ -430,3 +430,57 @@ function buildMore() {
   makeCard(mg, { key: 'gold_ratio', title: 'Gold ÷ silver', defaultRange: '10Y', render: renderGoldRatio });
   makeCard(mg, { key: 'gold_vol', title: 'Gold volatility', defaultRange: '10Y', render: renderGoldVol });
 }
+
+// ------------------------------------------------------------------ PROFITS (Design plan 3, Step 6): US → Economy → Profits
+// What profits are doing: BEA corporate profits after tax (FRED CP) against the S&P 500 and as a share of GDP, and the
+// S&P 500's trailing 12-month earnings from Shiller's file. Forward earnings estimates are licensed data: not shown.
+const PF_SUB = ['Profits', ['pf_spx', 'pf_margin', 'pf_eps'], 'Economy'];   // pushed last on the US page in init (keeps old links)
+function pfYoy(s, k) { const t = [], v = []; for (let i = k; i < s.t.length; i++) if (s.v[i - k] > 0) { t.push(s.t[i]); v.push((s.v[i] / s.v[i - k] - 1) * 100); } return { ...s, id: s.id + '_YOY' + k, unit: '%', t, v }; }
+function pfEps() {   // Shiller's E column (pipeline: SH_EPS); until it arrives, the same figure as price ÷ trailing P/E from his file
+  if (has('SH_EPS')) return S.SH_EPS;
+  if (!has('SH_P', 'SH_PE')) return null;
+  return (S.SH_EPS_D = S.SH_EPS_D || { ...combine(S.SH_P, S.SH_PE, (p, pe) => p / pe, {}, 20 * DAY), id: 'SH_EPS_D', label: 'S&P 500 trailing 12-month earnings per share (Shiller)', unit: 'USD', source: S.SH_PE.source });
+}
+const pfQ = d => `Q${Math.floor(new Date(d).getUTCMonth() / 3) + 1} ${new Date(d).getUTCFullYear()}`;
+function renderPfSpx(c) {
+  if (!has('PROFITS', 'SH_P')) return setEmpty(c, 'Waiting for data.');
+  const pr = pfYoy(S.PROFITS, 4), sp = pfYoy(S.SH_P, 12);
+  drawPair(c, { name: 'Corporate profits after tax, YoY %', data: pts(pr, state.from, state.to) }, { name: 'S&P 500 (monthly average), YoY %', data: pts(sp, state.from, state.to) },
+    { fmtA: v => pctF1(v), fmtB: v => pctF1(v), axisA: v => fmtNum(v, 0) + '%', axisB: v => fmtNum(v, 0) + '%', zeroA: true, zeroB: true });
+  const a = asOf(pr, state.to), b = asOf(sp, state.to), xs = [], ys = [];
+  for (let i = 0; i < pr.t.length; i++) {
+    if (pr.t[i] < state.from || pr.t[i] > state.to) continue;
+    const end = addMonths(pr.t[i], 2), y = asOf(sp, end); if (y && end - y.t < 40 * DAY) { xs.push(pr.v[i]); ys.push(y.v); }
+  }
+  const r = xs.length > 8 ? pearson(xs, ys) : null;
+  setNote(c, `Profits after tax grew ${pctF1(a.v)} in the year to ${pfQ(a.t)}; the S&P 500’s monthly average is ${pctF1(b.v)} on a year earlier (${monthLab(b.t)}).`
+    + (r != null ? ` Over the range shown the two moved together with a correlation of ${fmtNum(r, 2)} (quarterly).` : '')
+    + ' BEA profits come about two months after each quarter ends and are revised; they cover all US companies, not only the listed ones.');
+  setSource(c, 'BEA via FRED (CP, corporate profits after tax); Robert Shiller, Yale (S&P composite, monthly average)');
+}
+function renderPfMargin(c) {
+  if (!has('PROFITS', 'GDP')) return setEmpty(c, 'Waiting for data.');
+  const m = combine(S.PROFITS, S.GDP, (p, g) => p / g * 100, { label: 'Profits after tax, % of GDP', unit: '%' }, 40 * DAY);
+  const avg = m.v.reduce((x, y) => x + y, 0) / m.v.length, a = asOf(m, state.to), pc = pctile(m, state.to), y0 = new Date(m.t[0]).getUTCFullYear();
+  drawLines(c, [{ name: 'Corporate profits after tax, % of GDP', data: pts(m, Math.max(state.from, m.t[0]), state.to) }], { fmt: v => fmtNum(v, 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false,
+    hlines: [{ y: +avg.toFixed(2), label: `average since ${y0}: ${fmtNum(avg, 1)}%` }] });
+  setNote(c, `Profits after tax are ${fmtNum(a.v, 1)}% of GDP (${pfQ(a.t)}), against a ${fmtNum(avg, 1)}% average since ${y0}` + (pc ? (pc.p >= 99.5 ? ': the highest in that record.' : `: higher than ${fmtNum(pc.p, 0)}% of quarters.`) : '.')
+    + ' High margins have tended to drift back towards the average over a cycle (wages, competition, taxes), which weighs on earnings growth; the timing is loose.');
+  setSource(c, 'BEA via FRED (CP, GDP); ratio calculated');
+}
+function renderPfEps(c) {
+  const e = pfEps(); if (!e) return setEmpty(c, 'Waiting for Shiller data.');
+  const y = pfYoy(e, 12);
+  drawPair(c, { name: 'S&P 500 trailing 12-month EPS, USD', data: pts(e, state.from, state.to) }, { name: 'EPS, YoY %', data: pts(y, state.from, state.to) },
+    { fmtA: v => 'US$' + fmtNum(v, 2), fmtB: v => pctF1(v), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) + '%', zeroB: true });
+  const a = asOf(e, state.to), b = asOf(y, state.to);
+  setNote(c, `Trailing 12-month earnings per share are US$${fmtNum(a.v, 2)} (${monthLab(a.t)}), ${pctF1(b.v)} on a year earlier. `
+    + 'Shiller’s file spreads S&P’s quarterly earnings over the months and runs a quarter or more behind; forward (expected) earnings are licensed data and are not shown.');
+  setSource(c, 'Robert Shiller, Yale (ie_data.xls, S&P composite earnings)');
+}
+function buildProfits() {
+  const g = $('#usGrid'); if (!g) return;
+  makeCard(g, { key: 'pf_spx', title: 'Profits vs the S&P 500', wide: true, defaultRange: '10Y', earliest: Date.UTC(1950, 0, 1), render: renderPfSpx });
+  makeCard(g, { key: 'pf_margin', title: 'Profit margin', defaultRange: 'MAX', earliest: Date.UTC(1959, 0, 1), render: renderPfMargin });
+  makeCard(g, { key: 'pf_eps', title: 'S&P 500 earnings', defaultRange: '10Y', earliest: Date.UTC(1950, 0, 1), render: renderPfEps });
+}
