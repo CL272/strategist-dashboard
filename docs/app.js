@@ -1047,45 +1047,34 @@ function fmtMove(s, c) {
   if (s.kind === 'yield') return sign(c) + fmtNum(Math.abs(c), 0) + 'bp';
   return sign(c) + fmtNum(Math.abs(c), 2);
 }
-function renderMoved(c) {
+function renderMoved(c) {   // Design plan 2: six rows (name, change, σ, a two-way bar), "All 14" opens the rest in place
   const h = state.ovHorizon === 'W' ? 1 : 4;
   const list = movers(h).slice(0, 14);
-  if (!list.length) return setEmpty(c, 'Not enough history yet.');
-  c.subEl.textContent = `Biggest ${h === 1 ? '1-week' : '4-week'} moves to ${nice(list[0].t)}, ranked by how unusual they are: each move is measured in standard deviations (σ) of that asset's own ${h === 1 ? 'weekly' : '4-week'} moves over the past 5 years.`;
-  const rows = list.slice().reverse();
-  const o = baseOpt();
-  o.legend.show = false;
-  o.grid = { left: 8, right: 60, top: 8, bottom: 8, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'item', formatter: p => { const r = rows[p.dataIndex];
-    return `<b>${esc(fmtMove(S[r.id], r.chg))}</b> <span style="color:${tok('--ink-2')}">${esc(S[r.id].label)}</span><br>${zf(r.z)}σ vs its 5-year history`; } };
-  o.xAxis = { type: 'value', axisLabel: { color: tok('--muted'), formatter: v => v + 'σ', fontSize: 11 }, splitLine: { lineStyle: { color: tok('--grid') } } };
-  o.yAxis = { type: 'category', data: rows.map(r => `${S[r.id].label}  ${fmtMove(S[r.id], r.chg)}`), axisLabel: { color: tok('--ink-2'), fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } };
-  o.series = [{ type: 'bar', barWidth: '62%', data: rows.map(r => ({ value: +r.z.toFixed(2), itemStyle: { color: r.z >= 0 ? tok('--pos') : tok('--neg'), borderRadius: r.z >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })),
-    label: { show: true, position: 'right', formatter: p => zf(p.value) + 'σ', color: tok('--ink-2'), fontSize: 11 } }];
-  c.chartEl.style.height = Math.max(300, rows.length * 26 + 30) + 'px';
-  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  const b = htmlBody(c);
+  if (!list.length) { b.append(el('div', { class: 'muted', text: 'Not enough history yet.' })); return; }
+  const show = c.mvAll ? list : list.slice(0, 6);
+  b.append(el('ul', { class: 'rows mv' }, ...show.map(r => { const s = S[r.id], up = r.z >= 0;
+    return el('li', { title: `${s.label}: ${fmtMove(s, r.chg)} over ${h === 1 ? 'the week' : '4 weeks'} to ${nice(r.t)}, ${zf(r.z)}σ against its own 5-year history` },
+      el('span', { class: 't', text: s.label }), el('span', { class: 'n ' + (r.chg >= 0 ? 'up' : 'dn'), text: fmtMove(s, r.chg) }),
+      el('span', { class: 'm', text: zf(r.z).replace(/(\.\d)\d$/, '$1') + 'σ' }),
+      el('span', { class: 'sig-bar' }, el('i', { class: up ? 'up' : 'dn', style: `width:${Math.min(50, Math.abs(r.z) / 8 * 50).toFixed(0)}%` }))); })));
+  b.append(el('div', { class: 'card-foot' }, el('span', { text: `σ = size against that asset’s own 5 years of ${h === 1 ? 'weekly' : '4-week'} moves` }),
+    list.length > 6 ? el('a', { href: '#', text: c.mvAll ? 'Fewer ↑' : `All ${list.length} →`, onclick: e => { e.preventDefault(); c.mvAll = !c.mvAll; c.render(); } }) : ''));
   c.csv = [['Asset', 'Change', 'z-score'], ...list.map(r => [S[r.id].label, r.chg.toFixed(2), r.z.toFixed(2)])];
-  setNote(c, 'Blue = up, red = down (for yields and spreads, up = higher yield). A ±2σ move happens roughly 1 week in 20.');
+  setNote(c, '');
 }
-function renderFragile(c) {
+function renderFragile(c) {   // Design plan 2: the gauges only; the composite figure lives in the tile
   const rows = stressRows();
   const b = htmlBody(c);
   if (!rows.length) { b.append(el('div', { class: 'empty', text: NO_FRED })); c.csv = null; return; }
-  const comp = rows.reduce((a, r) => a + r.p, 0) / rows.length;
-  const [st, lab, icon] = stressBand(comp);
-  b.append(el('div', { class: 'fragile-head' },
-    el('span', { class: 'big', text: `${ordinal(comp)}` }),
-    el('span', { class: 'status', style: `--st:${tok('--' + st)}` }, el('span', { class: 'dot' }), `${icon}${lab}`),
-    el('span', { class: 'muted small', text: `average percentile of ${rows.length} stress gauges vs their last 10 years` })));
-  for (const r of rows.sort((x, y) => y.p - x.p)) {
-    const [rs] = stressBand(r.p);
-    b.append(el('div', { class: 'pbar', title: `${r.label}: ${fmtNum(r.v, 2)} on ${nice(r.t)}, higher than ${Math.round(r.p)}% of readings since ${nice(r.since)}` },
-      el('span', { class: 'pl', text: r.label }),
-      el('span', { class: 'track' }, el('span', { class: 'fill', style: `width:${r.p.toFixed(1)}%;background:${tok('--' + rs)}` })),
-      el('span', { class: 'pv', text: `${Math.round(r.p)}` })));
-  }
+  b.append(el('ul', { class: 'rows gz' }, ...rows.sort((x, y) => y.p - x.p).map(r => { const [rs] = stressBand(r.p);
+    return el('li', { title: `${r.label}: ${fmtNum(r.v, 2)} on ${nice(r.t)}, higher than ${Math.round(r.p)}% of readings since ${nice(r.since)}` },
+      el('span', { class: 't', text: r.label }), el('span', { class: 'gz-bar' }, el('i', { style: `width:${r.p.toFixed(1)}%;--st:${tok('--' + rs)}` })),
+      el('span', { class: 'n', text: `${Math.round(r.p)}` })); })));
+  b.append(el('div', { class: 'card-foot' }, el('span', { text: 'Percentile of 10 years; 100 = most stressed' }),
+    el('a', { href: '#', text: 'Stress →', onclick: e => { e.preventDefault(); goSub('stress', 'Stress composite'); } })));
   c.csv = [['Gauge', 'Value', 'Percentile (10y)', 'As of'], ...rows.map(r => [r.label, r.v, r.p.toFixed(1), iso(r.t)])];
-  setNote(c, 'Percentile = share of the last 10 years with a lower reading (100 = most stressed). Bands: Calm < 50, Elevated 50–80, High 80–95, Extreme ≥ 95. HY spread history is short (FRED keeps 3 years).');
+  setNote(c, '');
 }
 function sparkSVG(s, from, to) {
   const p = pts(s, from, to); if (p.length < 2) return null;
@@ -1188,113 +1177,184 @@ function talkingPoints() {
     out.push(t + '.'); }
   return out;
 }
+const TP_OPEN = 'sd-tp-open';   // display preference only (not the owner's writing), so plain localStorage
 function renderPoints(c) {
   const b = htmlBody(c), pts_ = talkingPoints();
   const ul = el('ul', { class: 'points' }); pts_.forEach(p => ul.append(el('li', { text: p })));
   b.append(ul);
   c.csv = [['Talking point'], ...pts_.map(p => [p])];
   c.copyText = `Market snapshot, ${nice(state.to)}\n` + pts_.map(p => '• ' + p).join('\n');
-  setNote(c, 'Generated from the data on this page, as of the “To” date. Facts only, no views; edit before sharing.');
+  if (c.descEl) c.descEl.textContent = `${pts_.length} lines for clients, generated from today’s data: facts only, edit before sharing.`;
+  setNote(c, '');
 }
 // ------------------------------------------------------------------ WHAT CHANGED (Strategist View → Today; weekly brief)
 // Rule-based list of changes over the week to `end`, most important first. Monthly signals (regime, signposts)
 // count as changed when the latest data month differs from the one before.
 function goSub(tab, name) { setTab(tab); if (name && SUBTABS[tab]) { const i = SUBTABS[tab].findIndex(x => x[0] === name); if (i >= 0) setSub(tab, i); } }
-function whatChanged(end = state.latest) {
-  const out = [], wk = end - 7 * DAY, add = (pri, text, tab, sub) => out.push({ pri, text, tab, sub });
+function whatChanged(end = state.latest, { moves = true } = {}) {
+  // each item: pri (1 = most important), text (one sentence), head + detail (two-part form for lists), tab/sub to open,
+  // phrase (a short clause for the week's lead sentence; only regime, stress band, breadth and VIX-curve changes have one)
+  const out = [], wk = end - 7 * DAY, add = (pri, text, tab, sub, head, detail, phrase) => out.push({ pri, text, tab, sub, head: head || text, detail: detail || '', phrase: phrase || null });
   // regime switch and method disagreement
   if (has('REG_QUAD')) { const a = asOf(S.REG_QUAD, end); if (a && a.i > 0 && S.REG_QUAD.v[a.i - 1] !== a.v)
-    add(1, `Regime switched to ${QUADS[a.v].name} (from ${QUADS[S.REG_QUAD.v[a.i - 1]].name}) with the ${monthLab(a.t)} data.`, 'regime', 'Regime now'); }
+    add(1, `Regime switched to ${QUADS[a.v].name} (from ${QUADS[S.REG_QUAD.v[a.i - 1]].name}) with the ${monthLab(a.t)} data.`, 'regime', 'Regime now',
+      `Regime switched to ${QUADS[a.v].name}`, `from ${QUADS[S.REG_QUAD.v[a.i - 1]].name}, with the ${monthLab(a.t)} data`, `the macro regime switched to ${QUADS[a.v].name}`); }
   if (has('REG_Q_A', 'REG_QUAD')) { const r = asOf(S.REG_Q_A, end), c = asOf(S.REG_QUAD, end), r0 = r && r.i > 0 ? S.REG_Q_A.v[r.i - 1] : null;
-    if (r && c && r.v !== c.v && r0 === c.v) add(2, `Raw regime signal newly points to ${QUADS[r.v].name} (${monthLab(r.t)}); needs a second month to confirm.`, 'regime', 'Regime now'); }
+    if (r && c && r.v !== c.v && r0 === c.v) add(2, `Raw regime signal newly points to ${QUADS[r.v].name} (${monthLab(r.t)}); needs a second month to confirm.`, 'regime', 'Regime now',
+      `New raw regime signal`, `points to ${QUADS[r.v].name} (${monthLab(r.t)}); needs a second month to confirm`); }
   // stress composite band
   if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, wk);
-    if (a && b && legacyBand(a.v)[0] !== legacyBand(b.v)[0]) add(a.v > b.v ? 1 : 3, `Stress composite moved from ${legacyBand(b.v)[0].toLowerCase()} to ${legacyBand(a.v)[0].toLowerCase()} (${ordinal(b.v)} → ${ordinal(a.v)} percentile).`, 'stress', 'Stress composite'); }
+    if (a && b && legacyBand(a.v)[0] !== legacyBand(b.v)[0]) { const lab = legacyBand(a.v)[0].toLowerCase(), upB = a.v > b.v;
+      add(upB ? 1 : 3, `Stress composite moved from ${legacyBand(b.v)[0].toLowerCase()} to ${lab} (${ordinal(b.v)} → ${ordinal(a.v)} percentile).`, 'stress', 'Stress composite',
+        `Stress composite ${upB ? 'up' : 'down'} a band`, `${ordinal(a.v)} percentile, now “${lab}”`, `stress ${upB ? 'rose' : 'eased'} to ${lab}`); } }
   // peak signposts
   if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.triggered[j] == null) j--;
     if (j > n && SIGN.triggered[j] != null && SIGN.triggered[j - 1] != null && SIGN.triggered[j] > SIGN.triggered[j - 1])
-      add(2, `Peak signposts: ${SIGN.triggered[j] - SIGN.triggered[j - 1]} more triggered in ${cols[j]} (${SIGN.triggered[j]} of ${SIGN.evaluated[j]}).`, 'stress', 'Peak signposts'); }
+      add(2, `Peak signposts: ${SIGN.triggered[j] - SIGN.triggered[j - 1]} more triggered in ${cols[j]} (${SIGN.triggered[j]} of ${SIGN.evaluated[j]}).`, 'stress', 'Peak signposts',
+        'More peak signposts', `${SIGN.triggered[j] - SIGN.triggered[j - 1]} more triggered in ${cols[j]} (${SIGN.triggered[j]} of ${SIGN.evaluated[j]})`); }
   // breadth crossing 20% / 80%
   if (TICK) for (const mk of Object.keys(BR_MKTS)) { const b = breadth(mk); if (!b || !b.t.length) continue;
     const at = t => { const i = upperIdx(b.t, t) - 1; return i >= 0 ? b.a200[i] : null; }, x = at(end), y = at(wk);
     if (x == null || y == null) continue;
-    for (const lv of [20, 80]) if ((y - lv) * (x - lv) < 0) add(lv === 20 && x < 20 ? 2 : 3, `${BR_MKTS[mk].name} breadth crossed ${lv}%: ${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago).`, BR_PAGE[mk], 'Equities'); }
+    for (const lv of [20, 80]) if ((y - lv) * (x - lv) < 0) add(lv === 20 && x < 20 ? 2 : 3, `${BR_MKTS[mk].name} breadth crossed ${lv}%: ${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago).`, BR_PAGE[mk], 'Equities',
+      `${BR_MKTS[mk].name} breadth crossed ${lv}%`, `${fmtNum(x, 0)}% of large caps above their 200-day average (${fmtNum(y, 0)}% a week ago)`, `${BR_MKTS[mk].name} breadth ${x > lv ? 'rose above' : 'fell below'} ${lv}%`); }
   // VIX term structure
   if (has('VIX', 'VIX3M')) { const r = t => { const a = asOf(S.VIX3M, t), b = asOf(S.VIX, t); return a && b ? a.v / b.v : null; }, x = r(end), y = r(wk);
-    if (x != null && y != null && (x < 1) !== (y < 1)) add(x < 1 ? 1 : 3, x < 1 ? `VIX curve inverted: VIX3M/VIX at ${fmtNum(x, 2)}, below 1 (near-term fear above longer-term).` : `VIX curve back to normal: VIX3M/VIX at ${fmtNum(x, 2)}, above 1 again.`, 'posvol', 'Volatility'); }
+    if (x != null && y != null && (x < 1) !== (y < 1)) add(x < 1 ? 1 : 3, x < 1 ? `VIX curve inverted: VIX3M/VIX at ${fmtNum(x, 2)}, below 1 (near-term fear above longer-term).` : `VIX curve back to normal: VIX3M/VIX at ${fmtNum(x, 2)}, above 1 again.`, 'posvol', 'Volatility',
+      x < 1 ? 'VIX curve inverted' : 'VIX curve back to normal', `3-month ÷ spot VIX at ${fmtNum(x, 2)}, ${x < 1 ? 'below 1: near-term fear above longer-term' : 'above 1 again'}`,
+      x < 1 ? 'the VIX curve inverted' : 'the VIX curve returned to normal'); }
   // central bank gauges
   cbPrep();
   for (const k of Object.keys(CBS)) { const a = cbStats(k, end), b = cbStats(k, wk); if (!a || !b || !a.spread || !b.spread) continue;
-    if (a.p && b.p && Math.abs(a.p.v - b.p.v) >= 0.05) { add(1, `${CBS[k].short} changed its ${CBS[k].policyLab} by ${bp((a.p.v - b.p.v) * 100)} to ${fmtNum(a.p.v, 2)}%; market gauge now ${bp(a.spread.v)} (read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub); continue; }
-    const d = a.spread.v - b.spread.v; if (Math.abs(d) > CB_DEAD) add(2, `${CBS[k].short} pricing moved ${bp(d)} on the week (${CBS[k].gaugeLab} ${bp(a.spread.v)}; read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub); }
-  // big market moves
-  const keep = state.to; state.to = end; const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3); state.to = keep;
-  for (const r of mv) add(Math.abs(r.z) >= 3 ? 1 : 2, `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} on the week (${zf(r.z)}σ vs its 5-year norm).`, 'markets', 'Performance');
+    if (a.p && b.p && Math.abs(a.p.v - b.p.v) >= 0.05) { add(1, `${CBS[k].short} changed its ${CBS[k].policyLab} by ${bp((a.p.v - b.p.v) * 100)} to ${fmtNum(a.p.v, 2)}%; market gauge now ${bp(a.spread.v)} (read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub,
+      `${CBS[k].short} ${a.p.v > b.p.v ? 'raised' : 'cut'} by ${bp(Math.abs(a.p.v - b.p.v) * 100).replace('+', '')}`, `${CBS[k].policyLab} ${fmtNum(a.p.v, 2)}%; market gauge ${bp(a.spread.v)}`); continue; }
+    const d = a.spread.v - b.spread.v; if (Math.abs(d) > CB_DEAD) add(2, `${CBS[k].short} pricing moved ${bp(d)} on the week (${CBS[k].gaugeLab} ${bp(a.spread.v)}; read: ${a.read.toLowerCase()}).`, 'cbwatch', CBS[k].sub,
+      `${CBS[k].short} pricing moved`, `${CBS[k].gaugeLab} ${bp(a.spread.v)}, ${bp(d)} on the week`); }
+  // big market moves (left out where What moved already lists them)
+  if (moves) { const keep = state.to; state.to = end; const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3); state.to = keep;
+    for (const r of mv) add(Math.abs(r.z) >= 3 ? 1 : 2, `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} on the week (${zf(r.z)}σ vs its 5-year norm).`, 'markets', 'Performance',
+      `${S[r.id].label} ${fmtMove(S[r.id], r.chg)}`, `${zf(r.z)}σ vs its 5-year norm`); }
   // ideas hitting target or stop
   for (const x of (IDEAS || []).filter(i => i.status !== 'closed')) { const h = ideaHits(x);
-    if (h && h.t > wk && h.t <= end) add(1, `Idea “${x.title}” hit its ${h.what} on ${dShort(h.t)}.`, 'ideas', null); }
+    if (h && h.t > wk && h.t <= end) add(1, `Idea “${x.title}” hit its ${h.what} on ${dShort(h.t)}.`, 'ideas', null, `Idea “${x.title}”`, `hit its ${h.what} on ${dShort(h.t)}`); }
   // stale data
-  if (HEALTH && HEALTH.n_bad) add(4, `${HEALTH.n_bad} data series stale or missing (Data health page).`, 'health', null);
+  if (HEALTH && HEALTH.n_bad) add(4, `${HEALTH.n_bad} data series stale or missing (Data health page).`, 'health', null, `${HEALTH.n_bad} data series stale`, 'see Data health');
   if (typeof spNoteAlerts === 'function') for (const [p, t] of spNoteAlerts()) add(p, t, 'sp', 'My notes');   // the owner's structured notes (browser only)
   return out.sort((a, b) => a.pri - b.pri);
 }
-function renderChanges(c) {
-  const b = htmlBody(c), L = whatChanged();
+// The week in one sentence (Design plan 2): the Strategist View's lead and the Weekly brief's lead, from the same rules, so
+// the two never disagree. Facts only. Returns { segs: [text | {t, cls}], text, t } or null when the inputs are missing.
+function weekLine(end = state.latest) {
+  const eq = WK_ROWS[0][1].filter(id => has(id)).map(id => wkChange(id, end)).filter(r => r && r.w != null);
+  if (eq.length < 6) return null;
+  const ws = eq.map(r => r.w).sort((a, b) => a - b), n = ws.length, med = n % 2 ? ws[(n - 1) / 2] : (ws[n / 2 - 1] + ws[n / 2]) / 2;
+  const dn = ws.filter(v => v < 0).length, upN = n - dn;
+  let dir = 0, eqs;
+  if (Math.max(dn, upN) >= Math.ceil(n * 0.8) && Math.abs(med) >= 2) {
+    dir = med < 0 ? -1 : 1;
+    const side = ws.filter(v => Math.sign(v) === dir).map(Math.abs).sort((a, b) => a - b);
+    const a = Math.round(side[Math.min(1, side.length - 1)]), b = Math.round(side[Math.max(0, side.length - 2)]);
+    eqs = [`world equities ${dir < 0 ? 'fell' : 'rose'} `, { t: a === b ? `about ${a}%` : `${a}–${b}%`, cls: dir < 0 ? 'dn' : 'up' }];
+  } else if (Math.abs(med) < 1) eqs = ['world equities were little changed'];
+  else eqs = [`equities were mixed (${upN} of ${n} higher)`];
+  const keep = state.to; state.to = end; const vz = has('VIX') ? moveZ('VIX', 1) : null; state.to = keep;
+  const hy = has('HY_OAS') ? wkChange('HY_OAS', end) : null, hyw = hy && hy.w != null ? hy.w : 0;   // bp
+  const tone = dir < 0 && ((vz && vz.z >= 2) || hyw > 5) ? 'Risk-off: ' : dir > 0 && ((vz && vz.z <= -2) || hyw < -5) ? 'Risk-on: ' : '';
+  let ph = whatChanged(end, { moves: false }).filter(x => x.phrase).slice(0, 2).map(x => x.phrase);
+  const d = has('DXY') ? wkChange('DXY', end) : null, r = has('REAL10Y') ? wkChange('REAL10Y', end) : null;
+  const dd = d && d.w != null && Math.abs(d.w) >= 0.3 ? Math.sign(d.w) : 0, rr = r && r.w != null && Math.abs(r.w) >= 5 ? Math.sign(r.w) : 0;
+  const vb = s => s > 0 ? 'rose' : 'fell';
+  const usd = dd && rr ? (dd === rr ? `the dollar and real yields ${vb(dd)}` : `the dollar ${vb(dd)} while real yields ${vb(rr)}`) : dd ? `the dollar ${vb(dd)}` : rr ? `real yields ${vb(rr)}` : '';
+  const build = () => { const segs = [tone, ...eqs]; if (ph.length) segs.push(', ' + ph.join(' and ')); if (usd) segs.push((ph.length && /while/.test(usd) ? '; ' : ', while ') + usd); segs.push('.');
+    const s2 = segs.filter(x => x !== ''); if (!tone && typeof s2[0] === 'string') s2[0] = s2[0][0].toUpperCase() + s2[0].slice(1);
+    return s2; };
+  let segs = build(), text = () => segs.map(x => typeof x === 'string' ? x : x.t).join('');
+  while (text().length > 200 && ph.length) { ph = ph.slice(0, -1); segs = build(); }
+  return { segs, text: text(), t: Math.max(...eq.map(x => x.a.t)) };
+}
+const lineEl = (tag, w, attrs = {}) => el(tag, attrs, ...w.segs.map(x => typeof x === 'string' ? x : el('span', { class: x.cls, text: x.t })));
+function renderOvLead() {   // Strategist View → Today: the week in one sentence, above the tiles
+  const box = $('#ovLead'); if (!box) return; box.replaceChildren();
+  const w = weekLine(state.latest); if (!w) return;
+  box.append(el('div', { class: 'eyebrow', text: `This week · to ${dLong(w.t)}` }), lineEl('h2', w));
+}
+function renderChanges(c) {   // Design plan 2: at most five rows (dot, subject, one line); market moves live in What moved
+  const b = htmlBody(c), L = whatChanged(state.latest, { moves: false });
+  setCount(c, L.length ? `${L.length} this week` : '');
   if (!L.length) { b.append(el('div', { class: 'muted', text: 'Nothing crossed a threshold this week.' })); return; }
-  const ul = el('ul', { class: 'changes' });
-  for (const x of L.slice(0, 8)) ul.append(el('li', {}, el('span', { class: 'qdot', style: `background:${tok(x.pri === 1 ? '--critical' : x.pri === 2 ? '--warning' : '--muted')}` }),
-    el('a', { href: '#', text: x.text, onclick: e => { e.preventDefault(); goSub(x.tab, x.sub); } })));
-  b.append(ul);
-  if (L.length > 8) b.append(el('div', { class: 'muted small', text: `${L.length - 8} more not shown.` }));
+  b.append(el('ul', { class: 'rows chg' }, ...L.slice(0, 5).map(x => el('li', {},
+    el('span', { class: 'dot', style: `--st:${tok(x.pri === 1 ? '--critical' : x.pri === 2 ? '--warning' : '--muted')}` }),
+    el('button', { type: 'button', class: 'lnk t wrap', title: x.text + (x.tab ? ' (click to open)' : ''), onclick: () => x.tab && goSub(x.tab, x.sub) },
+      el('b', { text: x.head }), x.detail ? ` · ${x.detail}` : '')))));
+  const rules = el('p', { class: 'muted small', hidden: true, text: 'Rules: regime switch or new raw signal; stress band change; more peak signposts; breadth crossing 20% or 80%; VIX curve inverting or recovering; a central bank rate change or a gauge move over 15bp; an idea hitting its target or stop; stale data. Market moves of 2σ or more are in What moved. Red = most important; click a line to open its page.' });
+  b.append(el('div', { class: 'card-foot' }, el('span', { text: L.length > 5 ? `${L.length - 5} more on the Weekly brief` : '' }),
+    el('a', { href: '#', text: 'How the rules work ▸', onclick: e => { e.preventDefault(); rules.hidden = !rules.hidden; e.target.textContent = rules.hidden ? 'How the rules work ▸' : 'Hide the rules ▴'; } })), rules);
   c.csv = [['priority', 'change', 'page'], ...L.map(x => [x.pri, x.text, x.tab])];
-  setNote(c, 'Rules: regime switch or new raw signal; stress band change; more peak signposts; breadth crossing 20% or 80%; VIX curve inverting; a central bank rate change or gauge move over 15bp; a ≥2σ market move; an idea hitting its target or stop; stale data. Red = most important; click a line to open its page.');
+  setNote(c, '');
+}
+function setCount(c, txt) {   // a quiet count or qualifier beside a card's title
+  let s = c.titleEl.querySelector('.card-count'); if (!s) { s = el('span', { class: 'card-count' }); c.titleEl.append(s); }
+  s.textContent = txt || ''; s.hidden = !txt;
 }
 
 // Strategist View: the Signals page's active ideas in two columns (bullish, bearish), plus rules that just ended
-function renderOvSignals(c) {
+function renderOvSignals(c) {   // Design plan 2: Bearish / Bullish rows (sell-side first), each opens the Signals page
   const b = htmlBody(c);
+  setCount(c, 'research prompts');
   if (!SIG) { b.append(el('div', { class: 'muted', text: 'Waiting for the signal engine.' })); return; }
   const dis = sigStore().dismissed || {}, ideas = SIG.ideas.filter(g => g.net > 0 && !dis[g.target + '|' + g.dir]);
-  const go = () => goSub('signals', 'Ideas to investigate');
-  const col = (lab, cls, L) => el('div', { class: 'ovs-col' }, el('div', { class: 'ovs-h ' + cls, text: `${lab} (${L.length})` }),
-    L.length ? el('ul', { class: 'ovs-list' }, ...L.slice(0, 4).map(g => { const x = sigById(g.signals[0]);
-      return el('li', { title: sigHeadline(g, x.best_h) + (x.since ? ` · since ${monthLab(dayMs(x.since))}` : '') }, el('a', { href: '#', text: g.target_name, onclick: e => { e.preventDefault(); state.sigSide = cls; go(); } }),
-        el('span', { class: 'muted small', text: ` · ${x.best_h}m · ${x.tier.toLowerCase()}` })); }),
-      L.length > 4 ? el('li', { class: 'muted small', text: `+${L.length - 4} more on the Signals page` }) : '') : el('div', { class: 'muted small', text: 'None active.' }));
-  b.append(el('div', { class: 'ovs-grid' }, col('▼ Bearish', 'dn', ideas.filter(g => sigSide(g) < 0)), col('▲ Bullish', 'up', ideas.filter(g => sigSide(g) > 0))));
+  const go = side => { state.sigSide = side; goSub('signals', 'Ideas to investigate'); };
+  for (const [lab, cls, L] of [['Bearish', 'dn', ideas.filter(g => sigSide(g) < 0)], ['Bullish', 'up', ideas.filter(g => sigSide(g) > 0)]]) {
+    b.append(el('div', { class: 'rows-h', text: `${lab} · ${L.length}` }));
+    if (!L.length) { b.append(el('div', { class: 'muted small', text: 'None active.' })); continue; }
+    b.append(el('ul', { class: 'rows sg' }, ...L.slice(0, 4).map(g => { const x = sigById(g.signals[0]);
+      return el('li', {}, el('span', { class: 'dir ' + cls, text: cls === 'dn' ? '▼' : '▲' }),
+        el('button', { type: 'button', class: 'lnk t', text: g.target_name, title: sigHeadline(g, x.best_h) + (x.since ? ` · since ${monthLab(dayMs(x.since))}` : ''), onclick: () => go(cls) }),
+        el('span', { class: 'm', text: `${x.best_h}m · ${x.tier === 'Tested edge' ? 'tested' : x.tier === 'Thin evidence' ? 'thin' : 'context'}` })); }),
+      L.length > 4 ? el('li', {}, el('span', {}), el('span', { class: 'm', text: `+${L.length - 4} more` }), el('span', {})) : ''));
+  }
+  let ended = [];
   if (SIG.signals.some(x => 'off_since' in x)) {
     const m0 = addMonths(Date.UTC(new Date(state.latest).getUTCFullYear(), new Date(state.latest).getUTCMonth(), 1), -3);
-    const ended = SIG.signals.filter(x => !x.on && x.off_since && dayMs(x.off_since) >= m0 && TIER_W[x.tier] > 0);
-    if (ended.length) b.append(el('p', { class: 'small ovs-ended' }, el('b', { text: 'Just ended · ' }),
-      ended.map(x => `${sigSide(x) > 0 ? '▲' : '▼'} ${x.target_name} (${monthLab(dayMs(x.off_since))})`).join('; '), el('span', { class: 'muted', text: ' (exit prompts)' })));
+    ended = SIG.signals.filter(x => !x.on && x.off_since && dayMs(x.off_since) >= m0 && TIER_W[x.tier] > 0);
   }
-  setNote(c, 'Active ideas from the Signals page, sell-side first; hover for the headline, click for the evidence. Rules with a tested or thin record over the horizon shown (m = months), not recommendations.');
+  b.append(el('div', { class: 'card-foot' }, el('span', { title: ended.map(x => `${x.target_name} (${monthLab(dayMs(x.off_since))})`).join('; '),
+    text: ended.length ? 'Just ended: ' + ended.slice(0, 2).map(x => `${x.target_name} ${sigSide(x) > 0 ? '▲' : '▼'}`).join(' · ') + (ended.length > 2 ? ` +${ended.length - 2}` : '') : '' }),
+    el('a', { href: '#', text: 'Signals →', onclick: e => { e.preventDefault(); goSub('signals', 'Ideas to investigate'); } })));
+  setNote(c, '');
   setSource(c, 'Dashboard signal engine (pipeline/signals.py) on FRED, Yahoo Finance, OECD, DGBAS and DOSM data');
 }
-function buildOverview() {
-  const g = $('#ovGrid');
-  const tp = makeCard(g, { key: 'points', range: false, title: 'Talking points', wide: true, source: 'FRED, Yahoo Finance', render: renderPoints });
-  const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
-    try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
-  tp.root.querySelector('.card-tools').prepend(copy);
-  makeCard(g, { key: 'changes', range: false, title: 'What changed this week', source: 'Dashboard rules on its own data', render: renderChanges });
-  makeCard(g, { key: 'ov_signals', range: false, title: 'Signals now: bullish and bearish', render: renderOvSignals });
-  makeCard(g, { key: 'headlines', range: false, title: 'Latest headlines', render: renderHeadlinesCard });
+function buildOverview() {   // Design plan 2: two rows of three cards, then the talking points folded at the foot
+  const g = $('#ovGrid'); g.classList.add('g3');
   makeCard(g, { key: 'moved', range: false, title: 'What moved', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovHorizon', options: [['W', '1 week'], ['M', '4 weeks']] }, render: renderMoved });
-  makeCard(g, { key: 'fragile', range: false, title: 'Market stress gauges', sub: 'Market-priced stress gauges ranked against their own last 10 years. The full composite is on the Stress & Signposts page.', source: 'FRED, Yahoo Finance', render: renderFragile });
+  makeCard(g, { key: 'changes', range: false, title: 'What changed', source: 'Dashboard rules on its own data', render: renderChanges });
+  makeCard(g, { key: 'ov_signals', range: false, title: 'Signals', render: renderOvSignals });
+  makeCard(g, { key: 'fragile', range: false, title: 'Stress gauges', source: 'FRED, Yahoo Finance', render: renderFragile });
+  makeCard(g, { key: 'cal_next', range: false, title: 'Week ahead', source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
+  makeCard(g, { key: 'headlines', range: false, title: 'Headlines', render: renderHeadlinesCard });
   makeCard(g, { key: 'where', range: false, title: 'Where we are', wide: true, sub: 'Cross-asset snapshot. Switch the currency to see equity and commodity returns as a USD, SGD, MYR, EUR, GBP, JPY or AUD investor.', source: 'Yahoo Finance, FRED',
     seg: { key: 'ovCcy', select: true, label: 'Currency for equity moves', options: CCY_CHOICES }, render: renderWhere });
-  makeCard(g, { key: 'cal_next', range: false, title: 'Coming up: next 7 days', sub: 'Key releases and central bank decisions. Times in Singapore/Malaysia time. Full list on the Calendar page.',
-    source: 'FRED release calendar; central bank schedules; estimated windows for Asian releases', render: renderCalNext });
-  for (const k of ['points', 'changes', 'ov_signals', 'headlines', 'fragile', 'where', 'cal_next']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  const tp = makeCard(g, { key: 'points', range: false, title: 'Talking points', wide: true, source: 'FRED, Yahoo Finance', render: renderPoints });
+  tp.root.classList.add('fold-card');
+  tp.descEl = el('span', { class: 'fold-desc', text: 'Lines for clients, generated from today’s data: facts only, edit before sharing.' });
+  tp.titleEl.parentElement.append(tp.descEl);
+  let open = false; try { open = localStorage.getItem(TP_OPEN) === '1'; } catch (e) { /* closed */ }
+  const showBtn = el('button', { class: 'ghost', type: 'button', text: open ? 'Hide ▴' : 'Show ▸', 'aria-expanded': String(open), onclick: () => {
+    open = !open; tp.root.classList.toggle('folded', !open); showBtn.textContent = open ? 'Hide ▴' : 'Show ▸'; showBtn.setAttribute('aria-expanded', String(open));
+    try { localStorage.setItem(TP_OPEN, open ? '1' : '0'); } catch (e) { /* kept for this visit */ } } });
+  tp.root.classList.toggle('folded', !open);
+  const copy = el('button', { class: 'ghost', type: 'button', text: 'Copy', title: 'Copy as text', onclick: async () => {
+    try { await navigator.clipboard.writeText(tp.copyText || ''); copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1500); } catch (e) { alert(tp.copyText); } } });
+  tp.root.querySelector('.card-tools').prepend(showBtn, copy);
+  for (const k of ['points', 'changes', 'ov_signals', 'headlines', 'fragile', 'where', 'cal_next', 'moved']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
 const CARD_SOURCES = {"netliq": "FRED (WALCL Fed total assets, WDTGAL Treasury General Account, RRPONTSYD overnight reverse repo); S&P 500 from Yahoo Finance (^GSPC)", "comp": "FRED (WALCL, WRESBAL, WDTGAL, RRPONTSYD)", "fund": "FRED (SOFR, EFFR, IORB)", "scarcity": "FRED (WRESBAL reserves, GDP nominal GDP, TLAACBW027SBOG commercial bank assets); ratios calculated", "gcb": "FRED (WALCL Fed, ECBASSETSW ECB, JPNASSETS BoJ; FX DEXUSEU, DEXJPUS); USD conversion calculated", "nfci": "Chicago Fed via FRED (NFCI)", "quad": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE)", "comp_gi": "Dashboard calculation from FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA, CPIAUCSL, CPILFESL, PCEPILFE); recession shading NBER (USREC)", "regtable": "Regimes: dashboard calculation from FRED; returns: Yahoo Finance prices (ETFs adjusted for dividends)", "zg": "FRED (CFNAI, INDPRO, PAYEMS, RRSFS, ICSA); z-scores calculated; recession shading NBER (USREC)", "zi": "FRED (CPIAUCSL, CPILFESL, PCEPILFE); z-scores calculated; recession shading NBER (USREC)", "sahm": "FRED (SAHMREALTIME); recession shading NBER (USREC)", "recprob": "Yield-curve model: NY Fed method applied to FRED T10Y3M; Chauvet-Piger: FRED (RECPROUSM156N)", "infl": "BLS via FRED (CPIAUCSL, CPILFESL); BEA via FRED (PCEPILFE); YoY calculated", "claims": "US Department of Labor via FRED (ICSA)", "points": "Calculated from the data on this dashboard (Yahoo Finance, FRED, US Treasury, MOF Japan, ECB, SingStat)", "moved": "Yahoo Finance (prices, FX, VIX/MOVE); FRED, US Treasury, MOF Japan, ECB (yields, spreads); σ calculated", "fragile": "Yahoo Finance (^VIX, ^MOVE); FRED (BAA10Y, BAMLH0A0HYM2, NFCI, STLFSI4, SOFR, IORB); percentiles calculated", "where": "Yahoo Finance (indices, FX, commodities, crypto, VIX/MOVE); FRED / US Treasury / MOF Japan / ECB (yields); FRED (credit spreads); hover a row for its exact source", "xcurve": "US Treasury (Daily Par Yield Curve); Ministry of Finance Japan (JGB interest rates); ECB Data Portal (YC, AAA euro area government spot curve)", "teny": "US Treasury (Daily Par Yield Curve, 10Y); MOF Japan (JGB 10Y); ECB Data Portal (YC SR_10Y)", "slopes": "US Treasury / MOF Japan / ECB Data Portal curves; spreads calculated; recession shading NBER (USREC)", "real": "US Treasury (Daily Par Real Yield Curve and Par Yield Curve); breakeven calculated", "diff": "US Treasury, MOF Japan, ECB Data Portal (10Y yields); Yahoo Finance (JPY=X, EURUSD=X)", "hedged": "US Treasury (3M, 10Y), MOF Japan (1Y, 10Y), ECB Data Portal (3M, 10Y); hedged yields calculated", "shifts": "Yahoo Finance and FRED / US Treasury / MOF Japan / ECB series; correlations calculated"};
 function applyPairToggles() { for (const k of ['ism_ip', 'ism_sv', 'bc_cn', 'bc_mkt', 'bc_my', 'bc_ea', 'netliq', 'diff', 'sneer', 'cn_spread', 'lei', 'leadlag', 'cugold', 'cycdef', 'vol_ratio', 'pos_hist']) if (cards[k]) pairToggle(cards[k]); }
 function applySources() { for (const [k, v] of Object.entries(CARD_SOURCES)) if (cards[k]) setSource(cards[k], v); }
 function renderOverview() {
-  overviewKpis();
-  ['points', 'changes', 'ov_signals', 'headlines', 'moved', 'fragile', 'where', 'cal_next'].forEach(k => cards[k].render());
+  overviewKpis(); renderOvLead();
+  ['moved', 'changes', 'ov_signals', 'fragile', 'cal_next', 'headlines', 'where', 'points'].forEach(k => cards[k].render());
 }
 
 // ------------------------------------------------------------------ REGIME
@@ -2852,11 +2912,16 @@ function renderNews() {
     items.length > 40 && !state.newsAll ? el('button', { class: 'ghost more-btn', type: 'button', text: `Show ${items.length - 40} more headlines`, onclick: () => { state.newsAll = true; renderNews(); } }) : '',
     el('p', { class: 'src', text: `Source: public RSS feeds: ${ok.join(', ')}.` + (bad.length ? ` Unavailable this run: ${bad.join(', ')}.` : '') }));
 }
-function renderHeadlinesCard(c) {
+function renderHeadlinesCard(c) {   // Design plan 2: five headlines, the title on at most two lines, source and age under it
   const b = htmlBody(c);
   if (!NEWS || !NEWS.items) { b.append(el('div', { class: 'empty', text: 'Headlines arrive with the next run.' })); return; }
-  b.append(newsList(NEWS.items, 8));
-  setNote(c, `Refreshed ${NEWS.updated_utc}. More on the News tab.`);
+  b.append(el('ul', { class: 'rows hl' }, ...NEWS.items.slice(0, 5).map(n => { const t = n.t ? Date.parse(n.t) : null;
+    return el('li', {}, el('a', { class: 't', href: n.link, target: '_blank', rel: 'noopener noreferrer', text: n.title, title: n.title }),
+      el('span', { class: 'm', title: t ? new Date(t).toLocaleString() : '', text: `${n.source}${t ? ' · ' + timeAgo(t).replace(' ago', '') : ''}` })); })));
+  const m = /^(\d{4}-\d\d-\d\d) (\d\d):(\d\d)/.exec(NEWS.updated_utc || ''), sgt = m ? new Date(Date.parse(m[1] + 'T' + m[2] + ':' + m[3] + ':00Z') + 8 * 3600e3) : null;
+  b.append(el('div', { class: 'card-foot' }, el('span', { text: sgt ? `Refreshed ${String(sgt.getUTCHours()).padStart(2, '0')}:${String(sgt.getUTCMinutes()).padStart(2, '0')} SGT` : '' }),
+    el('a', { href: '#', text: 'News →', onclick: e => { e.preventDefault(); setTab('news'); } })));
+  setNote(c, '');
   setSource(c, 'Public RSS feeds: ' + Object.entries(NEWS.feeds || {}).filter(([, v]) => v.startsWith('ok')).map(([k]) => k).join(', '));
 }
 
@@ -6797,28 +6862,31 @@ function renderCalCard(c) {
   setNote(c, notes.join(' '));
   setSource(c, `FRED release calendar (US, euro area); Federal Reserve, ECB, Bank of Japan, Bank Negara Malaysia, RBA, Bank of England and MAS schedules (checked ${CAL.verified_on}); release windows estimated from DOSM, SingStat, ABS, NBS, Statistics Bureau of Japan and Korea Customs patterns. Built ${CAL.generated}.`);
 }
-function renderCalNext(c) {
+function renderCalNext(c) {   // Design plan 2: at most six key events in the next 7 days, under day labels
   const b = htmlBody(c);
   if (!CAL || !CAL.events) { b.append(el('div', { class: 'empty', text: 'The calendar arrives with the next full data refresh.' })); return; }
   const today = sgToday();
   const list = CAL.events.filter(e => e.hi).map(e => { const [a, z] = calSpan(e); return { e, a, z }; })
     .filter(({ a, z }) => z >= today && a <= today + 7 * DAY).map(({ e, a }) => ({ e, day: Math.max(a, today) }))
     .sort((x, y) => (x.day - y.day) || (x.e.sgt || '99').localeCompare(y.e.sgt || '99'));
-  const [tbl, tb, csv] = calTable(list, today, { compact: true });
-  b.append(el('div', { class: 'table-wrap' }, tbl));
-  // at most 9 events here; the full week is one click away
-  const rows = [...tb.querySelectorAll(':scope > tr')]; let n = 0, cut = false;
-  for (const r of rows) { if (!r.classList.contains('grp')) n++; if (n > 9) { r.hidden = true; cut = true; } }
-  rows.filter(r => r.classList.contains('grp')).forEach(g => { let x = g.nextElementSibling, any = false; while (x && !x.classList.contains('grp')) { if (!x.hidden) any = true; x = x.nextElementSibling; } if (!any) g.hidden = true; });
-  if (cut) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: `All ${list.length} events this week → Calendar`, onclick: () => setTab('calendar') }));
-  c.csv = csv;
-  setNote(c, 'Estimated windows (Asian releases) are listed from today until the window closes.');
+  const ul = el('ul', { class: 'rows cal' }); let day = null;
+  for (const { e, day: d } of list.slice(0, 6)) {
+    if (d !== day) { day = d; ul.append(el('li', { class: 'day', text: dLong(d) + (d === today ? ' · today' : d === today + DAY ? ' · tomorrow' : '') })); }
+    const name = e.url ? el('a', { href: e.url, target: '_blank', rel: 'noopener noreferrer', text: e.name, title: `${e.name}: open the official release page` }) : el('span', { text: e.name, title: e.name });
+    ul.append(el('li', { title: e.src ? 'Source: ' + e.src : '' }, el('span', { class: 'm', text: e.sgt || '–' }),
+      el('span', { class: 't' }, el('span', { class: 'm', text: e.region + ' · ' }), name), el('span', { class: 'm', text: e.prev ? 'prev ' + e.prev : '' })));
+  }
+  if (!list.length) ul.append(el('li', {}, el('span', { class: 't muted', text: 'No key releases in the next 7 days.' })));
+  b.append(ul, el('div', { class: 'card-foot' }, el('span', { text: 'Singapore / Malaysia time' }),
+    el('a', { href: '#', text: `All ${list.length} →`, onclick: e => { e.preventDefault(); setTab('calendar'); } })));
+  c.csv = [['Date', 'Time (SGT)', 'Region', 'Event', 'Previous', 'Official page'], ...list.map(({ e, day: d }) => [iso(d), e.sgt || '', e.region, e.name, e.prev || '', e.url || ''])];
+  setNote(c, '');
 }
 
 // ------------------------------------------------------------------ sub-tabs
 // Each page is split into sub-tabs so only one section shows at a time. Entries are card keys or '#element-id'.
 const SUBTABS = {
-  overview: [['Today', ['points', 'changes', 'ov_signals', 'moved', 'fragile', 'headlines', 'cal_next']], ['Where we are', ['where']]],
+  overview: [['Today', ['#ovLead', 'moved', 'changes', 'ov_signals', 'fragile', 'cal_next', 'headlines', 'points']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
