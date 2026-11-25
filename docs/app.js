@@ -7741,13 +7741,13 @@ function setTab(t) {
   $('#pageTitle').textContent = TAB_TITLES[t] || '';
   // section label above the title: the sidebar group the page sits in
   const btn = document.querySelector(`.tabs button[data-tab="${t}"]:not([data-pin])`), par = btn && btn.dataset.parent;
-  let g = btn; while (g && !g.classList.contains('nav-group')) g = g.previousElementSibling;
-  $('#pageGroup').textContent = btn && btn.dataset.sys ? 'System' : (g ? g.textContent : '') + (par ? ' · ' + TAB_TITLES[par] : '');
+  const g = btn && btn.closest('.nav-sec');   // Design plan 3, Step 1: the menu is a tree of sections
+  $('#pageGroup').textContent = btn && btn.dataset.sys ? 'System' : (g ? g.dataset.group : '') + (par ? ' · ' + TAB_TITLES[par] : '');
   { const hl = $('#healthLink'); if (hl) hl.setAttribute('aria-current', String(t === 'health')); }
   if (par || t in NAV_OPEN) navOpen(par || t, true);
   setGreeting();
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
-  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+  document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
   document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
   $('.filters').hidden = true;   // the page-wide date bar was removed (owner, 19 Nov 2026); each card has its own range pill
   setFiltersHeight();
@@ -7760,6 +7760,7 @@ function navOpen(p, on) {
   NAV_OPEN[p] = on;
   const b = document.querySelector(`.tabs button[data-tab="${p}"]`); if (b) b.setAttribute('aria-expanded', String(on));
   document.querySelectorAll(`.tabs button[data-parent="${p}"]`).forEach(c => { c.hidden = !on; });
+  const kids = document.querySelector(`.tabs .nav-kids[data-kids="${p}"]`); if (kids) kids.hidden = !on;   // countries hang from their region
   try { localStorage.setItem('sd-nav-v1', JSON.stringify(NAV_OPEN)); } catch (e) {}
 }
 function setGreeting() {   // friendly line in Singapore/Malaysia time
@@ -7789,7 +7790,7 @@ function wire() {
   $('#fromDate').addEventListener('change', onDate); $('#toDate').addEventListener('change', onDate);
   $('#customBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('#customPop')); });
   $('#customPop').addEventListener('click', e => e.stopPropagation());
-  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.addEventListener('click', () => {
     const t = b.dataset.tab;
     if (t in NAV_OPEN && state.tab === t && NAV_OPEN[t]) return navOpen(t, false);
     setTab(t); scrollTo({ top: 0 });

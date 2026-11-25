@@ -31,7 +31,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(URL + '#tab=overview');
   await page.waitForTimeout(6000);
-  const tabs = await page.evaluate(() => [...new Set([...document.querySelectorAll('.tabs button:not([data-pin])')].map(b => b.dataset.tab))]);
+  const tabs = await page.evaluate(() => [...new Set([...document.querySelectorAll('.tabs button[data-tab]:not([data-pin])')].map(b => b.dataset.tab))]);
   const problems = [];
   for (const t of tabs) {
     await page.evaluate(t => setTab(t), t);

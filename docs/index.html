@@ -24,46 +24,66 @@
     </div>
     <button id="menuBtn" class="ghost menu-btn" type="button" aria-label="Show or hide the menu" aria-expanded="false">☰</button>
   </div>
-  <nav class="tabs" role="tablist" aria-orientation="vertical">
-    <div class="nav-group">Overview</div>
-    <button role="tab" data-tab="overview" aria-selected="true"><span class="ic">◎</span>Strategist View</button>
-    <button role="tab" data-tab="signals" aria-selected="false"><span class="ic">✧</span>Signals</button>
-    <button role="tab" data-tab="weekly" aria-selected="false"><span class="ic">▣</span>Weekly brief</button>
-    <button role="tab" data-tab="ideas" aria-selected="false"><span class="ic">✎</span>Idea log</button>
-    <button role="tab" data-tab="notebook" aria-selected="false"><span class="ic">✐</span>Notebook</button>
-    <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
-    <button role="tab" data-tab="calendar" aria-selected="false"><span class="ic">◷</span>Calendar</button>
-    <div class="nav-group">Macro</div>
-    <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
-    <button role="tab" data-tab="stress" aria-selected="false"><span class="ic">⚠</span>Stress &amp; Signposts</button>
-    <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
-    <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central banks</button>
-    <div class="nav-group">Regions</div>
-    <button role="tab" data-tab="scorecard" aria-selected="false"><span class="ic">▥</span>Country scorecard</button>
-    <button role="tab" data-tab="us" aria-selected="false"><span class="ic">◧</span>US</button>
-    <button role="tab" data-tab="europe" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◨</span>Europe<span class="nav-caret" aria-hidden="true">▸</span></button>
-    <button role="tab" data-tab="de" data-parent="europe" class="nav-child" aria-selected="false" hidden>Germany</button>
-    <button role="tab" data-tab="fr" data-parent="europe" class="nav-child" aria-selected="false" hidden>France</button>
-    <button role="tab" data-tab="it" data-parent="europe" class="nav-child" aria-selected="false" hidden>Italy</button>
-    <button role="tab" data-tab="es" data-parent="europe" class="nav-child" aria-selected="false" hidden>Spain</button>
-    <button role="tab" data-tab="uk" data-parent="europe" class="nav-child" aria-selected="false" hidden>UK</button>
-    <button role="tab" data-tab="asia" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◐</span>Asia ex-Japan<span class="nav-caret" aria-hidden="true">▸</span></button>
-    <button role="tab" data-tab="my" data-parent="asia" class="nav-child" aria-selected="false" hidden>Malaysia</button>
-    <button role="tab" data-tab="sg" data-parent="asia" class="nav-child" aria-selected="false" hidden>Singapore</button>
-    <button role="tab" data-tab="cn" data-parent="asia" class="nav-child" aria-selected="false" hidden>China</button>
-    <button role="tab" data-tab="kr" data-parent="asia" class="nav-child" aria-selected="false" hidden>Korea</button>
-    <button role="tab" data-tab="tw" data-parent="asia" class="nav-child" aria-selected="false" hidden>Taiwan</button>
-    <button role="tab" data-tab="in" data-parent="asia" class="nav-child" aria-selected="false" hidden>India</button>
-    <button role="tab" data-tab="japan" aria-selected="false"><span class="ic">◑</span>Japan</button>
-    <button role="tab" data-tab="australia" aria-selected="false"><span class="ic">◒</span>Australia</button>
-    <div class="nav-group">Markets &amp; themes</div>
-    <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
-    <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
-    <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
-    <button role="tab" data-tab="posvol" aria-selected="false"><span class="ic">⇅</span>Positioning &amp; Vol</button>
-    <button role="tab" data-tab="sp" aria-selected="false"><span class="ic">◇</span>Structured products</button>
-    <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
-    <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
+  <nav class="tabs nav3" role="tablist" aria-orientation="vertical">
+    <div class="nav-sec" data-group="Overview">
+      <button class="nav-head" type="button" aria-expanded="true"><span class="chev" aria-hidden="true">▸</span><span class="nm">Overview</span><span class="cnt"></span></button>
+      <div class="nav-items">
+        <button role="tab" data-tab="overview" aria-selected="true"><span class="ic">◎</span>Strategist View</button>
+        <button role="tab" data-tab="signals" aria-selected="false"><span class="ic">✧</span>Signals</button>
+        <button role="tab" data-tab="weekly" aria-selected="false"><span class="ic">▣</span>Weekly brief</button>
+        <button role="tab" data-tab="ideas" aria-selected="false"><span class="ic">✎</span>Idea log</button>
+        <button role="tab" data-tab="notebook" aria-selected="false"><span class="ic">✐</span>Notebook</button>
+        <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
+        <button role="tab" data-tab="calendar" aria-selected="false"><span class="ic">◷</span>Calendar</button>
+      </div>
+    </div>
+    <div class="nav-sec" data-group="Macro">
+      <button class="nav-head" type="button" aria-expanded="true"><span class="chev" aria-hidden="true">▸</span><span class="nm">Macro</span><span class="cnt"></span></button>
+      <div class="nav-items">
+        <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
+        <button role="tab" data-tab="stress" aria-selected="false"><span class="ic">⚠</span>Stress &amp; Signposts</button>
+        <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
+        <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central banks</button>
+      </div>
+    </div>
+    <div class="nav-sec" data-group="Regions">
+      <button class="nav-head" type="button" aria-expanded="true"><span class="chev" aria-hidden="true">▸</span><span class="nm">Regions</span><span class="cnt"></span></button>
+      <div class="nav-items">
+        <button role="tab" data-tab="scorecard" aria-selected="false"><span class="ic">▥</span>Country scorecard</button>
+        <button role="tab" data-tab="us" aria-selected="false"><span class="ic">◧</span>US</button>
+        <button role="tab" data-tab="europe" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◨</span>Europe<span class="nav-caret" aria-hidden="true">▸</span></button>
+        <div class="nav-items nav-kids" data-kids="europe" hidden>
+          <button role="tab" data-tab="de" data-parent="europe" class="nav-child" aria-selected="false" hidden>Germany</button>
+          <button role="tab" data-tab="fr" data-parent="europe" class="nav-child" aria-selected="false" hidden>France</button>
+          <button role="tab" data-tab="it" data-parent="europe" class="nav-child" aria-selected="false" hidden>Italy</button>
+          <button role="tab" data-tab="es" data-parent="europe" class="nav-child" aria-selected="false" hidden>Spain</button>
+          <button role="tab" data-tab="uk" data-parent="europe" class="nav-child" aria-selected="false" hidden>UK</button>
+        </div>
+        <button role="tab" data-tab="asia" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◐</span>Asia ex-Japan<span class="nav-caret" aria-hidden="true">▸</span></button>
+        <div class="nav-items nav-kids" data-kids="asia" hidden>
+          <button role="tab" data-tab="my" data-parent="asia" class="nav-child" aria-selected="false" hidden>Malaysia</button>
+          <button role="tab" data-tab="sg" data-parent="asia" class="nav-child" aria-selected="false" hidden>Singapore</button>
+          <button role="tab" data-tab="cn" data-parent="asia" class="nav-child" aria-selected="false" hidden>China</button>
+          <button role="tab" data-tab="kr" data-parent="asia" class="nav-child" aria-selected="false" hidden>Korea</button>
+          <button role="tab" data-tab="tw" data-parent="asia" class="nav-child" aria-selected="false" hidden>Taiwan</button>
+          <button role="tab" data-tab="in" data-parent="asia" class="nav-child" aria-selected="false" hidden>India</button>
+        </div>
+        <button role="tab" data-tab="japan" aria-selected="false"><span class="ic">◑</span>Japan</button>
+        <button role="tab" data-tab="australia" aria-selected="false"><span class="ic">◒</span>Australia</button>
+      </div>
+    </div>
+    <div class="nav-sec" data-group="Markets &amp; themes">
+      <button class="nav-head" type="button" aria-expanded="true"><span class="chev" aria-hidden="true">▸</span><span class="nm">Markets &amp; themes</span><span class="cnt"></span></button>
+      <div class="nav-items">
+        <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
+        <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
+        <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
+        <button role="tab" data-tab="posvol" aria-selected="false"><span class="ic">⇅</span>Positioning &amp; Vol</button>
+        <button role="tab" data-tab="sp" aria-selected="false"><span class="ic">◇</span>Structured products</button>
+        <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
+        <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
+      </div>
+    </div>
     <!-- Data health opens from the foot of the menu (Design plan 2, Step 6); the button stays for search and checks -->
     <button role="tab" data-tab="health" data-sys="1" aria-selected="false" hidden><span class="ic">✓</span>Data health</button>
   </nav>
