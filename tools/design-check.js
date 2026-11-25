@@ -78,6 +78,16 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       for (const [title, n] of m.controls) if (n > LIMITS.controls) problems.push(`${where}: card "${title}" shows ${n} controls in its header (limit ${LIMITS.controls})`);
     }
   }
+  // Design plan 3, Step 1: the menu is a tree; with every group open and the region trees closed the list scrolls at most 200px
+  const menu = await page.evaluate(() => { localStorage.setItem('sd-nav-fold-v1', '[]'); for (const p of Object.keys(NAV_OPEN)) navOpen(p, false); setTab('overview'); navGroupsApply();
+    const n = document.querySelector('.side .tabs'); return { scroll: n.scrollHeight - n.clientHeight, heads: n.querySelectorAll('.nav-sec > .nav-head').length }; });
+  if (!menu.heads) problems.push('menu: no group headers (.nav-sec > .nav-head): the tree markup is missing');
+  if (menu.scroll > 200) problems.push(`menu: the page list scrolls ${menu.scroll}px at 1440x900 with every group open and the region trees closed (limit 200)`);
+  // Design plan 3, Step 3: the Evidence board is a tally of evidence, never advice: no buy, sell, overweight or recommend
+  const advice = await page.evaluate(async () => { goSub('alloc', 'Evidence board'); await new Promise(r => setTimeout(r, 800));
+    const T = [document.querySelector('#tab-alloc').textContent, ...(state.alRes || []).flatMap(x => Object.values(x.c).map(y => y.txt))].join(' ').replace(/not a recommendation/gi, '');
+    return [...new Set((T.match(/\b(buy|buying|sell(?!-off)|selling|overweight|underweight|recommend\w*)\b/gi) || []).map(w => w.toLowerCase()))]; });
+  if (advice.length) problems.push(`alloc › Evidence board: advice words on the page (${advice.join(', ')}); the board is a tally of evidence, not a recommendation`);
   // the daily pages again on a small laptop (1280x720), and the brief on one A4 page
   const lap = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   lap.on('pageerror', e => errors.push(e.message));

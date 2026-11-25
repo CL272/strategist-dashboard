@@ -2,10 +2,10 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_3.md` (approved by the owner 25 Nov 2026, all five decisions as recommended; not built yet): the menu
-as a tree, removing the Idea log and Notebook, an Allocation page (evidence board, in ringgit, drawdowns), profits, Malaysia
-flows and finances, and a MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html`. Build Steps 1 to 9 in
-order, one step per commit; update this note as steps land.
+**Design plan 3** (`DESIGN_PLAN_3.md`, approved and built 25 Nov 2026, Steps 1 to 9, one commit each): the menu as a tree,
+the Idea log and Notebook removed, the Allocation page (Evidence board, In ringgit, Drawdowns, Model portfolio), US profits,
+Malaysia flows and finances, and the MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html` (not
+published). Its rules are folded into the list below. No design work is open.
 
 **Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
 the reference mockups stay in `design/` (not published). Its rules are folded into the list below.
@@ -29,6 +29,11 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
   "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages); on a desktop only the page list scrolls
   (brand, search and the foot stay put); groups: Overview · Macro · Regions · Markets & themes; Data health opens from the foot.
+  Since Design plan 3 the menu is a tree (`nav.tabs.nav3`): each group is a `.nav-sec` with a header button (`.nav-head`:
+  arrow, name, page count from the markup) and its pages on a rail (`.nav-items`); a region's countries sit in a nested
+  `.nav-kids` rail. A folded group still shows the open page on its rail. Pins are the first section. Page buttons keep
+  `role="tab"` and `data-tab`; select them with `.tabs button[data-tab]` (the group headers are buttons too). The design
+  check fails if the list scrolls more than 200px at 1440×900 with every group open and the region trees closed.
 - **Strategist View → Today** (Design plan 2, 25 Nov 2026): the week in one sentence (`weekLine`, shared with the brief)
   above the five tiles; then two rows of three equal cards (What moved · What changed · Signals; Stress gauges · Week ahead ·
   Headlines) written as quiet lists (`.rows`); Talking points fold into a bar at the foot. At most 1,350px at 1440 and 1280.
@@ -122,7 +127,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   share of M2 and of currency in circulation. "FINRA monthly" (default) reads FINRA's margin statistics file in
   `pipeline/leads.py` (`finra_margin`: `FINRA_DEBIT`, free credit balances; from Jan 1997); "Fed quarterly" uses the
   Financial Accounts on FRED (`MARGIN_Z1`). FINRA updates the same .xlsx address in place; the page link is read first.
-- **After VIX spikes** (owner's request, 23 Nov 2026): Positioning & Vol → After VIX spikes (`docs/leads.js`, end of file).
+- **After VIX spikes** (owner's request, 23 Nov 2026): Positioning & Vol → After VIX spikes (`docs/leads.js`, end of file;
+  card "After a volatility spike" since Design plan 3: MOVE triggers 120/140/160 from Nov 2002, a "1M before" column for
+  every trigger, UST 7–10Y (IEF) in the picker, a third quick pick, and "MOVE vs the S&P 500", the rolling 1-year
+  correlation of weekly changes; all-days medians cover the trigger series' own years; fewer than 10 episodes says "thin").
   `pipeline/events.py` writes `events.json` (VIX from FRED VIXCLS since 1990 plus Yahoo's latest days; daily closes since
   1990 for S&P 500, Nasdaq 100, Nikkei, Hang Seng, STI, KLCI), loaded only when the card opens (`loadEvents`). An episode
   = first close above the level after 63 trading days without one; returns at 1, 21, 63, 126, 252 trading days, against all days. The "When" menu also has curve triggers (VIX 3M ÷ VIX < 1 / 0.95 / 0.90, from 2006);
@@ -135,7 +143,26 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   The same call carries the **MGS benchmark closes** (`MY_MGS_3Y/5Y/7Y/10Y/15Y/20Y/30Y`; "0.00" = not traded, dropped;
   no 2Y benchmark exists). Days read before MGS were added are read again (four calls at a time, 600 per full run).
   Malaysia → Rates & bonds: "MGS yields" (`my_mgs`) and "Rate gap vs USD/MYR" (`my_gap`: US 3Y − MGS 3Y, 10Y − MGS 10Y,
-  or US 2Y − OPR, with the level correlation over the shown range in the note).
+  "2Y (monthly)" = US 2Y at month-end − the bulletin's MGS 2Y (`MY_MGS_2Y_M`), or US 2Y − OPR, with the level correlation
+  over the shown range in the note).
+- **Allocation** (Design plan 3, `docs/alloc.js`, loaded after au.js): Evidence board · In ringgit · Drawdowns · Model portfolio.
+  The **Evidence board** is 13 assets × 6 pillars (cycle, valuation, trend, sentiment, policy & liquidity, signals), one mark
+  per cell (▲ ● ▼ –) from one registry, `AL_ROWS`; the rules are printed from `AL_RULES` under the board (change both
+  together). Every mark reads a card that is already on the dashboard (`valRows`, `stretch`, `trendStats`, `cbStats`, `fedRow`,
+  `posStats`, the signal ideas, the regime returns) and links to it (`go`). It is a count: no score, weight or rank. Wording is
+  fixed (evidence, for, against, tally); never buy, sell, overweight or recommend: the design check fails on those words.
+  **In ringgit**: own-currency return × currency effect = ringgit return (`rgSplit`); hedging cost = ringgit 3M interbank −
+  US 3M bill (an estimate, not a quote; from Dec 2023). **Drawdowns**: `events.json` histories since 1990 are spliced in
+  front of the dashboard series (`ddSer`). The Model portfolio and its stress test moved here from the Idea log.
+- **Profits** (Design plan 3): US → Economy → Profits (`docs/more.js`, `PF_SUB`, pushed last in `init`): profits vs the
+  S&P 500, profits ÷ GDP (GDP fetched from 1959), S&P 500 trailing EPS (`SH_EPS`, Shiller's E column; the page falls back to
+  price ÷ P/E). Forward earnings are licensed: never shown.
+- **Malaysia → Flows & finances** (Design plan 3, `MYF_SUB` in `docs/more.js`, last on Malaysia): Bank Negara's Monthly
+  Statistical Bulletin (`bnm_msb` in `pipeline/cbwatch.py`, `/public/msb/{table}/year/{y}`, one call every 3.5 seconds, history
+  once in `msb_years`, then the current year): 3.7 non-resident holdings of ringgit debt (`MY_NR_DEBT`), 3.8 reserves
+  (`MY_RESERVES`), 3.1 federal finance (`MY_FED_BAL`, `MY_FED_REV`), 2.5 MGS by tenor (`MY_MGS_2Y_M`, `MY_MGS_10Y_M`); RM
+  billion. Table 3.1's fields are shifted from `ov_sur_def` on: the balance is revenue − operating spending − net development
+  spending (checked: RM 18.7bn in 2005, RM 91.4bn in 2023). Bursa's foreign equity flows cannot be read automatically.
 - **PMIs and business surveys** (owner's request, 24 Nov 2026): Regime & Leading → PMIs & surveys (`docs/leads.js`, `PMI_ROWS`:
   one registry drives the table, the chart and the tiles). Free PMIs: US ISM (`ISM_PMI`) and China NBS (`CN_PMI` = 50 +
   `CN_BCI` / 2, `cnPmiPrep`; exact, checked against NBS releases). Other economies use official surveys: EC industrial and services
@@ -159,6 +186,7 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Since Design plan 2 it also fails on a lone half-width card (`lone`), a desktop sub-tab bar that hides tabs (`bar-hidden`),
   the Strategist View over 1,350px or the Weekly brief over 1,500px (at 1440 and 1280), and a brief that prints on more than
   one A4 page. Deliberate exceptions are listed in its `ALLOW` table (`first300` for the two pages with a group row).
+  Since Design plan 3 it also fails on a menu list that scrolls more than 200px and on advice words on the Evidence board.
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.
 - Dual-axis charts are the owner's preference for two-series comparisons (`drawPair`).

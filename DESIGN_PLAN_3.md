@@ -1,7 +1,7 @@
 # Design plan 3: a menu that reads as a tree, a leaner tool, and the "so what" layer
 
-**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
-Nothing is built yet. Build Steps 1 to 9 in order, one step per commit.**
+**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end)
+and built, Steps 1 to 9, one commit each. Departures from the plan are listed under "As built" at the end.**
 Written after the owner said the side panel makes it "hard to differentiate between the main tab and sub tab", that he
 no longer needs the Idea log and the Notebook ("I can keep that on my local drive"), and asked what else would help a
 top-down investment decision. He then added: study what happens to US equities when the MOVE index spikes.
@@ -283,3 +283,31 @@ Every default in brackets below is approved. The alternatives were not chosen: d
 4. **The Evidence board's rules and wording**: a count of marks for and against, no score, never a recommendation.
    [Yes] **Approved.**
 5. **Which additions to build**: In ringgit, Drawdowns, Profits, Malaysia flows and finances. [All four] **Approved: build all four** (Steps 4 to 7), plus Step 8, which the owner asked for.
+
+## As built (25 Nov 2026)
+
+All nine steps are live, one commit each. Where the build departs from the text above:
+
+- **Step 1.** Group page counts are worked out from the markup. With every group open and the region trees closed the list
+  scrolls 189px at 1440 × 900; the design check now fails above 200px.
+- **Step 2.** The Allocation page was created in this step to receive the Model portfolio; Step 3 then put the Evidence board
+  first. The vault and sync settings open in a dialog from the vault button; the export downloads the old ideas, house views
+  and notes as one JSON file. The vault-sync check now syncs the old Notebook item (no page reads it), so the test no longer
+  wakes the structured-notes price history.
+- **Step 3.** In `docs/alloc.js`. China, Asia ex-Japan and Singapore have no policy gauge ("–"); the Bank of Japan reading needs
+  the JGB tenors built on first use (`cbPrep`). High-yield valuation uses the Baa − 10Y spread (FRED keeps only three years of
+  the high-yield spread). The valuation scorecard gained two rows the board reads (real gold price, MGS 10Y real yield) and the
+  price-vs-trend chart gained Asia ex-Japan, so each linked card shows the board's number. The lead is one line (counts are in
+  the tiles), to keep the first card within 260px. A third card, "Evidence by pillar", counts the marks per column.
+- **Step 4.** The ringgit interbank series on file starts in December 2023, so the hedging-cost card starts there.
+- **Step 5.** The past-falls table counts falls that recovered; the takeaway gives the median months from the low back to the
+  old high.
+- **Step 6.** "Profits" is the last US Economy sub-tab (appended so older links keep their place). US GDP is now fetched from
+  1959 so the margin's average covers the long history; the next data run fills it in.
+- **Step 7.** "Flows & finances" is the last Malaysia sub-tab. Foreign holdings in the bulletin start in 2009, MGS by tenor in
+  2007. The rate-gap view is labelled "2Y (monthly)" and dated at each month's end.
+- **Step 8.** MOVE runs from November 2002 (Yahoo's first year), adding a 2003 episode: above 140 there are 6 episodes, a median
+  −6.3% in the month before; weekly correlation −0.30 since 2002 and −0.51 over the last three years. The sub-tab keeps its
+  label "After VIX spikes" (bookmarks); the card is titled "After a volatility spike". The all-days medians now cover the
+  trigger series' own years.
+
