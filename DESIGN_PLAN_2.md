@@ -1,6 +1,7 @@
 # Design plan 2: a front page, a one-page brief, fewer clicks
 
-**Status (25 Nov 2026): approved by the owner; Step 1 built.** All five decisions at the end were answered "yes, as
+**Status (25 Nov 2026): approved by the owner; Steps 1–2 built.** Departure in Step 2: "My open ideas" (the owner's
+own, shown only when the Idea log has open ideas) stays on the brief, at most three rows, under Week ahead. All five decisions at the end were answered "yes, as
 recommended", so every step, including Step 4, can be built. Written after the owner said the Strategist View and the Weekly brief
 are "too messy and clunky" and that some pages are "not very clean to click through". This plan adds no data: it
 rearranges what exists. The earlier clean-up (`DESIGN_PLAN.md`, D1–D9) fixed the cards; this one fixes the two

@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Step 1 built): Strategist View, Weekly brief and
+**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–2 built): Strategist View, Weekly brief and
 click-through, in seven steps, with reference mockups in `design/`. Build it in order, one step per commit; when a step
 ships, note it in the plan's status line and update the rules below that it changes.
 

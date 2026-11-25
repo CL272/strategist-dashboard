@@ -6106,13 +6106,14 @@ function renderIdeaScore(c) {
 
 // ------------------------------------------------------------------ WEEKLY ONE-PAGE BRIEF
 // Built from the data already on the dashboard, for the week ending on a Friday. Prints to one A4 page.
-const WK_ROWS = [
-  ['Equities', ['SPX', 'NDX', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'STI', 'KLCI', 'AS51']],
-  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'JGB10Y', 'SGS10Y', 'AU_10Y', 'HY_OAS']],
-  ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR', 'AUDUSD']],
-  ['Commodities & crypto', ['GOLD', 'BRENT', 'COPPER', 'BTC']],
-  ['Volatility', ['VIX', 'MOVE']],
+const WK_ROWS = [   // Design plan 2: 25 rows (the brief's scoreboard; the equity rows also feed weekLine)
+  ['Equities', ['SPX', 'NDX', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'STI', 'KLCI']],
+  ['Rates & credit', ['UST2Y', 'UST10Y', 'REAL10Y', 'MY_MGS_10Y', 'HY_OAS']],
+  ['FX', ['DXY', 'EURUSD', 'USDJPY', 'USDCNY', 'USDSGD', 'USDMYR']],
+  ['Commodities & vol', ['GOLD', 'BRENT', 'COPPER', 'BTC', 'VIX']],
 ];
+const WK_LAB = { CSI300: 'CSI 300', UST2Y: 'UST 2Y', UST10Y: 'UST 10Y', REAL10Y: 'UST 10Y real', MY_MGS_10Y: 'MGS 10Y', HY_OAS: 'US HY spread', DXY: 'US Dollar Index', VIX: 'VIX', BTC: 'Bitcoin' };
+const wkLab = id => WK_LAB[id] || S[id].label;
 state.weekEnd = null;
 function lastFriday(t) { const d = new Date(t).getUTCDay(); return t - ((d + 2) % 7) * DAY; }   // Friday on or before t
 function wkChange(id, end) {
@@ -6120,72 +6121,44 @@ function wkChange(id, end) {
   const b = asOf(s, end - 7 * DAY), y = asOf(s, Date.UTC(new Date(end).getUTCFullYear() - 1, 11, 31));
   return { s, a, w: b && b.t < a.t ? chg(s, b.v, a.v) : null, ytd: y ? chg(s, y.v, a.v) : null };
 }
-function wkTakeaways(end) {
-  const out = [], pct = (r) => r && r.w != null ? fmtChg(r.s, r.w) : '–';
-  const eq = ['SPX', 'SX5E', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'STI', 'KLCI', 'AS51'].filter(id => has(id)).map(id => ({ id, r: wkChange(id, end) })).filter(x => x.r && x.r.w != null).sort((a, b) => b.r.w - a.r.w);
+function wkTakeaways(end) {   // Design plan 2: three short takeaways, each a label and at most two sentences
+  const out = [], pct = r => r && r.w != null ? fmtChg(r.s, r.w) : '–', W = id => has(id) ? wkChange(id, end) : null;
+  const eq = WK_ROWS[0][1].filter(id => has(id)).map(id => ({ id, r: wkChange(id, end) })).filter(x => x.r && x.r.w != null).sort((a, b) => b.r.w - a.r.w);
   if (eq.length) {
-    const spx = wkChange('SPX', end);
-    out.push(`Equities: S&P 500 ${pct(spx)} on the week (${spx && spx.ytd != null ? fmtChg(spx.s, spx.ytd) : '–'} YTD). Best of the majors ${S[eq[0].id].label} ${fmtChg(eq[0].r.s, eq[0].r.w)}; worst ${S[eq[eq.length - 1].id].label} ${fmtChg(eq[eq.length - 1].r.s, eq[eq.length - 1].r.w)}. Malaysia's KLCI ${pct(wkChange('KLCI', end))}, Singapore's STI ${pct(wkChange('STI', end))}.`);
+    const spx = W('SPX'), best = eq[0], asia = ['KLCI', 'STI'].filter(id => id !== best.id && has(id)).map(id => `${id === 'KLCI' ? 'the KLCI' : 'the STI'} ${pct(W(id))}`);
+    out.push({ head: 'Equities', text: `S&P 500 ${pct(spx)} (${spx && spx.ytd != null ? fmtChg(spx.s, spx.ytd) : '–'} YTD). ${wkLab(best.id)} did best (${pct(best.r)})${asia.length ? '; ' + asia.join(', ') : ''}.` });
   }
-  if (has('UST10Y')) { const t10 = wkChange('UST10Y', end), t2 = has('UST2Y') ? wkChange('UST2Y', end) : null;
-    out.push(`Rates: UST 10Y ${fmtNum(t10.a.v, 2)}% (${pct(t10)})` + (t2 ? `, 2Y ${fmtNum(t2.a.v, 2)}% (${pct(t2)})` : '') + (has('REAL10Y') ? `, 10Y real ${fmtNum(asOf(S.REAL10Y, end).v, 2)}%` : '') + '.'); }
-  const now = fpSnap('now');
-  if (now && now.path.length && FP.contracts) {
-    const n = now.path[0], k = Object.keys(FP.contracts).filter(x => x.endsWith('-12')).sort().pop(), c = k && FP.contracts[k];
-    let t = `Fed: futures price ${n.odds.replace(' ~100%', '')} at the ${dShort(dayMs(n.d))} FOMC`;
-    if (c) { const ser = { t: c.d.map(dayMs), v: c.v }, a = asOf(ser, end), b = asOf(ser, end - 7 * DAY);
-      if (a) t += `; the Dec ${k.slice(0, 4)} contract implies ${fmtNum(a.v, 2)}%` + (b ? ` (${bp((a.v - b.v) * 100)} on the week)` : ''); }
-    const med = FP.dots && FP.dots.median && k && FP.dots.median[k.slice(0, 4)];
-    if (med != null) t += ` vs the Fed's ${fmtNum(med, 2)}% median`;
-    out.push(t + '.');
-  }
-  { cbPrep(); const g = Object.keys(CBS).map(k => { const a = cbStats(k, end), b = cbStats(k, end - 7 * DAY);
-      return a && b && a.spread && b.spread ? { k, a, w: a.spread.v - b.spread.v } : null; }).filter(Boolean).sort((x, y) => Math.abs(y.w) - Math.abs(x.w));
-    if (g.length) out.push(`Central banks: biggest move in market pricing was ${CBS[g[0].k].short} (${CBS[g[0].k].gaugeLab} ${bp(g[0].a.spread.v)}, ${bp(g[0].w)} on the week; read: ${g[0].a.read.toLowerCase()}). Others: ${g.slice(1).map(x => `${CBS[x.k].short} ${x.a.read.toLowerCase()}`).join(', ')}.`); }
-  if (has('DXY')) { const d = wkChange('DXY', end), m = has('USDMYR') ? wkChange('USDMYR', end) : null, g = has('USDSGD') ? wkChange('USDSGD', end) : null;
-    out.push(`FX: DXY ${pct(d)}` + (m ? `; USD/MYR ${fmtNum(m.a.v, 4)} (${pct(m)})` : '') + (g ? `; USD/SGD ${fmtNum(g.a.v, 4)} (${pct(g)})` : '') + (has('USDJPY') ? `; USD/JPY ${fmtNum(asOf(S.USDJPY, end).v, 2)}` : '') + '.'); }
-  const cm = ['BRENT', 'GOLD', 'COPPER'].filter(id => has(id)).map(id => `${S[id].label} ${pct(wkChange(id, end))}`);
-  if (cm.length) out.push(`Commodities: ${cm.join(', ')}.`);
-  const keep = state.to; state.to = end;
-  const mv = movers(1).filter(r => Math.abs(r.z) >= 2).slice(0, 3);
-  state.to = keep;
-  if (mv.length) out.push(`Unusual moves (≥2σ vs 5-year norm): ${mv.map(r => `${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`).join('; ')}.`);
-  { const wc = whatChanged(end).filter(x => x.pri <= 2 && x.tab !== 'markets' && x.tab !== 'cbwatch' && x.tab !== 'sp').slice(0, 3); if (wc.length) out.push('What changed: ' + wc.map(x => x.text.replace(/\.$/, '')).join('; ') + '.'); }
-  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); let t = `Macro regime: ${QUADS[q.v].name} (${monthLab(q.t)} data)`;
-    if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end); t += `; stress composite ${ordinal(a.v)} percentile (${legacyBand(a.v)[0].toLowerCase()})`; }
-    out.push(t + '.'); }
+  { let t = '';
+    if (has('UST10Y')) { const t10 = W('UST10Y'), t2 = W('UST2Y'); t = `UST 10Y ${fmtNum(t10.a.v, 2)}% (${pct(t10)})` + (t2 ? `, 2Y ${fmtNum(t2.a.v, 2)}% (${pct(t2)})` : '') + '.'; }
+    const now = fpSnap('now');
+    if (now && now.path.length) t += ` Futures price ${now.path[0].odds.replace(' ~100%', '')} at the ${dShort(dayMs(now.path[0].d))} FOMC.`;
+    if (t) out.push({ head: 'Rates & the Fed', text: t.trim() }); }
+  { const parts = [];
+    if (has('DXY')) parts.push(`DXY ${pct(W('DXY'))}` + (has('USDMYR') ? `; USD/MYR ${pct(W('USDMYR'))}` : '') + '.');
+    const cm = [['GOLD', 'Gold'], ['COPPER', 'copper'], ['BRENT', 'Brent']].filter(([id]) => has(id)).map(([id, n]) => `${n} ${pct(W(id))}`);
+    if (cm.length) parts.push(cm.join(', ') + '.');
+    if (parts.length) out.push({ head: 'FX & commodities', text: parts.join(' ') }); }
   return out;
 }
-function wkTiles(end) {
-  const out = [];
-  const add = (label, val, foot, tk) => out.push({ label, val, foot, tk });
-  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); add('Macro regime', QUADS[q.v].name, monthLab(q.t) + ' data', null); }
-  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, end - 28 * DAY), [bl, tk] = legacyBand(a.v); add('Stress composite', `${Math.round(a.v)} · ${bl}`, b ? `4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)}` : '', tk); }
-  if (SIGN) { const n = SIGN.n_peaks, cols = SIGN.columns; let j = cols.length - 1; while (j > n && SIGN.share[j] == null) j--; if (SIGN.share[j] != null) add('Peak signposts', `${fmtNum(SIGN.share[j], 0)}% triggered`, cols[j], null); }
-  if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, end); add('Recession odds (12m)', fmtNum(a.v, 0) + '%', 'NY Fed curve model', null); }
+function wkTiles(end) {   // five tiles, one row: regime, stress, recession odds, Fed funds, VIX
+  const out = [], add = (label, val, foot, tk) => out.push({ label, val, foot, tk });
+  if (has('REG_QUAD')) { const q = asOf(S.REG_QUAD, end); add('Macro regime', QUADS[q.v].name, monthLab(q.t) + ' data', QUADS[q.v].tok); }
+  if (has('STRESS_COMPOSITE')) { const a = asOf(S.STRESS_COMPOSITE, end), b = asOf(S.STRESS_COMPOSITE, end - 28 * DAY), [bl, tk] = legacyBand(a.v);
+    add('Stress composite', `${Math.round(a.v)}`, bl.toLowerCase() + (b ? ` · 4w ${sign(a.v - b.v)}${fmtNum(Math.abs(a.v - b.v), 0)}` : ''), tk); }
+  if (has('REC_PROB_NYF')) { const a = asOf(S.REC_PROB_NYF, end); add('Recession odds, 12m', fmtNum(a.v, 0) + '%', 'NY Fed curve model', null); }
   const now = fpSnap('now');
-  if (FP && FP.target && FP.target[0] != null) add('Fed funds target', `${fmtNum(FP.target[0], 2)}–${fmtNum(FP.target[1], 2)}%`, now && now.path.length ? `next ${dShort(dayMs(now.path[0].d))}: ${now.path[0].odds.replace(' ~100%', '')}` : '', null);
-  if (has('NET_LIQ')) { const s = S.NET_LIQ, a = asOf(s, end), b = asOf(s, end - 28 * DAY); add('Fed net liquidity', fmtVal(s, a.v), b ? `4w ${sign(a.v - b.v)}${fmtVal(s, Math.abs(a.v - b.v))}` : '', null); }
-  if (has('VIX')) { const p = pctRank(S.VIX, end, 10); if (p) add('VIX', fmtNum(p.v, 1), `${ordinal(p.p)} pct (10y)`, null); }
+  if (FP && FP.target && FP.target[0] != null) add('Fed funds', `${fmtNum(FP.target[0], 2)}–${fmtNum(FP.target[1], 2)}%`, now && now.path.length ? `${dShort(dayMs(now.path[0].d))}: ${now.path[0].odds.replace(' ~100%', '')}` : '', null);
+  if (has('VIX')) { const p = pctRank(S.VIX, end, 10); if (p) add('VIX', fmtNum(p.v, 1), `${ordinal(p.p)} pct (10y)`, '--' + stressBand(p.p)[0]); }
   return out;
 }
+// Asia focus: one row per market (policy or short rate, CPI, the currency and the main index over the week)
+const WK_ASIA = [['Malaysia', 'MY_OPR', 'MY_CPI_YOY', ['USDMYR', 'USD/MYR'], ['KLCI', 'KLCI']], ['Singapore', 'SORA3M', 'SG_CORE_YOY', ['USDSGD', 'USD/SGD'], ['STI', 'STI']],
+  ['China', 'CN_3M', 'CN_CPI_YOY', ['USDCNY', 'USD/CNY'], ['CSI300', 'CSI 300']], ['Japan', 'JP_CALL', 'JP_CORE_YOY', ['USDJPY', 'USD/JPY'], ['NKY', 'Nikkei']],
+  ['Australia', 'AU_CASH', 'AU_TRIM_YOY', ['AUDUSD', 'AUD/USD'], ['AS51', 'ASX 200']]];
 function wkAsia(end) {
-  const rows = [];
-  const lv = (id, f) => { if (!has(id)) return null; const a = asOf(S[id], end); return a ? f(a) : null; };
-  const wk = id => { const r = has(id) ? wkChange(id, end) : null; return r && r.w != null ? fmtChg(r.s, r.w) : '–'; };
-  rows.push(['Malaysia', [
-    lv('MY_OPR', a => `OPR ${fmtNum(a.v, 2)}%`), lv('MY_CPI_YOY', a => `CPI ${fmtNum(a.v, 1)}% (${monthLab(a.t)})`),
-    has('USDMYR') ? `USD/MYR ${fmtNum(asOf(S.USDMYR, end).v, 3)} (${wk('USDMYR')} w/w)` : null, has('KLCI') ? `KLCI ${wk('KLCI')} w/w` : null].filter(Boolean)]);
-  rows.push(['Singapore', [
-    lv('SORA3M', a => `3M SORA ${fmtNum(a.v, 2)}%`), lv('SG_CORE_YOY', a => `MAS core ${fmtNum(a.v, 1)}% (${monthLab(a.t)})`),
-    has('USDSGD') ? `USD/SGD ${fmtNum(asOf(S.USDSGD, end).v, 4)} (${wk('USDSGD')} w/w)` : null, has('STI') ? `STI ${wk('STI')} w/w` : null].filter(Boolean)]);
-  rows.push(['Australia', [
-    lv('AU_CASH', a => `RBA cash ${fmtNum(a.v, 2)}%`), lv('AU_TRIM_YOY', a => `trimmed-mean CPI ${fmtNum(a.v, 1)}%`),
-    has('AU_10Y') ? `10Y ${fmtNum(asOf(S.AU_10Y, end).v, 2)}% (${wk('AU_10Y')} w/w)` : null, has('AUDUSD') ? `AUD/USD ${wk('AUDUSD')} w/w` : null].filter(Boolean)]);
-  rows.push(['China & Japan', [
-    lv('CN_CPI_YOY', a => `China CPI ${fmtNum(a.v, 1)}%`), lv('CN_10Y', a => `CGB 10Y ${fmtNum(a.v, 2)}%`),
-    lv('JP_CORE_YOY', a => `Japan core CPI ${fmtNum(a.v, 1)}%`), has('USDJPY') ? `USD/JPY ${wk('USDJPY')} w/w` : null].filter(Boolean)]);
-  return rows.filter(r => r[1].length);
+  const lv = (id, d) => { if (!has(id)) return null; const a = asOf(S[id], end); return a ? { txt: fmtNum(a.v, d) + '%', t: a.t, s: S[id] } : null; };
+  const wk = ([id, n]) => { const r = has(id) ? wkChange(id, end) : null; return r && r.w != null ? { txt: `${n} ${fmtChg(r.s, r.w)}`, v: r.w } : null; };
+  return WK_ASIA.map(([m, rate, cpi, fx, eq]) => ({ m, rate: lv(rate, 2), cpi: lv(cpi, 1), fx: wk(fx), eq: wk(eq) })).filter(r => r.rate || r.cpi || r.fx || r.eq);
 }
 function wkAhead(end) {
   if (!CAL || !CAL.events) return [];
@@ -6203,101 +6176,111 @@ function buildWeekly() {
   panel.append(el('div', { class: 'controls wk-controls' },
     el('label', {}, 'Week ending ', sel),
     el('button', { type: 'button', text: '⎙ Print / save as PDF', title: 'Prints this page only, on one A4 sheet', onclick: () => window.print() }), copy,
-    el('span', { class: 'muted small', text: 'Built from this dashboard’s data. For screenshots, the page is sized to fit one A4 sheet.' })),
-    el('article', { class: 'onepage', id: 'wkPage' }));
+    el('span', { class: 'muted small', text: 'One A4 page. Built from this dashboard’s data: facts only.' })),
+    el('article', { class: 'wb', id: 'wkPage' }));
 }
-function renderWeekly() {
+function renderWeekly() {   // Design plan 2, Step 2 (reference: design/weekly-brief.html)
   const sel = $('#wkSel'), latest = lastFriday(state.latest);
   if (!sel.options.length) for (let k = 0; k < 12; k++) { const t = latest - k * 7 * DAY; sel.append(el('option', { value: t, text: `Fri ${dShort(t)} ${new Date(t).getUTCFullYear()}` + (k === 0 ? ' (latest)' : '') })); }
   const end = state.weekEnd || latest; sel.value = end;
   const page = $('#wkPage'); page.replaceChildren();
-  const txt = [];
-  // header
-  page.append(el('header', { class: 'op-head' },
-    el('div', {}, el('h2', { text: 'Weekly strategist brief' }), el('div', { class: 'muted', text: `Week to Friday ${dShort(end)} ${new Date(end).getUTCFullYear()} · markets, macro and the week ahead` })),
-    el('div', { class: 'muted small op-asof', text: `Data as of ${nice(Math.min(end, state.latest))}` + (META.updated_utc ? ` · refreshed ${META.updated_utc}` : '') })));
-  txt.push(`WEEKLY STRATEGIST BRIEF: week to Fri ${dShort(end)} ${new Date(end).getUTCFullYear()}`, '');
-  // takeaways
+  const yr = new Date(end).getUTCFullYear(), txt = [];
+  // masthead
+  page.append(el('header', { class: 'wb-head' },
+    el('div', {}, el('h2', { text: 'Weekly strategist brief' }), el('div', { class: 'muted', text: `Week to Friday ${dShort(end)} ${yr}` })),
+    el('div', { class: 'muted small', text: `Data as of ${nice(Math.min(end, state.latest))}` })));
+  txt.push(`WEEKLY STRATEGIST BRIEF: week to Fri ${dShort(end)} ${yr}`, '');
+  // the week in one sentence (the same rules as the Strategist View's lead)
+  const w = weekLine(end);
+  if (w) { page.append(lineEl('p', w, { class: 'wb-lead' })); txt.push(w.text, ''); }
+  // three takeaways
   const tk = wkTakeaways(end);
-  page.append(el('section', { class: 'op-take' }, el('h3', { text: 'Key takeaways' }), el('ul', {}, ...tk.map(t => el('li', { text: t })))));
-  txt.push('KEY TAKEAWAYS', ...tk.map(t => '• ' + t), '');
-  // tiles
+  page.append(el('ul', { class: 'wb-take' }, ...tk.map(t => el('li', {}, el('b', { text: t.head }), t.text))));
+  txt.push(...tk.map(t => `${t.head.toUpperCase()}: ${t.text}`), '');
+  // five tiles
   const tiles = wkTiles(end);
-  page.append(el('section', { class: 'op-tiles' }, ...tiles.map(t => el('div', { class: 'op-tile' }, el('div', { class: 'k-label', text: t.label }),
-    el('div', { class: 'op-v' }, t.tk ? el('span', { class: 'qdot', style: `background:${tok(t.tk)}` }) : '', t.val), el('div', { class: 'k-asof', text: t.foot })))));
-  // two columns
-  const left = el('div', { class: 'op-col' }), right = el('div', { class: 'op-col' });
-  page.append(el('div', { class: 'op-cols' }, left, right));
-  // scoreboard
-  const tbl = el('table', { class: 'perf op-table' });
+  page.append(el('div', { class: 'kpis' }, ...tiles.map((t, i) => el('div', { class: 'kpi' + (i ? '' : ' first') }, el('div', { class: 'k-label', text: t.label }),
+    el('div', { class: 'k-value' }, t.tk ? el('span', { class: 'qdot', style: `background:${tok(t.tk)}` }) : '', t.val), el('div', { class: 'k-delta', text: t.foot })))));
+  txt.push(tiles.map(t => `${t.label}: ${t.val}${t.foot ? ` (${t.foot})` : ''}`).join(' · '), '');
+  const left = el('div', {}), right = el('div', {});
+  page.append(el('div', { class: 'wb-cols' }, left, right));
+  // scoreboard: numbers in blue or red; a faint tint only on a 1W move of 2σ or more for that asset
+  const keep = state.to; state.to = end;
+  const tbl = el('table', { class: 'perf' });
   tbl.append(el('thead', {}, el('tr', {}, ...['Asset', 'Last', '1W', 'YTD', '3M'].map(h => el('th', { text: h })))));
-  const tb = el('tbody'), pos = tok('--pos'), neg = tok('--neg');
-  const sc = { price: [3, 15], yield: [15, 75], level: [10, 30] };
+  const tb = el('tbody'), cls = v => v == null ? '' : v > 0 ? 'up' : v < 0 ? 'dn' : '';
   txt.push('SCOREBOARD (last, 1W, YTD)');
   for (const [g, ids] of WK_ROWS) {
     const ok = ids.filter(id => has(id)); if (!ok.length) continue;
     tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 5, text: g })));
     for (const id of ok) {
       const r = wkChange(id, end); if (!r) continue;
-      const heat = (v, k) => v == null ? '' : `background:${hexA(v > 0 ? pos : neg, Math.min(1, Math.abs(r.s.kind === 'level' ? v / Math.max(1e-9, Math.abs(r.a.v)) * 100 : v) / sc[r.s.kind][k]) * 0.42)}`;
+      const z = moveZ(id, 1), big = z && Math.abs(z.z) >= 2;
       const last = r.s.kind === 'yield' ? fmtNum(r.a.v, 2) + '%' : fmtVal(r.s, r.a.v);
-      tb.append(el('tr', { class: 'row' }, el('td', { text: r.s.label.replace(' (equity vol)', '').replace(' (rates vol)', '') }), el('td', { text: last }),
-        el('td', { class: 'heat', style: heat(r.w, 0), text: fmtChg(r.s, r.w) }), el('td', { class: 'heat', style: heat(r.ytd, 1), text: fmtChg(r.s, r.ytd) }),
+      tb.append(el('tr', { class: 'row', title: `${r.s.label}${z ? ` · 1W move ${zf(z.z)}σ vs its 5-year history` : ''}` }, el('td', { text: wkLab(id) }), el('td', { text: last }),
+        el('td', { class: `${cls(r.w)}${big ? ' big' : ''}`, text: r.w == null ? '–' : fmtChg(r.s, r.w) }), el('td', { class: cls(r.ytd), text: r.ytd == null ? '–' : fmtChg(r.s, r.ytd) }),
         el('td', {}, sparkSVG(r.s, addMonths(end, -3), end) || '')));
-      txt.push(`  ${r.s.label}: ${last}, ${fmtChg(r.s, r.w)}, ${fmtChg(r.s, r.ytd)} YTD`);
+      txt.push(`  ${wkLab(id)}: ${last}, ${r.w == null ? '–' : fmtChg(r.s, r.w)}, ${r.ytd == null ? '–' : fmtChg(r.s, r.ytd)} YTD`);
     }
   }
   tbl.append(tb);
-  left.append(el('section', {}, el('h3', { text: 'Cross-asset scoreboard' }), tbl,
-    el('p', { class: 'muted small', text: 'Local currency. Yields and spreads in bp; VIX/MOVE in points. 1W = Friday to Friday. Shading: blue = up, red = down.' })));
+  left.append(el('h3', { text: 'Cross-asset scoreboard' }), tbl,
+    el('p', { class: 'muted small wb-note', text: 'Local currency; yields and spreads in bp; VIX in points. 1W = Friday to Friday. Tinted = a move of 2σ or more for that asset.' }));
   txt.push('');
   // Asia focus
   const asia = wkAsia(end);
-  right.append(el('section', {}, el('h3', { text: 'Asia focus' }), el('dl', { class: 'op-asia' }, ...asia.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v.join(' · ') })]))));
-  txt.push('ASIA FOCUS', ...asia.map(([k, v]) => `  ${k}: ${v.join(' · ')}`), '');
-  // movers
-  const keep = state.to; state.to = end; const mv = movers(1).slice(0, 6); state.to = keep;
-  if (mv.length) right.append(el('section', {}, el('h3', { text: 'Most unusual moves this week' }),
-    el('ul', { class: 'op-list' }, ...mv.map(r => el('li', {}, el('span', { text: S[r.id].label }), el('b', { text: `${fmtMove(S[r.id], r.chg)} · ${zf(r.z)}σ`, style: `color:${tok(r.z >= 0 ? '--pos' : '--neg')}` })))),
-    el('p', { class: 'muted small', text: 'σ = size of the weekly move against that asset’s own last 5 years of weekly moves.' })));
-  // house views (this browser only): overweights and underweights in one line
-  { const cur = hvCurrent(), ow = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'OW').map(r => r[2]), uw = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'UW').map(r => r[2]);
-    if (ow.length || uw.length) right.append(el('p', { class: 'small op-views' }, el('b', { text: 'House views · ' }), `Overweight: ${ow.join(', ') || 'none'}. Underweight: ${uw.join(', ') || 'none'}.`)); }
-  // signals to watch (current engine run; only on the latest week)
-  const sw = SIG && end >= latest ? SIG.ideas.filter(g => g.net > 0).slice(0, 3) : [];
-  if (sw.length) right.append(el('section', {}, el('h3', { text: 'Signals to watch' }),
-    el('ul', { class: 'op-list' }, ...sw.map(g => { const x = sigById(g.signals[0]); return el('li', {}, el('span', { text: sigHeadline(g, x.best_h) }), el('b', { text: x.tier })); })),
-    el('p', { class: 'muted small no-print', text: 'Ideas to investigate from the Signals page: rules with a tested record, not recommendations.' })));
-  // leading indicators (WP52): one line from the Leading board, current week only
-  if (typeof lbSummary === 'function' && end >= latest) { const ls = lbSummary(); if (ls) { right.append(el('p', { class: 'small' }, el('b', { text: 'Leads · ' }), ls)); txt.push('LEADS: ' + ls, ''); } }
-  // structures (screen only; current week)
-  if (typeof spReadLines === 'function' && SPD && SPD.under && end >= latest) right.append(el('p', { class: 'small no-print' }, el('b', { text: 'Structures · ' }), spReadLines()[0]));
-  // week ahead
-  const ah = wkAhead(end);
-  const ul = el('ul', { class: 'op-list op-cal' });
-  let day = null;
-  for (const { e, day: d } of ah.slice(0, 16)) {
-    if (d !== day) { day = d; ul.append(el('li', { class: 'op-day', text: dLong(d) })); }
-    ul.append(el('li', {}, el('span', {}, el('span', { class: 'muted', text: (e.sgt || '').replace(' (+1 day)', '⁺¹') + ' ' }), `${e.region}: ${e.name}`),
-      el('span', { class: 'muted', text: e.prev ? `prev ${e.prev}` : e.end ? `${dShort(calSpan(e)[0])}–${dShort(calSpan(e)[1])}` : '' })));
+  if (asia.length) {
+    const at = el('table', { class: 'perf' });
+    at.append(el('thead', {}, el('tr', {}, ...['Market', 'Rate', 'CPI', 'FX, 1W', 'Equities, 1W'].map(h => el('th', { text: h })))));
+    at.append(el('tbody', {}, ...asia.map(r => el('tr', { class: 'row' }, el('td', { text: r.m }),
+      el('td', { text: r.rate ? r.rate.txt : '–', title: r.rate ? `${r.rate.s.label} · ${nice(r.rate.t)}` : '' }), el('td', { text: r.cpi ? r.cpi.txt : '–', title: r.cpi ? `${r.cpi.s.label} · ${monthLab(r.cpi.t)}` : '' }),
+      el('td', { text: r.fx ? r.fx.txt : '–' }), el('td', { class: r.eq ? cls(r.eq.v) : '', text: r.eq ? r.eq.txt : '–' })))));
+    right.append(el('h3', { text: 'Asia focus' }), at,
+      el('p', { class: 'muted small wb-note', text: 'Rate: OPR, 3M SORA, China 3M interbank, Japan call rate, RBA cash rate. CPI: headline; Singapore MAS core, Japan core, Australia trimmed mean.' }));
+    txt.push('ASIA FOCUS', ...asia.map(r => `  ${r.m}: rate ${r.rate ? r.rate.txt : '–'}, CPI ${r.cpi ? r.cpi.txt : '–'}, ${r.fx ? r.fx.txt : '–'}, ${r.eq ? r.eq.txt : '–'}`), '');
   }
-  right.append(el('section', {}, el('h3', { text: 'Week ahead (key events, SGT)' }), ah.length ? ul : el('p', { class: 'muted small', text: 'No calendar loaded.' }),
-    ah.length > 16 ? el('p', { class: 'muted small', text: `+${ah.length - 16} more on the Calendar page.` }) : ''));
+  // most unusual moves
+  const mv = movers(1).slice(0, 5); state.to = keep;
+  if (mv.length) {
+    right.append(el('h3', { text: 'Most unusual moves' }), el('ul', { class: 'rows mv' }, ...mv.map(r => { const s = S[r.id];
+      return el('li', {}, el('span', { class: 't', text: s.label }), el('span', { class: 'n ' + (r.chg >= 0 ? 'up' : 'dn'), text: fmtMove(s, r.chg) }),
+        el('span', { class: 'm', text: zf(r.z).replace(/(\.\d)\d$/, '$1') + 'σ' }),
+        el('span', { class: 'sig-bar' }, el('i', { class: r.z >= 0 ? 'up' : 'dn', style: `width:${Math.min(50, Math.abs(r.z) / 8 * 50).toFixed(0)}%` }))); })));
+    txt.push('MOST UNUSUAL MOVES (vs 5-year weekly norm)', ...mv.map(r => `  ${S[r.id].label} ${fmtMove(S[r.id], r.chg)} (${zf(r.z)}σ)`), '');
+  }
+  // signals to watch (current engine run; only on the latest week), the leading-indicator line and the house views
+  const sw = SIG && end >= latest ? SIG.ideas.filter(g => g.net > 0).slice(0, 3) : [];
+  const ls = typeof lbSummary === 'function' && end >= latest ? lbSummary() : null;
+  if (sw.length || ls) {
+    const ul = el('ul', { class: 'rows sg' }, ...sw.map(g => { const x = sigById(g.signals[0]), up = sigSide(g) > 0;
+      return el('li', {}, el('span', { class: 'dir ' + (up ? 'up' : 'dn'), text: up ? '▲' : '▼' }), el('span', { class: 't', text: sigHeadline(g, x.best_h).replace(/ \(\d+ months?\)$/, ''), title: sigHeadline(g, x.best_h) }),
+        el('span', { class: 'm', text: `${x.best_h}m · ${x.tier === 'Tested edge' ? 'tested' : x.tier === 'Thin evidence' ? 'thin' : 'context'}` })); }));
+    if (ls) ul.append(el('li', {}, el('span', { class: 'dir', text: '◆' }), el('span', { class: 't', text: 'Leads: ' + ls, title: 'Leads: ' + ls }), el('span', { class: 'm', text: 'Leading board' })));
+    right.append(el('h3', { text: 'Signals to watch' }), ul);
+    txt.push('SIGNALS TO WATCH (research prompts, not recommendations)', ...sw.map(g => '  ' + sigHeadline(g, sigById(g.signals[0]).best_h)), ...(ls ? ['  Leads: ' + ls] : []), '');
+  }
+  { const cur = hvCurrent(), ow = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'OW').map(r => r[2]), uw = HV_ROWS.filter(r => (cur[r[0]] || {}).stance === 'UW').map(r => r[2]);
+    if (ow.length || uw.length) right.append(el('p', { class: 'small wb-views' }, el('b', { text: 'House views · ' }), `Overweight: ${ow.join(', ') || 'none'}. Underweight: ${uw.join(', ') || 'none'}.`)); }
+  // week ahead: at most eight key events after the Friday
+  const ah = wkAhead(end);
+  const cal = el('ul', { class: 'rows cal' }); let day = null;
+  for (const { e, day: d } of ah.slice(0, 8)) {
+    if (d !== day) { day = d; cal.append(el('li', { class: 'day', text: dLong(d) })); }
+    cal.append(el('li', {}, el('span', { class: 'm', text: (e.sgt || '').replace(' (+1 day)', '⁺¹') || '–' }), el('span', { class: 't', title: `${e.region}: ${e.name}` }, el('span', { class: 'm', text: e.region + ' · ' }), e.name),
+      el('span', { class: 'm', text: e.prev ? `prev ${e.prev}` : e.end ? `${dShort(calSpan(e)[0])}–${dShort(calSpan(e)[1])}` : '' })));
+  }
+  right.append(el('h3', { text: 'Week ahead (SGT)' }), ah.length ? cal : el('p', { class: 'muted small', text: 'No calendar loaded.' }));
+  if (ah.length > 8) right.append(el('p', { class: 'muted small wb-note', text: `+${ah.length - 8} more on the Calendar page.` }));
   txt.push('WEEK AHEAD (SGT)', ...ah.map(({ e, day: d }) => `  ${dLong(d)} ${e.sgt || ''} ${e.region}: ${e.name}${e.prev ? ` (prev ${e.prev})` : ''}`), '');
-  // the user's own open ideas (from this browser only)
+  // the owner's own open ideas (from this browser only)
   const mine = IDEAS.filter(x => x.status !== 'closed' && x.date <= iso(end));
   if (mine.length) {
-    right.append(el('section', {}, el('h3', { text: 'My open ideas' }), el('ul', { class: 'op-list' }, ...mine.slice(0, 6).map(x => { const p = ideaPerf(x, end);
-      return el('li', {}, el('span', { text: x.title + (x.conv ? ' ' + '★'.repeat(x.conv) : '') }), el('b', { text: p ? fmtPnl(p) : 'view', style: p ? `color:${tok(p.val >= 0 ? '--pos' : '--neg')}` : '' })); })),
-      mine.length > 6 ? el('p', { class: 'muted small', text: `+${mine.length - 6} more in the Idea log.` }) : ''));
+    right.append(el('h3', { text: 'My open ideas' }), el('ul', { class: 'rows' }, ...mine.slice(0, 3).map(x => { const p = ideaPerf(x, end);
+      return el('li', {}, el('span', { class: 't', text: x.title + (x.conv ? ' ' + '★'.repeat(x.conv) : '') }), el('span', { class: 'n ' + (p ? (p.val >= 0 ? 'up' : 'dn') : ''), text: p ? fmtPnl(p) : 'view' })); })));
+    if (mine.length > 3) right.append(el('p', { class: 'muted small wb-note', text: `+${mine.length - 3} more in the Idea log.` }));
     txt.push('MY OPEN IDEAS', ...mine.map(x => { const p = ideaPerf(x, end); return `  ${x.title}: ${p ? fmtPnl(p) : 'view'}`; }), '');
   }
-  // headlines
-  if (NEWS && NEWS.items && end >= lastFriday(state.latest)) {
-    const items = NEWS.items.slice(0, mine.length ? 3 : 5);
-    right.append(el('section', { class: 'op-news-sec no-print' }, el('h3', { text: 'Headlines' }), el('ul', { class: 'op-list op-news' }, ...items.map(n => el('li', {}, el('span', { text: n.title }), el('span', { class: 'muted', text: n.source }))))));
-  }
-  page.append(el('footer', { class: 'op-foot muted small', text: 'Sources: Yahoo Finance, FRED (Federal Reserve, BLS, BEA, ICE BofA), US Treasury, MOF Japan, MAS/SingStat, DOSM/Bank Negara, RBA, OECD, CBOT fed funds futures, public news feeds. Generated from public data by the Strategist Dashboard; facts only, no investment advice.' }));
+  page.append(el('footer', { class: 'wb-foot', text: 'Sources: Yahoo Finance, FRED (Federal Reserve, BLS, BEA, ICE BofA), US Treasury, Bank Negara Malaysia, MAS/SingStat, DOSM, RBA, Bank of Japan, OECD, CBOT fed funds futures. Generated from public data by the Strategist Dashboard; facts only, not investment advice.' }));
   state.weekText = txt.join('\n');
 }
 
