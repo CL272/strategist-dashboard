@@ -1190,7 +1190,7 @@ function renderPoints(c) {
 // ------------------------------------------------------------------ WHAT CHANGED (Strategist View → Today; weekly brief)
 // Rule-based list of changes over the week to `end`, most important first. Monthly signals (regime, signposts)
 // count as changed when the latest data month differs from the one before.
-function goSub(tab, name) { setTab(tab); if (name && SUBTABS[tab]) { const i = SUBTABS[tab].findIndex(x => x[0] === name); if (i >= 0) setSub(tab, i); } }
+function goSub(tab, name) { setTab(tab); if (name && SUBTABS[tab]) { const i = subIndexOf(tab, name); if (i >= 0) setSub(tab, i); } }
 function whatChanged(end = state.latest, { moves = true } = {}) {
   // each item: pri (1 = most important), text (one sentence), head + detail (two-part form for lists), tab/sub to open,
   // phrase (a short clause for the week's lead sentence; only regime, stress band, breadth and VIX-curve changes have one)
@@ -2809,7 +2809,7 @@ function buildAsia() {
   g.append(el('h3', { class: 'section', text: 'Australia' }));
   makeCard(g, { key: 'aurates', title: 'Australia: RBA cash rate and bond yields', sub: 'Cash rate target, 3M bank bills, 2Y and 10Y government bonds.', render: seriesCard(['AU_CASH', 'AU_3M', 'AU_2Y', 'AU_10Y'], pct2, pct1, { endLabels: false }) });
   makeCard(g, { key: 'auinfl', title: 'Australia: inflation vs RBA target', sub: 'Headline and trimmed-mean CPI, year-on-year % (quarterly). Shaded: the RBA 2–3% target band.', render: bandCard(['AU_CPI_YOY', 'AU_TRIM_YOY'], pct1, pct0, [2, 3], 'RBA target 2–3%') });
-  makeCard(g, { key: 'audiff', title: 'AUD/USD vs the Australia − US 2Y gap', wide: true, render: renderAuDiff });
+  makeCard(g, { key: 'audiff', title: 'AUD/USD vs the Australia − US 2Y gap', render: renderAuDiff });   // half width: pairs with iron ore in Australia → Markets
   state.auMode = 'jobs';
   makeCard(g, { key: 'augrowth', title: 'Australia: activity and credit', seg: { key: 'auMode', options: [['jobs', 'Jobs'], ['gdp', 'GDP'], ['credit', 'Credit'], ['ext', 'Trade']] },
     render: segCard('auMode', { jobs: [['AU_UNEMP', 'AU_EMP_YOY'], 'Unemployment rate (SA) and employment growth YoY, %.'], gdp: [['AU_GDP_YOY'], 'Real GDP, year-on-year % (quarterly).'],
@@ -6933,6 +6933,44 @@ function buildSeeAlso() {
   seeAlso('sa_eu_cmp', $('#europeGrid'), [['Germany', 'de'], ['France', 'fr'], ['Italy', 'it'], ['Spain', 'es'], ['UK', 'uk'], ['Euro periphery spreads', 'europe', 'Rates & bonds']]);
   seeAlso('sa_us_fx', $('#usGrid'), [['Rate differentials vs FX', 'fixed', 'FX & hedging'], ['Asian FX: carry and value', 'asia', 'Asian FX']]);
 }
+// Design plan 2, Step 4 (owner's approval, 25 Nov 2026): on the smaller country and region pages the thin asset-class
+// sub-tabs merge, in the fixed order, into one "Markets" sub-tab (Singapore merges only rates and currency). Each card
+// there carries its asset class above its title. Old labels stay valid through SUB_ALIAS (links, "See also", bookmarks).
+const MARKETS_MERGE = { de: 'Markets', fr: 'Markets', it: 'Markets', es: 'Markets', uk: 'Markets', cn: 'Markets', kr: 'Markets', tw: 'Markets', in: 'Markets',
+  japan: 'Markets', europe: 'Markets', australia: 'Markets', sg: 'Rates & currency' };
+const SUB_ALIAS = {}, SUB_V3 = {}, CARD_CLASS = {};
+function mergeMarkets() {   // runs once in init, after every script has added its sub-tabs and before the URL is read
+  for (const [tab, name] of Object.entries(MARKETS_MERGE)) {
+    const G = SUBTABS[tab]; if (!G || G.some(x => x[0] === name)) continue;
+    SUB_V3[tab] = G.map(x => x[0]);   // the order old (v=3) bookmarks were made with
+    const which = name === 'Markets' ? ['Equities', 'Rates & bonds', 'Currency'] : ['Rates & bonds', 'Currency'];
+    const parts = G.filter(x => which.includes(x[0])); if (parts.length < 2) continue;
+    const head = [], sees = [], body = [];
+    for (const [lab, keys] of parts) for (const k of keys) {
+      if (k.startsWith('#sig_')) head.push(k); else if (k.startsWith('#sa_')) sees.push(k); else { body.push(k); if (k[0] !== '#') CARD_CLASS[k] = lab; } }
+    const at = G.indexOf(parts[0]);
+    SUBTABS[tab] = [...G.slice(0, at), [name, [...head, ...sees, ...body]], ...G.slice(at).filter(x => !parts.includes(x))];
+    SUB_ALIAS[tab] = Object.fromEntries(parts.map(x => [x[0], name]));
+    const ts = TILE_SETS[tab]; if (ts && !ts[name]) { const src = parts.map(x => ts[x[0]]).find(Boolean); if (src) ts[name] = src; }
+  }
+}
+const subIndexOf = (tab, lab) => { const G = SUBTABS[tab] || []; let i = G.findIndex(x => x[0] === lab);
+  if (i < 0 && SUB_ALIAS[tab] && SUB_ALIAS[tab][lab]) i = G.findIndex(x => x[0] === SUB_ALIAS[tab][lab]); return i; };
+function mergeSeeAlso() {   // a merged sub-tab shows one "See also" row: the links of the others join the first
+  for (const tab of Object.keys(SUB_ALIAS)) {
+    const G = SUBTABS[tab], m = G.find(x => x[0] === MARKETS_MERGE[tab]), ids = m[1].filter(k => k.startsWith('#sa_')); if (ids.length < 2) continue;
+    const first = $(ids[0]); if (!first) continue;
+    const have = new Set([...first.querySelectorAll('a')].map(a => a.textContent));
+    for (const id of ids.slice(1)) { const x = $(id); if (!x) continue;
+      for (const a of x.querySelectorAll('a')) if (!have.has(a.textContent)) { have.add(a.textContent); first.append(' · ', a); }
+      x.remove(); }
+    m[1] = m[1].filter(k => !ids.slice(1).includes(k));
+  }
+}
+function labelAssetCards() {   // the asset class above each card's title in a merged sub-tab
+  for (const [k, lab] of Object.entries(CARD_CLASS)) { const c = cards[k]; if (!c || c.root.querySelector('.card-eyebrow')) continue;
+    c.titleEl.before(el('span', { class: 'card-eyebrow', text: lab })); }
+}
 function buildSubtabs() {
   for (const [tab, groups] of Object.entries(SUBTABS)) {
     const panel = $('#tab-' + tab); if (!panel) continue;
@@ -7569,7 +7607,7 @@ function syncFilterUI() {
     cb.textContent = on ? `${sh(state.from)} – ${sh(state.to)} ▾` : 'Custom ▾'; cb.classList.toggle('on', on); }
   $('#fromDate').max = $('#toDate').max = iso(state.latest);
   $('#fromDate').min = $('#toDate').min = iso(state.earliest);
-  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], v: 3 } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
+  const h = new URLSearchParams({ tab: state.tab, ...(state.sub[state.tab] ? { sub: state.sub[state.tab], v: 4 } : {}), ...(state.preset === 'custom' ? { from: iso(state.from), to: iso(state.to) } : { range: state.preset }) });
   history.replaceState(null, '', '#' + h.toString());
 }
 // sub-tab order before 12 Nov 2026 (WP32/33), so old bookmarks land in the right place: index -> [page, sub-tab label]
@@ -7798,18 +7836,22 @@ async function init() {
   }
   ismPrep();
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildUncertainty(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
-  if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'cn'); h.set('sub', String(SUBTABS.cn.findIndex(x => x[0] === 'Economy'))); } }
+  mergeMarkets();   // Design plan 2, Step 4: the indexes below are the merged ones
+  if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'cn'); h.set('sub', String(subIndexOf('cn', 'Economy'))); } h.set('v', '4'); }
   if (OLD_SUBS[h.get('tab')] && +h.get('sub') > 0 && !h.has('v')) {   // links made before the pages were split by asset class
     const [t, lab] = OLD_SUBS[h.get('tab')][+h.get('sub')] || [h.get('tab')];
-    h.set('tab', t); h.set('sub', String(Math.max(0, (SUBTABS[t] || []).findIndex(x => x[0] === lab)))); h.set('v', '3');
+    h.set('tab', t); h.set('sub', String(Math.max(0, subIndexOf(t, lab)))); h.set('v', '4');
   }
-  if (typeof SUB_PREV !== 'undefined' && SUB_PREV[h.get('tab')] && +h.get('sub') > 0 && h.get('v') !== '3') {   // links made before WP52 inserted sub-tabs
-    const lab = SUB_PREV[h.get('tab')][+h.get('sub')]; h.set('sub', String(Math.max(0, (SUBTABS[h.get('tab')] || []).findIndex(x => x[0] === lab))));
+  if (typeof SUB_PREV !== 'undefined' && SUB_PREV[h.get('tab')] && +h.get('sub') > 0 && !['3', '4'].includes(h.get('v'))) {   // links made before WP52 inserted sub-tabs
+    const lab = SUB_PREV[h.get('tab')][+h.get('sub')]; h.set('sub', String(Math.max(0, subIndexOf(h.get('tab'), lab)))); h.set('v', '4');
+  }
+  if (h.get('v') === '3' && SUB_V3[h.get('tab')] && +h.get('sub') > 0) {   // links made before the Markets merge (25 Nov 2026)
+    const lab = SUB_V3[h.get('tab')][+h.get('sub')]; h.set('sub', String(Math.max(0, subIndexOf(h.get('tab'), lab)))); h.set('v', '4');
   }
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly(); buildIdeas();

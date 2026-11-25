@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–3 built): Strategist View, Weekly brief and
+**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–4 built): Strategist View, Weekly brief and
 click-through, in seven steps, with reference mockups in `design/`. Build it in order, one step per commit; when a step
 ships, note it in the plan's status line and update the rules below that it changes.
 
@@ -48,9 +48,15 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Slots `--s1`…`--s10` in `style.css`. Asia-Pacific economies keep one colour on every chart (`COUNTRY_TOK`; `seriesCard`
   uses it when every id has a country prefix). The Playbook's faint past-episode fan is deliberate and stays grey.
 - **Grouped sub-tabs**: a third element in a `SUBTABS` entry is its group label (see `cbwatch`, `us`, `regime`).
-- **Region and country pages hold everything about one place, split by asset class.** Sub-tabs always in this order,
-  leaving out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one in two to stay
-  within the height budget, e.g. Malaysia "Sectors", US "Sectors & styles", the US Economy group).
+- **Region and country pages hold everything about one place, split by asset class.** Sub-tabs in this order, leaving
+  out any with no data: **Equities · Rates & bonds · Currency · Economy** (a page may split one in two to stay within the
+  height budget, e.g. Malaysia "Sectors", US "Sectors & styles", the US Economy group). On the smaller pages (owner's
+  approval, 25 Nov 2026: Germany, France, Italy, Spain, UK, China, Korea, Taiwan, India, Japan, Europe, Australia) the
+  first three merge into one **Markets** sub-tab (Singapore: "Rates & currency"), keeping that order; `mergeMarkets`
+  (`MARKETS_MERGE`) does it at start-up, each card there shows its asset class above the title (`CARD_CLASS`,
+  `labelAssetCards`), the "See also" rows join (`mergeSeeAlso`), and old labels still work in `goSub` and in links
+  (`SUB_ALIAS`, `subIndexOf`; URLs carry `v=4`, older ones are mapped). Keep writing new cards into the asset-class
+  lists in `SUBTABS`; the merge places them. A sub-tab should hold at least three cards.
 - **Markets-group pages (Markets, Fixed Income, Valuation, Positioning & Vol, Correlation) are cross-market tools**:
   tables and charts that compare places or asset classes. Anything about a single place lives on that place's page.
 - **One home per card.** A card is never shown in two places. Where a reader would look for it elsewhere, add a

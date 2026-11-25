@@ -1034,3 +1034,10 @@ table.cal a.cal-link::after { content: ' ↗'; font-size: 0.8em; color: var(--mu
 .pager small { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); flex: 0 0 auto; }
 .pager b { font-weight: 600; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media print { .pager { display: none; } }
+
+/* ===== Design plan 2, Step 4: a card in a merged "Markets" sub-tab says which asset class it is, above its title ===== */
+.card-eyebrow { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--grp-ink); margin-bottom: 1px; line-height: 1.3; }
+@media (max-width: 640px) {   /* phones: a merged "See also" row stays on one line and scrolls sideways inside itself */
+  .see-also { white-space: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+  .see-also::-webkit-scrollbar { display: none; }
+}
