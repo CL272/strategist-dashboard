@@ -203,10 +203,10 @@ function valueAxes(c) {   // [{i, name, extent:[lo,hi]}] for the chart's numeric
   if (!c.inst || c.chartEl.hidden) return [];
   const opt = c.inst.getOption(), out = [];
   (opt.yAxis || []).forEach((ax, i) => {
-    if (ax.type !== 'value') return;
+    if (ax.type !== 'value' || ax.show === false) return;
     let ext = null;
     try { ext = c.inst.getModel().getComponent('yAxis', i).axis.scale.getExtent(); } catch (e) { /* not drawn yet */ }
-    const name = (opt.yAxis.length > 1 ? (ax.position === 'right' ? 'Right' : i === 0 ? 'Left' : 'Lower') : 'Y') + ' axis';
+    const name = (opt.yAxis.length > 1 ? (ax.position === 'right' ? (ax.offset ? 'Outer right' : 'Right') : i === 0 ? 'Left' : 'Lower') : 'Y') + ' axis';
     out.push({ i, name, ext });
   });
   return out;
@@ -215,15 +215,18 @@ function valueAxes(c) {   // [{i, name, extent:[lo,hi]}] for the chart's numeric
 // Shift-drag to slide it, Ctrl + mouse wheel to zoom at the pointer (plain wheel scrolls the page), double-click or ↕ Auto to reset.
 function axisAt(c, x, y) {   // the numeric y axis whose label strip is under the pointer, or null
   const ch = c.inst, opt = ch.getOption(), n = (opt.yAxis || []).length;
+  let best = null;
   for (let i = 0; i < n; i++) {
     let m, rect, ext;
     try { m = ch.getModel().getComponent('yAxis', i); if (!m || m.get('type') !== 'value') continue;
+      if (m.get('show') === false) continue;
       rect = m.getCoordSysModel().coordinateSystem.getRect(); ext = m.axis.scale.getExtent(); } catch (e) { continue; }
     if (y < rect.y - 6 || y > rect.y + rect.height + 6) continue;
-    const right = m.axis.position === 'right';
-    if (right ? (x >= rect.x + rect.width && x <= rect.x + rect.width + 80) : (x <= rect.x && x >= rect.x - 80)) return { i, rect, ext: [ext[0], ext[1]] };
+    const right = m.axis.position === 'right', off = +m.get('offset') || 0;
+    const hit = right ? (x >= rect.x + rect.width + off && x <= rect.x + rect.width + off + 80) : (x <= rect.x - off && x >= rect.x - off - 80);
+    if (hit && (!best || off > best.off)) best = { i, rect, ext: [ext[0], ext[1]], off };   // two right axes: the outer one wins over its own numbers
   }
-  return null;
+  return best;
 }
 function setAxisRange(c, i, lo, hi) {
   if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return;
@@ -419,9 +422,31 @@ function syncCardRange(c) {
   pill.classList.toggle('own', !!c.range);
   pill.title = `Date range for this chart: ${nice(a)} – ${nice(b)}` + (c.range ? ' (set on this chart)' : ' (the default range; click to change it for this chart)');
 }
+// Lines switched off in a chart's legend stay off when the chart is redrawn for a new date range or toggle (owner's request,
+// 25 Nov 2026): the choice is kept per card by series name and put back into every full redraw.
+function keepLegend(c) {
+  const raw = c.inst.setOption.bind(c.inst);
+  const axes = () => {   // a y axis whose lines are all switched off is hidden rather than showing an empty 0–1 scale
+    const o = c.inst.getOption(); if ((o.yAxis || []).length < 2 || !c.legendSel) return;
+    const on = new Set((o.series || []).filter(x => c.legendSel[x.name] !== false).map(x => x.yAxisIndex || 0));
+    raw({ yAxis: o.yAxis.map((_, i) => ({ show: on.has(i) })) });
+  };
+  c.inst.on('legendselectchanged', e => { c.legendSel = { ...(c.legendSel || {}), ...e.selected }; axes(); });
+  c.inst.setOption = (opt, ...rest) => {
+    let full = false;
+    if (c.legendSel && opt && opt.legend && opt.series) {
+      const names = new Set([].concat(opt.series).map(x => x && x.name).filter(Boolean));
+      const sel = Object.fromEntries(Object.entries(c.legendSel).filter(([n]) => names.has(n)));
+      if (Object.keys(sel).length) { const put = L => ({ ...L, selected: { ...(L.selected || {}), ...sel } }); opt = { ...opt, legend: Array.isArray(opt.legend) ? opt.legend.map(put) : put(opt.legend) }; full = true; }
+    }
+    const r = raw(opt, ...rest);
+    if (full) axes();
+    return r;
+  };
+}
 function inst(c) {
   c.chartEl.hidden = false; c.emptyEl.hidden = true;
-  if (!c.inst) { c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' }); attachAxisDrag(c); c.inst.on('finished', () => fixAxisDecimals(c)); }
+  if (!c.inst) { c.inst = echarts.init(c.chartEl, null, { renderer: 'canvas' }); attachAxisDrag(c); c.inst.on('finished', () => fixAxisDecimals(c)); keepLegend(c); }
   else if (c.chartEl.clientWidth && Math.abs(c.inst.getWidth() - c.chartEl.clientWidth) > 2) c.inst.resize();   // was drawn while hidden
   return c.inst;
 }
@@ -6801,7 +6826,7 @@ const SUBTABS = {
     ...Object.keys(CBS).map(k => [CBS[k].sub, [`cb_path_${k}`, `cb_spread_${k}`, `cb_info_${k}`], 'Asia & Europe'])],
   regime: [['Regime now', ['#regMethod', '#regNow', 'quad', 'comp_gi', 'reghist', 'regtable'], 'Regime'], ['What’s driving it', ['reg_contrib', 'reg_now', 'zin'], 'Regime'],
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
-  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_usd_drv', 'us_dxy']],
+  us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_usd_drv']],
     ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
     ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
   europe: [['Equities', ['#sig_europe', 'eu_eq']], ['Rates & bonds', ['#sa_europe_rates', 'eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['#sa_europe_fx', 'eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']], ['Countries compared', ['#sa_eu_cmp', 'eu_cmp']]],
@@ -6985,7 +7010,6 @@ function buildRegions() {
   makeCard(us, { key: 'us_margin', title: 'Margin debt vs money supply', defaultRange: 'MAX', earliest: Date.UTC(1997, 0, 1), render: renderUsMargin,   // FINRA starts Jan 1997
     seg: { key: 'usMarginSrc', options: [['finra', 'FINRA monthly'], ['z1', 'Fed quarterly']] } });
   makeCard(us, { key: 'us_eq', title: 'US equities, rebased', defaultRange: '1Y', render: c => { rebasedCard(c, ['SPX', 'NDX', 'RTY', 'SPXEW']); setSource(c, 'Yahoo Finance'); } });
-  makeCard(us, { key: 'us_dxy', title: 'US dollar index', defaultRange: '3Y', wide: true, render: c => { lines(c, ['DXY'], v => fmtNum(v, 2), v => fmtNum(v, 0)); setSource(c, 'ICE via Yahoo Finance (DX-Y.NYB)'); } });
   // the dollar, real yields and commodities on one chart (owner's request, 24 Nov 2026, after a house chart with the
   // Bloomberg indices: the DXY or the Fed's broad dollar, and the ETN tracking the Bloomberg Commodity Index or the GSCI)
   state.usdDrvUsd = 'dxy'; state.usdDrvCmd = 'bcom';

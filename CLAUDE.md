@@ -32,6 +32,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   `ldLeadLabel` writes the measured months on the lead button ("Best fit +Nm" when the link fails the test). The
   date range is the header pill (`range: false` for cards that follow the page range). Notes lead with one takeaway
   sentence; the explanation folds behind "How to read" automatically (`setNote`). Keep titles under ~32 characters.
+- **Legend choices persist** (owner's request, 25 Nov 2026): a line switched off in a legend stays off when the card redraws
+  for a new range or toggle (`keepLegend`, wrapped round every chart's `setOption`).
 - **Y-axis by hand, back in one click**: dragging the axis numbers (or Ctrl + wheel over them; a plain wheel scrolls the
   page) sets `c.yRange`; the header then shows "↕ Auto" (`yAutoReset`), and a new date range, toggle or layout clears it.
 - **Axis labels never repeat a rounded number**: when an axis's ticks fall between whole numbers, `valAxis` and
@@ -112,7 +114,7 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   national indicators (UK, Korea), the Tankan, Singapore's business expectations (`SG_BEXP_MFG/SVC`, SingStat, quarterly).
   S&P Global PMIs (HCOB, au Jibun Bank, Caixin/RatingDog, Malaysia, India, Taiwan, ASEAN) are licensed: never scrape or show them.
   Balances are read against their own record since 2005 (percentile and z-score), never against 50.
-- **USD, real yields & commodities** (owner's request, 24 Nov 2026): US → Currency, `us_usd_drv`, three axes (`drawTriple`):
+- **USD, real yields & commodities** (owner's request, 24 Nov 2026): US → Currency, `us_usd_drv`, three axes (`drawTriple`; the outer right axis drags like the others, `axisAt` picks it by its offset; the separate DXY card was removed):
   the Bloomberg Commodity Index via the iPath ETN that tracks its total return (`DJP`, Yahoo) or the S&P GSCI (`SPGSCI`), the 10Y
   TIPS yield (`REAL10Y`), and the DXY or the Fed's broad dollar (`USD_BROAD`, DTWEXBGS). Bloomberg's own indices have no free feed.
 - Several series of one country on a chart use the normal palette; `COUNTRY_TOK` colours apply only when each line is a
