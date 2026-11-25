@@ -172,7 +172,7 @@ function renderPbHold(c) {   // key idea_model (kept from the old Model portfoli
   c.csv = [['Holding', 'Ticker', 'Class', 'Weight entered', 'Weight %', 'Benchmark %', 'Active pts'], ...p.rows.map(([id, w]) => [poLabel(id), poTick(id), poClass(id), w, sw(id).toFixed(2), sb(id).toFixed(2), (sw(id) - sb(id)).toFixed(2)])];
   const thin = poThinNote(p.rows.map(r => r[0]));
   setNote(c, (R.missing && R.missing.length ? `No prices for ${R.missing.map(poTick).join(', ')}: left out of the figures. ` : '') + `Active = the portfolio's weight minus the benchmark's, in points.${thin}`);
-  setSource(c, 'Your weights, kept in your private vault once it is set up'); setAsOf(c, R.st ? R.st.to : null);
+  setSource(c, 'Your weights, kept in your private vault once it is set up'); poAsOf(c, R.st ? R.st.to : null);
 }
 function renderPbBench(c) {
   if (poWait(c)) return;
@@ -195,7 +195,7 @@ function renderPbBench(c) {
   setCount(c, poBenchName(p));
   c.csv = [['Benchmark holding', 'Ticker', 'Weight %'], ...p.bench.rows.map(([id]) => [poLabel(id), poTick(id), sb(id).toFixed(2)]), [], ['Asset class', 'Portfolio %', 'Benchmark %'], ...mix.map(([cl, x, y]) => [cl, x.toFixed(2), y.toFixed(2)])];
   setNote(c, 'The world mixes hold world equities (iShares MSCI ACWI) and global bonds hedged to the dollar (iShares Global Aggregate, AGGU); pick a preset or edit the rows. Bar = the portfolio, line = the benchmark.');
-  setSource(c, 'Your choice of benchmark'); setAsOf(c, R.st ? R.st.to : null);
+  setSource(c, 'Your choice of benchmark'); poAsOf(c, R.st ? R.st.to : null);
 }
 function renderPbChart(c) {   // key idea_modelchart
   if (poWait(c)) return;
@@ -218,7 +218,7 @@ function renderPbChart(c) {   // key idea_modelchart
     setNote(c, `The portfolio returned ${poPct(st.retP)} a year in ${p.ccy} against ${poPct(st.retB)} for the benchmark, with ${fmtNum(st.volP / st.volB * 100, 0)}% of its volatility.${lim} Both = 100 at the start and held at their weights (rebalanced weekly), dividends included.`);
   }
   c.csv = [['Week to', 'Portfolio (= 100 at start)', 'Benchmark (= 100 at start)'], ...d.map((t, i) => [iso(t), st.cumP[i].toFixed(3), st.cumB[i].toFixed(3)])];
-  setSource(c, PO_SRC); setAsOf(c, st.to);
+  setSource(c, PO_SRC); poAsOf(c, st.to);
 }
 function renderPbSrc(c) {   // where the tracking error comes from
   if (poWait(c)) return;
@@ -236,7 +236,7 @@ function renderPbSrc(c) {   // where the tracking error comes from
   setNote(c, (top ? `${poLabel(top.id)} explains ${fmtNum(top.sh, 0)}% of the tracking error: the portfolio holds ${fmtNum(Math.abs(top.act), 0)} points ${top.act >= 0 ? 'more' : 'less'} of it than the benchmark.` : '')
     + (rows.some(r => r.sh < -0.5) ? ' A negative share offsets part of the rest.' : '') + poThinNote(R.ids)
     + ` Share = the holding's active weight times its covariance with the whole gap, over the tracking error squared; the shares sum to 100%. ${R.yrs ? R.yrs + '-year' : 'Whole'} window, weekly returns.`);
-  setSource(c, PO_SRC); setAsOf(c, st.to);
+  setSource(c, PO_SRC); poAsOf(c, st.to);
 }
 function renderPbStress(c) {   // key idea_stress (moved from the old model portfolio, WP47): past sell-offs and where the risk sits
   if (poWait(c)) return;
@@ -265,7 +265,7 @@ function renderPbStress(c) {   // key idea_stress (moved from the old model port
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...heads.map((h, i) => el('th', { text: h, class: i ? '' : 'l' })))), tb)));
   c.csv = csv;
   setNote(c, `How today's weights, and the benchmark's, would have done in six past sell-offs (peak to trough of world equities, in ${p.ccy}, no rebalancing inside the episode), and which holdings carry the portfolio's own risk now. “–” = no price for that holding then; an episode needs prices for 80% of the weights.`);
-  setSource(c, PO_SRC);
+  setSource(c, PO_SRC); poAsOf(c, R.st ? R.st.to : null);
 }
 
 // ---- the portfolio bar and the five tiles (EXTRA_HOOKS: drawn after the cards, before fitTiles)
@@ -321,7 +321,134 @@ function buildPortfolio(g) {
   makeCard(g, { key: 'po_src', title: 'Where the tracking error comes from', range: false, render: renderPbSrc });
   makeCard(g, { key: 'idea_stress', title: 'Stress test and risk', wide: true, range: false, render: renderPbStress });
   for (const k of ['idea_model', 'po_bench', 'po_src', 'idea_stress']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+  buildAddFund(g);   // Step 4
 }
 SUB_ALIAS.alloc = { ...(SUB_ALIAS.alloc || {}), 'Model portfolio': 'Portfolio' };   // old links and the Idea log mapping
 TILE_SETS.alloc.Portfolio = ['Tracking error', 'Active return', 'Beta to benchmark', 'Volatility', 'Worst fall'];
 EXTRA_HOOKS.alloc.push(poHook);
+
+// ------------------------------------------------------------------ ALLOCATION → ADD A FUND (Design plan 4, Step 4)
+// What adding a fund would have done to the open portfolio's tracking error: one fund at a chosen weight (before → after),
+// the curve as its weight rises, and every fund at 5, 10 or 20%. The added weight is paid for by every other holding in
+// proportion, by cash, or by one holding. Arithmetic on past returns, never a recommendation; numbers stay in plain ink.
+const PO_CARDS_ADD = ['po_whatif', 'po_curve', 'po_rank'];
+state.poAdd = { id: 'ACWI', x: 10, how: 'all', from: null }; state.poRankW = '10'; state.poRankAll = false;
+const poHowLab = { all: 'every other holding, in proportion', cash: 'cash first', one: 'one holding first' };
+function poWhatIf(k = state.poAdd.id, x = state.poAdd.x) {   // before and after on the same weeks (the window, cut by the added fund's history if needed)
+  const R = poCompute(); if (!R.st) return { R, reason: R.reason };
+  const p = R.p, a = state.poAdd, how = a.how === 'one' && a.from ? 'one:' + a.from : a.how === 'one' ? 'all' : a.how;
+  if (!poSeries(k, p.ccy)) return { R, reason: `No prices for ${poTick(k)} in ${p.ccy}.` };
+  const ids = [...new Set([...R.ids, k])], A = PM.pmAlign(ids.map(id => poSeries(id, p.ccy)), R.from);
+  if (A.n < 52) return { R, reason: `${poLabel(k)} shares only ${A.n} weeks with the portfolio and the benchmark; at least 52 are needed.` };
+  const w1 = poRound2(PM.pmAdd(R.wObj, k, x, how)), B = PM.pmVec(ids, R.bObj);   // rounded as they will be saved, so 'after' is what Apply gives
+  return { R, A, ids, how, w1, st0: PM.pmStats(A, PM.pmVec(ids, R.wObj), B), st1: PM.pmStats(A, PM.pmVec(ids, w1), B) };
+}
+const poAsOf = (c, t) => { setAsOf(c, t); c.read && c.read.clear(); c.used && c.used.clear(); };   // date = the last week analysed, not the exchange rates read on the way
+const poRound2 = w => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, +v.toFixed(2)]));
+const poRowsFrom = (p, w1) => { const out = [...new Set(p.rows.map(r => r[0]))].filter(id => (w1[id] || 0) > 1e-4).map(id => [id, +w1[id].toFixed(2)]);
+  for (const [id, v] of Object.entries(w1)) if (v > 1e-4 && !out.some(r => r[0] === id)) out.push([id, +v.toFixed(2)]); return out; };
+function renderPoWhatIf(c) {
+  if (poWait(c)) return;
+  const o = poStore(), R = poCompute(), p = R.p, a = state.poAdd, b = htmlBody(c);
+  if (!poBlocks()[a.id]) a.id = poBlocks().ACWI ? 'ACWI' : Object.keys(poBlocks()).find(k => poBlocks()[k].kind === 'fund');
+  const portSel = el('select', { class: 'mini-select', 'aria-label': 'Portfolio' }, ...o.ports.map(x => el('option', { value: x.id, text: x.name }))); portSel.value = o.sel;
+  portSel.onchange = () => poMutate(q => { q.sel = portSel.value; });
+  const slider = el('input', { type: 'range', min: 0, max: 50, step: 1, value: a.x, 'aria-label': 'Weight to add' }), xLab = el('b', { text: a.x + '%' });
+  slider.addEventListener('input', () => { xLab.textContent = slider.value + '%'; });
+  slider.addEventListener('change', () => { a.x = +slider.value; PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); });
+  const how = el('select', { class: 'mini-select', 'aria-label': 'Paid for by' }, el('option', { value: 'all', text: 'all holdings, in proportion' }), el('option', { value: 'cash', text: 'cash first' }),
+    ...p.rows.filter(([id, w]) => +w > 0 && id !== a.id).map(([id]) => el('option', { value: 'one:' + id, text: 'from ' + poTick(id) + ' first' })));
+  how.value = a.how === 'one' && a.from ? 'one:' + a.from : a.how; if (!how.value) how.value = 'all';
+  how.onchange = () => { const v = how.value; if (v.startsWith('one:')) { a.how = 'one'; a.from = v.slice(4); } else { a.how = v; a.from = null; } PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); };
+  b.append(el('div', { class: 'po-what' }, el('label', {}, 'Portfolio ', portSel), el('label', {}, 'Weight ', slider, xLab), el('label', {}, 'Paid for by ', how)),
+    el('div', { class: 'po-pick' }, el('span', { class: 'muted small', text: 'Fund: ' }), el('b', { text: poLabel(a.id) }), el('span', { class: 'muted small', text: ` · ${poTick(a.id)} · ${(poBlocks()[a.id] || {}).cls || ''}` }),
+      poSearch('Change fund: name or ticker', id => { a.id = id; if (a.from === id) { a.how = 'all'; a.from = null; } PO_CARDS_ADD.forEach(k => cards[k].render()); }, [a.id])));
+  const W = poWhatIf();
+  if (!W.st1) { b.append(el('div', { class: 'empty', text: W.reason || 'Waiting for data.' })); setCount(c, ''); c.csv = null; setNote(c, ''); return; }
+  const { st0, st1 } = W, row = (k, v0, v1, d) => el('div', {}, el('span', { class: 'k', text: k }), el('span', { class: 'v' }, v0, el('span', { class: 'arr', text: ' → ' }), el('b', { text: v1 })), el('span', { class: 'd', text: d || '' }));
+  const f2 = v => v == null ? '–' : fmtNum(v, 2), dte = st1.te - st0.te;
+  b.append(el('div', { class: 'po-ba' },
+    row('Tracking error', poPct(st0.te, 2), poPct(st1.te, 2), `${dte > 0.005 ? '+' : dte < -0.005 ? '−' : ''}${fmtNum(Math.abs(dte), 2)} pts`),
+    row('Beta to benchmark', f2(st0.beta), f2(st1.beta)), row('Correlation', f2(st0.corr), f2(st1.corr)),
+    row('Volatility', poPct(st0.volP), poPct(st1.volP), `benchmark ${poPct(st0.volB)}`), row('Return a year', poPct(st0.retP), poPct(st1.retP), `benchmark ${poPct(st0.retB)}`)),
+    el('div', { class: 'card-foot po-foot' }, el('span', { text: 'History, not a forecast.' }), el('span', {},
+      el('button', { type: 'button', class: 'ghost', text: 'Apply to this portfolio', title: 'Change the open portfolio to these weights', onclick: () => { poEdit(q => { q.rows = poRowsFrom(q, W.w1); }); goSub('alloc', 'Portfolio'); } }), ' ',
+      el('button', { type: 'button', class: 'ghost', text: 'Save as new', title: 'Keep the open portfolio as it is and save these weights as a new one', onclick: () => {
+        poMutate(q => { const cur = q.ports.find(x => x.id === q.sel), n = { ...JSON.parse(JSON.stringify(cur)), id: poId(), name: `${cur.name} + ${a.x}% ${poTick(a.id)}`, rows: poRowsFrom(cur, W.w1), updated: new Date().toISOString() }; q.ports.push(n); q.sel = n.id; });
+        goSub('alloc', 'Portfolio'); } }))));
+  setCount(c, `vs ${poBenchName(p)}`);
+  c.csv = [['Measure', 'Before', 'After'], ['Tracking error %', st0.te, st1.te], ['Beta', st0.beta, st1.beta], ['Correlation', st0.corr, st1.corr], ['Volatility %', st0.volP, st1.volP], ['Return a year %', st0.retP, st1.retP],
+    [], ['Holding', 'Weight before %', 'Weight after %'], ...W.ids.map(id => [poLabel(id), (PM.pmVec(W.ids, W.R.wObj)[W.ids.indexOf(id)] * 100).toFixed(2), (W.w1[id] || 0).toFixed(2)])];
+  setNote(c, `Adding ${a.x}% of ${poTick(a.id)}, paid for by ${poHowLab[a.how]}, ${dte < -0.005 ? 'would have lowered' : dte > 0.005 ? 'would have raised' : 'would have left'} the tracking error ${Math.abs(dte) > 0.005 ? `by ${fmtNum(Math.abs(dte), 2)} points ` : 'unchanged '}over ${st0.weeks} weeks to ${nice(st0.to)}, in ${p.ccy}.`
+    + (W.A.n < (W.R.A ? W.R.A.n : 0) ? ` The window is shorter than on Portfolio because ${poTick(a.id)}'s history starts in ${monthLab(W.A.dates[0])}.` : '') + poThinNote([a.id]));
+  setSource(c, PO_SRC); poAsOf(c, st1.to);
+}
+function renderPoCurve(c) {
+  if (poWait(c)) return;
+  const W = poWhatIf(); if (!W.st1) return poEmpty(c, W.reason || 'Waiting for data.');
+  const a = state.poAdd, xs = [...new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, a.x])].sort((p, q) => p - q);
+  const C = PM.pmCurve(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, xs), lo = C.reduce((m, q) => q[1] < m[1] ? q : m), at = C.find(q => q[0] === a.x);
+  c.titleEl.textContent = 'Tracking error by weight added';
+  const o = baseOpt(); o.legend.show = false;
+  o.grid = { left: 8, right: 18, top: 26, bottom: 24, containLabel: true };
+  o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => `${poTick(a.id)} +${ps[0].value[0]}%: tracking error <b>${fmtNum(ps[0].value[1], 2)}%</b>` };
+  o.xAxis = { type: 'value', min: 0, max: 50, interval: 10, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false }, name: 'weight added', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tok('--muted'), fontSize: 11 } };
+  o.yAxis = valAxis(v => fmtNum(v, 1) + '%', { scale: true });
+  const mk = (q, lab, filled) => ({ coord: q, value: lab, symbol: 'circle', symbolSize: 9, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
+    label: { show: true, formatter: lab, position: q[0] <= 5 ? 'right' : q[0] >= 45 ? 'left' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
+  o.series = [{ type: 'line', data: C, symbol: 'none', lineStyle: { width: 2, color: tok('--s1') }, itemStyle: { color: tok('--s1') },
+    markPoint: { data: [mk(at, `+${a.x}% → ${fmtNum(at[1], 2)}%`, true), ...(lo[0] !== a.x ? [mk(lo, `lowest at ${lo[0]}%: ${fmtNum(lo[1], 2)}%`, false)] : [])] } }];
+  const ch = inst(c); ch.resize(); ch.setOption(o, true);
+  c.csv = [['Weight added %', 'Tracking error %'], ...C.map(([x, v]) => [x, v.toFixed(3)])];
+  setCount(c, poLabel(a.id));
+  setNote(c, lo[0] === 0 ? `Any amount of ${poTick(a.id)} would have raised the tracking error: it moves away from what the benchmark holds.`
+    : lo[0] >= 50 ? `More ${poTick(a.id)} lowered the tracking error all the way to 50% (${fmtNum(lo[1], 2)}%).`
+    : `Adding ${poTick(a.id)} lowered the tracking error until about ${lo[0]}% of the portfolio (${fmtNum(lo[1], 2)}%); beyond that it rises again.`);
+  setSource(c, PO_SRC); poAsOf(c, W.st1.to);
+}
+function poRankRows(x) {   // every fund added at x%, paid for in proportion; cached per portfolio state
+  const R = poCompute(); if (!R.st) return null;
+  const key = R.key + '|' + x; if (state.poRank && state.poRank.key === key) return state.poRank;
+  const rows = []; let skipped = 0;
+  for (const bk of Object.values(poBlocks())) {
+    if (bk.kind !== 'fund') continue;
+    const ids = [...new Set([...R.ids, bk.id])], ser = ids.map(id => poSeries(id, R.p.ccy)); if (ser.some(s => !s)) { skipped++; continue; }
+    const A = PM.pmAlign(ser, R.from); if (A.n < 52) { skipped++; continue; }
+    const B = PM.pmVec(ids, R.bObj), s0 = PM.pmStats(A, PM.pmVec(ids, R.wObj), B), s1 = PM.pmStats(A, PM.pmVec(ids, PM.pmAdd(R.wObj, bk.id, x, 'all')), B);
+    rows.push({ id: bk.id, te: s1.te, d: s1.te - s0.te, vol: s1.volP, beta: s1.beta, corr: s1.corr, weeks: A.n });
+  }
+  rows.sort((p, q) => p.d - q.d);
+  return (state.poRank = { key, rows, skipped });
+}
+function renderPoRank(c) {
+  if (poWait(c)) return;
+  const x = +state.poRankW, RR = poRankRows(x); if (!RR) return poEmpty(c, poCompute().reason || 'Waiting for data.');
+  c.titleEl.textContent = `What ${x}% of each fund would do`;
+  const rows = RR.rows, b = htmlBody(c), tb = el('tbody'), cut = !state.poRankAll && rows.length > 16, shown = cut ? [...rows.slice(0, 8), null, ...rows.slice(-6)] : rows;
+  const f2 = v => v == null ? '–' : fmtNum(v, 2), d2 = v => `${v > 0.005 ? '+' : v < -0.005 ? '−' : ''}${fmtNum(Math.abs(v), 2)}`;
+  for (const r of shown) {
+    if (!r) { tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 6 }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length} (${rows.length - 14} more in the middle)`, onclick: () => { state.poRankAll = true; c.render(); } })))); continue; }
+    const thin = (poBlocks()[r.id] || {}).thin > PO_THIN;
+    tb.append(el('tr', { class: 'row' + (r.id === state.poAdd.id ? ' sel' : ''), style: 'cursor:pointer', title: `Try ${poTick(r.id)} in “What if I add a fund?”`,
+      onclick: () => { state.poAdd.id = r.id; PO_CARDS_ADD.forEach(k => cards[k].render()); cards.po_whatif.root.scrollIntoView({ block: 'center', behavior: 'smooth' }); } },
+      el('td', { class: 'l' }, poLabel(r.id), el('span', { class: 'cell-sub' }, poTick(r.id), thin ? el('span', { class: 'po-thin', text: 'thinly traded' }) : '')),
+      el('td', { class: 'num', text: poPct(r.te, 2) }), el('td', { class: 'num strong', text: d2(r.d) }), el('td', { class: 'num', text: poPct(r.vol) }), el('td', { class: 'num', text: f2(r.beta) }), el('td', { class: 'num', text: f2(r.corr) })));
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...[`Fund, at ${x}% of the portfolio`, 'Tracking error', 'Change, pts', 'Volatility', 'Beta', 'Correlation'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
+    el('div', { class: 'card-foot' }, el('span', { text: 'Arithmetic on past returns, not a recommendation.' })));
+  if (state.poRankAll && rows.length > 16) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: 'Show fewer', onclick: () => { state.poRankAll = false; c.render(); } }));
+  setCount(c, `${rows.length} funds`);
+  c.csv = [['Fund', 'Ticker', `Tracking error with ${x}% added %`, 'Change pts', 'Volatility %', 'Beta', 'Correlation', 'Weeks'], ...rows.map(r => [poLabel(r.id), poTick(r.id), r.te.toFixed(3), r.d.toFixed(3), r.vol.toFixed(2), r.beta, r.corr, r.weeks])];
+  const R = poCompute();
+  setNote(c, (cut ? `The eight funds that would have lowered the tracking error most and the six that would have raised it most, of ${rows.length}. ` : '')
+    + `Each fund added at ${x}% of ${R.p.name}, paid for by every other holding in proportion, against ${poBenchName(R.p)}, over the same window as Portfolio (or shorter where a fund's history is). Click a row to try it above.`
+    + (RR.skipped ? ` ${RR.skipped} fund${RR.skipped > 1 ? 's are' : ' is'} left out: fewer than 52 weeks in common.` : ''));
+  setSource(c, PO_SRC); poAsOf(c, R.st.to);
+}
+function buildAddFund(g) {
+  makeCard(g, { key: 'po_whatif', title: 'What if I add a fund?', range: false, render: renderPoWhatIf });
+  makeCard(g, { key: 'po_curve', title: 'Tracking error by weight added', range: false, render: renderPoCurve });
+  makeCard(g, { key: 'po_rank', title: 'What 10% of each fund would do', wide: true, range: false, seg: { key: 'poRankW', options: [['5', '5%'], ['10', '10%'], ['20', '20%']] }, render: renderPoRank });
+  for (const k of ['po_whatif', 'po_rank']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+SUBTABS.alloc.push(['Add a fund', ['po_whatif', 'po_curve', 'po_rank']]);
