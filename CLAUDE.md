@@ -2,6 +2,9 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
+**Open design work:** `DESIGN_PLAN_2.md` (planned 25 Nov 2026, not built): Strategist View, Weekly brief and click-through,
+in seven steps, with reference mockups in `design/`. Build it step by step; Step 4 needs the owner's yes first.
+
 ## Layout and design rules (the owner's standing request)
 
 Keep the dashboard clean and compact; nobody should have to scroll a long way.

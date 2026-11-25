@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup · Strategist View</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3.5' fill='%230a2b66'/><rect y='13' width='16' height='3' fill='%23d9252f'/><path d='M3 10l3-3 2 2 5-5' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../docs/style.css">
+<script>
+  try { const t = localStorage.getItem('sd-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<link rel="stylesheet" href="redesign.css">
+</head>
+<body>
+<div class="app">
+<aside class="side" id="side">
+  <div class="side-head">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="name">Strategist <br>Dashboard</span>
+    </div>
+    <button id="menuBtn" class="ghost menu-btn" type="button" aria-label="Show or hide the menu" aria-expanded="false">☰</button>
+  </div>
+  <nav class="tabs" role="tablist" aria-orientation="vertical">
+    <div class="nav-group">Overview</div>
+    <button role="tab" data-tab="overview" aria-selected="true"><span class="ic">◎</span>Strategist View</button>
+    <button role="tab" data-tab="signals" aria-selected="false"><span class="ic">✧</span>Signals</button>
+    <button role="tab" data-tab="weekly" aria-selected="false"><span class="ic">▣</span>Weekly brief</button>
+    <button role="tab" data-tab="ideas" aria-selected="false"><span class="ic">✎</span>Idea log</button>
+    <button role="tab" data-tab="notebook" aria-selected="false"><span class="ic">✐</span>Notebook</button>
+    <button role="tab" data-tab="news" aria-selected="false"><span class="ic">≡</span>News</button>
+    <button role="tab" data-tab="calendar" aria-selected="false"><span class="ic">◷</span>Calendar</button>
+    <div class="nav-group">Macro</div>
+    <button role="tab" data-tab="regime" aria-selected="false"><span class="ic">◫</span>Regime &amp; Leading</button>
+    <button role="tab" data-tab="stress" aria-selected="false"><span class="ic">⚠</span>Stress &amp; Signposts</button>
+    <button role="tab" data-tab="liquidity" aria-selected="false"><span class="ic">≈</span>Liquidity</button>
+    <button role="tab" data-tab="cbwatch" aria-selected="false"><span class="ic">◈</span>Central banks</button>
+    <div class="nav-group">Regions</div>
+    <button role="tab" data-tab="scorecard" aria-selected="false"><span class="ic">▥</span>Country scorecard</button>
+    <button role="tab" data-tab="us" aria-selected="false"><span class="ic">◧</span>US</button>
+    <button role="tab" data-tab="europe" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◨</span>Europe<span class="nav-caret" aria-hidden="true">▸</span></button>
+    <button role="tab" data-tab="de" data-parent="europe" class="nav-child" aria-selected="false" hidden>Germany</button>
+    <button role="tab" data-tab="fr" data-parent="europe" class="nav-child" aria-selected="false" hidden>France</button>
+    <button role="tab" data-tab="it" data-parent="europe" class="nav-child" aria-selected="false" hidden>Italy</button>
+    <button role="tab" data-tab="es" data-parent="europe" class="nav-child" aria-selected="false" hidden>Spain</button>
+    <button role="tab" data-tab="uk" data-parent="europe" class="nav-child" aria-selected="false" hidden>UK</button>
+    <button role="tab" data-tab="asia" aria-selected="false" aria-expanded="false" class="nav-parent"><span class="ic">◐</span>Asia ex-Japan<span class="nav-caret" aria-hidden="true">▸</span></button>
+    <button role="tab" data-tab="my" data-parent="asia" class="nav-child" aria-selected="false" hidden>Malaysia</button>
+    <button role="tab" data-tab="sg" data-parent="asia" class="nav-child" aria-selected="false" hidden>Singapore</button>
+    <button role="tab" data-tab="cn" data-parent="asia" class="nav-child" aria-selected="false" hidden>China</button>
+    <button role="tab" data-tab="kr" data-parent="asia" class="nav-child" aria-selected="false" hidden>Korea</button>
+    <button role="tab" data-tab="tw" data-parent="asia" class="nav-child" aria-selected="false" hidden>Taiwan</button>
+    <button role="tab" data-tab="in" data-parent="asia" class="nav-child" aria-selected="false" hidden>India</button>
+    <button role="tab" data-tab="japan" aria-selected="false"><span class="ic">◑</span>Japan</button>
+    <button role="tab" data-tab="australia" aria-selected="false"><span class="ic">◒</span>Australia</button>
+    <div class="nav-group">Markets</div>
+    <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
+    <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
+    <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
+    <button role="tab" data-tab="posvol" aria-selected="false"><span class="ic">⇅</span>Positioning &amp; Vol</button>
+    <button role="tab" data-tab="sp" aria-selected="false"><span class="ic">◇</span>Structured products</button>
+    <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
+    <div class="nav-group">Themes</div>
+    <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
+    <div class="nav-group">System</div>
+    <button role="tab" data-tab="health" aria-selected="false"><span class="ic">✓</span>Data health</button>
+  </nav>
+  <div class="side-foot">
+    <span id="asof" class="muted small">Loading data…</span>
+    <span id="status" class="status-pill" hidden></span>
+    <button id="themeBtn" class="ghost" type="button" aria-label="Toggle dark mode">◐ Theme</button>
+  </div>
+</aside>
+<div class="content">
+<header class="pagebar">
+<div class="page-head"><div class="ph-title"><h1 id="pageTitle">Strategist View</h1><span class="eyebrow" id="pageGroup">Overview</span></div><div class="greet"><b>Good morning</b> · Wed 25 Nov · 10:29 SGT · markets to 25 Nov 2026</div></div>
+</header>
+<main>
+
+<div class="subtabs" role="tablist"><button aria-selected="true">Today</button><button aria-selected="false">Where we are</button></div>
+<div class="sv-lead">
+  <div class="eyebrow">This week · to Tue 24 Nov</div>
+  <h2>Risk-off: world equities fell <span class="dn">2–6%</span>, the VIX curve is inverted and stress is above normal, while the dollar and real yields keep rising.</h2>
+</div>
+<div class="kpis">
+<div class="kpi first"><div class="k-label">Macro regime</div><div class="k-value"><span class="qdot" style="background:var(--warning)"></span>Overheat</div><div class="k-delta">Growth ↑ · Inflation ↑</div></div>
+<div class="kpi"><div class="k-label">Fed net liquidity, 13w</div><div class="k-value">+$40bn</div><div class="k-delta">level $5.85tn</div></div>
+<div class="kpi"><div class="k-label">Stress composite</div><div class="k-value"><span class="qdot" style="background:var(--warning)"></span>57th pct</div><div class="k-delta">Above normal</div></div>
+<div class="kpi"><div class="k-label">Equity breadth</div><div class="k-value">1 of 16</div><div class="k-delta">indices above 200-day</div></div>
+<div class="kpi"><div class="k-label">US dollar (DXY), 1m</div><div class="k-value">+2.0%</div><div class="k-delta">level 103.9</div></div></div>
+<div class="grid g3">
+<section class="card ">
+  <div class="card-head"><h2>What moved</h2><div class="card-tools"><span class="seg"><button class="on">1 week</button><button>4 weeks</button></span></div></div>
+  <ul class="rows mv"><li><span class="t">Taiwan Weighted</span><span class="n dn">−17.5%</span><span class="m">−7.3σ</span><span class="sig-bar"><i class="dn" style="width:45%"></i></span></li>
+<li><span class="t">Nasdaq-100 vol (VXN)</span><span class="n up">+15.87</span><span class="m">+5.7σ</span><span class="sig-bar"><i class="up" style="width:36%"></i></span></li>
+<li><span class="t">VIX (equity vol)</span><span class="n up">+16.59</span><span class="m">+5.1σ</span><span class="sig-bar"><i class="up" style="width:32%"></i></span></li>
+<li><span class="t">MSCI EM (EEM)</span><span class="n dn">−11.6%</span><span class="m">−4.8σ</span><span class="sig-bar"><i class="dn" style="width:30%"></i></span></li>
+<li><span class="t">TSMC (ADR)</span><span class="n dn">−20.1%</span><span class="m">−4.7σ</span><span class="sig-bar"><i class="dn" style="width:29%"></i></span></li>
+<li><span class="t">Gold</span><span class="n dn">−9.54%</span><span class="m">−4.2σ</span><span class="sig-bar"><i class="dn" style="width:26%"></i></span></li></ul><div class="card-foot"><span>σ = size against that asset’s own 5 years of weekly moves</span><a href="#">All 14 →</a></div>
+  <p class="src"><span>Source: Yahoo Finance, FRED</span><span>to 24 Nov</span></p>
+</section>
+<section class="card ">
+  <div class="card-head"><h2>What changed<span class="card-count">5 this week</span></h2><div class="card-tools"></div></div>
+  <ul class="rows chg"><li><span class="dot" style="--st:var(--critical)"></span><span class="t wrap"><b>VIX curve inverted</b> · 3-month ÷ spot VIX at 0.86, below 1 since 5 Nov</span></li>
+<li><span class="dot" style="--st:var(--critical)"></span><span class="t wrap"><b>Stress composite up a band</b> · 57th percentile, now “above normal”</span></li>
+<li><span class="dot" style="--st:var(--warning)"></span><span class="t wrap"><b>Malaysia breadth crossed 20%</b> · 23% of large caps above their 200-day average (19% a week ago)</span></li>
+<li><span class="dot" style="--st:var(--warning)"></span><span class="t wrap"><b>BNM pricing moved</b> · 3M interbank − OPR +86bp, −14bp on the week</span></li>
+<li><span class="dot" style="--st:var(--muted)"></span><span class="t wrap"><b>5 data series stale</b> · see Data health</span></li></ul><div class="card-foot"><span></span><a href="#">How the rules work ▸</a></div>
+  <p class="src"><span>Source: Dashboard rules on its own data</span><span>to 24 Nov</span></p>
+</section>
+<section class="card ">
+  <div class="card-head"><h2>Signals<span class="card-count">research prompts</span></h2><div class="card-tools"></div></div>
+  <div class="rows-h">Bearish · 4</div><ul class="rows sg"><li><span class="dir dn">▼</span><span class="t">Asia ex-Japan vs world</span><span class="m">3m · tested</span></li><li><span class="dir dn">▼</span><span class="t">Emerging markets vs S&amp;P 500</span><span class="m">3m · tested</span></li><li><span class="dir dn">▼</span><span class="t">Chip stocks vs S&amp;P 500</span><span class="m">6m · tested</span></li><li><span class="dir dn">▼</span><span class="t">S&amp;P 500</span><span class="m">3m · context</span></li></ul><div class="rows-h">Bullish · 1</div><ul class="rows sg"><li><span class="dir up">▲</span><span class="t">S&amp;P 500</span><span class="m">6m · tested</span></li></ul><div class="card-foot"><span>Just ended: Taiwan Weighted ▲ · EM equities ▼</span><a href="#">Signals →</a></div>
+  <p class="src"><span>Source: Dashboard signal engine</span><span>updated 25 Nov</span></p>
+</section>
+</div>
+<div class="grid g3">
+<section class="card ">
+  <div class="card-head"><h2>Stress gauges<span class="card-count">parts of the composite</span></h2><div class="card-tools"></div></div>
+  <ul class="rows gz"><li><span class="t">SOFR − IORB</span><span class="gz-bar"><i style="width:94%;--st:var(--serious)"></i></span><span class="n">94</span></li><li><span class="t">US HY spread</span><span class="gz-bar"><i style="width:93%;--st:var(--serious)"></i></span><span class="n">93</span></li><li><span class="t">VIX (equity vol)</span><span class="gz-bar"><i style="width:88%;--st:var(--serious)"></i></span><span class="n">88</span></li><li><span class="t">MOVE (rates vol)</span><span class="gz-bar"><i style="width:72%;--st:var(--warning)"></i></span><span class="n">72</span></li><li><span class="t">Chicago Fed NFCI</span><span class="gz-bar"><i style="width:60%;--st:var(--warning)"></i></span><span class="n">60</span></li><li><span class="t">Baa − 10Y spread</span><span class="gz-bar"><i style="width:13%;--st:var(--good)"></i></span><span class="n">13</span></li><li><span class="t">St. Louis Fed stress</span><span class="gz-bar"><i style="width:2%;--st:var(--good)"></i></span><span class="n">2</span></li></ul><div class="card-foot"><span>Percentile of 10 years; 100 = most stressed</span><a href="#">Stress →</a></div>
+  <p class="src"><span>Source: Yahoo Finance, FRED</span><span>to 24 Nov</span></p>
+</section>
+<section class="card ">
+  <div class="card-head"><h2>Week ahead</h2><div class="card-tools"></div></div>
+  <ul class="rows cal"><li class="day">Wed 25 Nov · today</li><li><span class="m">21:30</span><span class="t"><span class="m">US ·</span> Core PCE (YoY)</span><span class="m">prev 3.0%</span></li><li><span class="m">21:30</span><span class="t"><span class="m">US ·</span> Real GDP (QoQ)</span><span class="m">prev 2.2%</span></li><li class="day">Fri 27 Nov</li><li><span class="m">18:30</span><span class="t"><span class="m">India ·</span> GDP (YoY)</span><span class="m">prev 8.1%</span></li><li><span class="m">21:00</span><span class="t"><span class="m">Germany ·</span> CPI flash (YoY)</span><span class="m">prev 2.9%</span></li><li class="day">Mon 30 Nov</li><li><span class="m">09:30</span><span class="t"><span class="m">China ·</span> Official PMIs</span><span class="m">prev 49.3</span></li><li class="day">Tue 1 Dec</li><li><span class="m">08:00</span><span class="t"><span class="m">Korea ·</span> Exports (YoY)</span><span class="m">prev +7.9%</span></li></ul><div class="card-foot"><span>Singapore / Malaysia time</span><a href="#">All 11 →</a></div>
+  <p class="src"><span>Source: FRED calendar; central banks</span><span>updated 25 Nov</span></p>
+</section>
+<section class="card ">
+  <div class="card-head"><h2>Headlines</h2><div class="card-tools"></div></div>
+  <ul class="rows hl"><li><a class="t" href="#">Trump open to pardoning Jensen Huang if needed: NY Post</a><span class="m">CNBC · 20m</span></li><li><a class="t" href="#">SoftBank drops 14% as Wall Street AI sell-off ripples across Asian tech names</a><span class="m">CNBC · 33m</span></li><li><a class="t" href="#">Nvidia board joins Jensen Huang under scrutiny after reinstating embattled CEO</a><span class="m">CNA · 33m</span></li><li><a class="t" href="#">India Pension Funds Pivot to Bonds as Equity Exposure Nears Cap</a><span class="m">Bloomberg · 1h</span></li><li><a class="t" href="#">Dollar takes breather ahead of US data on Fed path; Aussie jumps on CPI</a><span class="m">CNA · 1h</span></li></ul><div class="card-foot"><span>Refreshed 10:21 SGT</span><a href="#">News →</a></div>
+  <p class="src"><span>Source: Public RSS feeds</span><span>updated 25 Nov</span></p>
+</section>
+</div>
+<div class="fold-bar"><b>Talking points</b><span class="muted">Seven lines for clients, generated from today’s data: facts only, edit before sharing.</span><button class="btn-q">Show ▸</button><button class="btn-q">Copy</button></div>
+
+</main>
+</div>
+</div>
+</body>
+</html>
