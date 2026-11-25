@@ -341,3 +341,104 @@ function buildRinggit(g) {
   const r = cards.rg_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
 SUBTABS.alloc.splice(1, 0, ['In ringgit', ['rg_table', 'rg_hedge', 'rg_ust']]);
+
+// ------------------------------------------------------------------ ALLOCATION → DRAWDOWNS (Design plan 3, Step 5)
+// How far each market is from its high, and how today's fall compares with past ones. Six markets have daily closes since
+// 1990 in events.json (loaded on demand, spliced in front of the usual series); the rest start in 2005 (Yahoo).
+const DD_IDS = [...PERF_KEY.Equities, 'GOLD', 'BTC', 'IEF'];
+const DD_DEEP = 20;   // rows this far (%) below the record high are marked
+state.ddMkt = 'SPX';
+const ddCache = new Map();
+function ddSer(id) {   // the dashboard's series, with the long history from events.json in front of it when it is loaded
+  const s = S[id]; if (!s) return null;
+  const L = typeof EVT !== 'undefined' && EVT && EVT[id]; if (!L || !L.t.length || L.t[0] >= s.t[0]) return s;
+  const key = id + '|' + s.t.length; if (ddCache.has(key)) return ddCache.get(key);
+  const k = L.t.findIndex(t => t >= s.t[0]), out = { ...s, t: [...L.t.slice(0, k), ...s.t], v: [...L.v.slice(0, k), ...s.v], source: s.source + '; before ' + new Date(s.t[0]).getUTCFullYear() + ': ' + L.source };
+  ddCache.set(key, out); return out;
+}
+function ddStats(id) {
+  const s = ddSer(id); if (!s) return null;
+  const i = idxLE(s, state.latest); if (i < 260) return null;
+  const last = s.v[i], t = s.t[i], y1 = t - 365 * DAY, y10 = addMonths(t, -120);
+  let peak = -Infinity, peakT = null, hi52 = -Infinity, run = -Infinity, worst = 0;
+  for (let j = 0; j <= i; j++) {
+    const v = s.v[j]; if (v >= peak) { peak = v; peakT = s.t[j]; }
+    if (s.t[j] >= y1) hi52 = Math.max(hi52, v);
+    if (s.t[j] >= y10) { run = Math.max(run, v); worst = Math.min(worst, v / run - 1); }
+  }
+  return { id, s, last, t, off52: (last / hi52 - 1) * 100, offRec: (last / peak - 1) * 100, peakT, days: Math.round((t - peakT) / DAY), worst10: worst * 100, from: s.t[0] };
+}
+function ddEpisodes(s, min = 10) {   // every fall of `min`% or more from a high: peak, low, back to the old high (null = not yet)
+  const out = []; let pk = s.v[0], pkT = s.t[0], lo = pk, loT = pkT;
+  for (let j = 1; j < s.t.length; j++) {
+    const v = s.v[j];
+    if (v >= pk) { if ((1 - lo / pk) * 100 >= min) out.push({ peakT: pkT, lowT: loT, backT: s.t[j], depth: (lo / pk - 1) * 100 }); pk = v; pkT = s.t[j]; lo = v; loT = s.t[j]; }
+    else if (v < lo) { lo = v; loT = s.t[j]; }
+  }
+  if ((1 - lo / pk) * 100 >= min) out.push({ peakT: pkT, lowT: loT, backT: null, depth: (lo / pk - 1) * 100, now: true });
+  return out;
+}
+const ddMed = xs => { const a = xs.slice().sort((x, y) => x - y), n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; };
+const ddYr = t => new Date(t).getUTCFullYear();
+function ddLoadLong(c) { if (typeof loadEvents === 'function' && (typeof EVT === 'undefined' || !EVT)) loadEvents().then(() => { if (state.tab === 'alloc') ['dd_table', 'dd_chart', 'dd_events'].forEach(k => cards[k] && cards[k].render()); }); }
+function renderDdTable(c) {
+  ddLoadLong(c);
+  const rows = DD_IDS.map(ddStats).filter(Boolean).sort((a, b) => a.offRec - b.offRec); if (!rows.length) return setEmpty(c, 'Waiting for prices.');
+  const b = htmlBody(c), tb = el('tbody'), pc = v => v == null ? '–' : (v < -0.05 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
+  for (const r of rows) {
+    const deep = r.offRec <= -DD_DEEP;
+    tb.append(el('tr', { class: 'row' + (r.id === state.ddMkt ? ' sel' : ''), style: 'cursor:pointer', title: `${r.s.label}: record high on ${nice(r.peakT)} (data from ${ddYr(r.from)}); click to chart its falls`,
+      onclick: ev => { state.ddMkt = r.id; tb.querySelectorAll('tr.row').forEach(x => x.classList.toggle('sel', x === ev.currentTarget)); cards.dd_chart.render(); cards.dd_events.render(); } },
+      el('td', { class: 'l' }, deep ? el('span', { class: 'dd-mark', title: `${DD_DEEP}% or more below its record high`, text: '●' }) : '', r.s.label),
+      el('td', { class: 'num', text: fmtNum(r.last, autoDec(r.last)) }), el('td', { class: 'num ' + (r.off52 <= -10 ? 'dn' : ''), text: pc(r.off52) }),
+      el('td', { class: 'num strong ' + (deep ? 'dn' : ''), text: pc(r.offRec) }), el('td', { class: 'num muted', text: r.days ? fmtNum(r.days, 0) : 'at the high' }),
+      el('td', { class: 'num', text: pc(r.worst10) })));
+  }
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' },
+    el('thead', {}, el('tr', {}, ...['Market', 'Last', 'Below 52-week high', 'Below record high', 'Days since that high', 'Deepest fall, 10 years'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)));
+  capRows(tb, 'dd_table', 16);
+  const deep = rows.filter(r => r.offRec <= -DD_DEEP);
+  c.csv = [['Market', 'Last', 'Below 52-week high %', 'Below record high %', 'Record high date', 'Days since', 'Deepest fall in 10 years %', 'Data from'], ...rows.map(r => [r.s.label, r.last, r.off52.toFixed(2), r.offRec.toFixed(2), iso(r.peakT), r.days, r.worst10.toFixed(2), iso(r.from)])];
+  setNote(c, (deep.length ? `${deep.length} of ${rows.length} markets are ${DD_DEEP}% or more below their record high (●): ${deep.map(r => r.s.label).join(', ')}.` : `No market is ${DD_DEEP}% or more below its record high.`)
+    + ` Record high = the highest close in the data: since 1990 for the S&P 500, Nasdaq 100, Nikkei, Hang Seng, Straits Times and KLCI, since 2005 or later for the rest, so an older peak is missed. Prices are local-currency index levels (ETFs include dividends). Click a row to chart its falls below.`);
+  setSource(c, srcOf(DD_IDS.filter(id => has(id))) + '; long histories: Yahoo Finance daily closes since 1990 (events file)');
+}
+function ddPick(c) {   // the market for the chart and the episodes table
+  const id = DD_IDS.includes(state.ddMkt) && has(state.ddMkt) ? state.ddMkt : 'SPX'; return ddSer(id);
+}
+function renderDdChart(c) {
+  ddLoadLong(c);
+  const s = ddPick(c); if (!s) return setEmpty(c, 'Waiting for prices.');
+  const p = pts(s, state.from, state.to); if (!p.length) return setEmpty(c, 'No data in this range.');
+  const i0 = Math.max(0, idxLE(s, state.from)); let run = -Infinity; for (let j = 0; j < i0; j++) run = Math.max(run, s.v[j]);   // the high carried in from before the range
+  const uw = p.map(([t, v]) => { run = Math.max(run, v); return [t, (v / run - 1) * 100]; });
+  c.titleEl.textContent = `${s.label}: below its high`;
+  drawLines(c, [{ name: `${s.label}, % below its running high`, data: uw, extra: { areaStyle: { opacity: 0.14 } } }], { fmt: v => (v < -0.05 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%', axisFmt: v => fmtNum(v, 0) + '%', endLabels: false, hlines: [{ y: -10 }, { y: -20 }] });   // dashed guides at −10% and −20%
+  const st = ddStats(s.id), E = ddEpisodes(s).filter(e => !e.now), cur = ddEpisodes(s).find(e => e.now);
+  if (st) setNote(c, `${s.label} is ${fmtNum(Math.abs(st.offRec), 1)}% below its high after ${fmtNum(st.days, 0)} days` + (E.length ? `; since ${ddYr(s.t[0])} it has had ${E.length} falls of 10% or more that recovered, with a median depth of ${fmtNum(Math.abs(ddMed(E.map(e => e.depth))), 0)}% and a median ${fmtNum(ddMed(E.map(e => (e.backT - e.lowT) / (30.44 * DAY))), 0)} months from the low back to the old high.` : '.')
+    + (cur ? ` The current fall reached ${fmtNum(Math.abs(cur.depth), 1)}% at its low (${nice(cur.lowT)}).` : '') + ' Each point is the close against the highest close before it; pick another market in the table above.');
+  setSource(c, s.source || srcOf([s.id]));
+}
+function renderDdEvents(c) {
+  ddLoadLong(c);
+  const s = ddPick(c); if (!s) return setEmpty(c, 'Waiting for prices.');
+  const E = ddEpisodes(s).reverse(); c.titleEl.textContent = 'Past falls of 10% or more';
+  if (!E.length) return setEmpty(c, `${s.label} has had no fall of 10% or more since ${ddYr(s.t[0])}.`);
+  const b = htmlBody(c), tb = el('tbody'), d = (a, z) => fmtNum(Math.round((z - a) / DAY), 0);
+  for (const e of E) tb.append(el('tr', { class: 'row' + (e.now ? ' sel' : ''), title: `High ${nice(e.peakT)} · low ${nice(e.lowT)}` + (e.backT ? ` · back to the high ${nice(e.backT)}` : ' · not back yet') },
+    el('td', { class: 'l', text: `${MONTHS[new Date(e.peakT).getUTCMonth()]} ${ddYr(e.peakT)}` + (e.now ? ' (now)' : '') }), el('td', { class: 'num dn', text: '−' + fmtNum(Math.abs(e.depth), 1) + '%' }),
+    el('td', { class: 'num', text: d(e.peakT, e.lowT) }), el('td', { class: 'num ' + (e.backT ? '' : 'muted'), text: e.backT ? d(e.lowT, e.backT) : 'not yet' })));
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...['From the high of', 'Depth', 'Days to the low', 'Days back to the high'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)));
+  capRows(tb, 'dd_events', 12);
+  c.csv = [['High', 'Low', 'Back to the high', 'Depth %', 'Days to the low', 'Days back'], ...E.map(e => [iso(e.peakT), iso(e.lowT), e.backT ? iso(e.backT) : '', e.depth.toFixed(2), Math.round((e.lowT - e.peakT) / DAY), e.backT ? Math.round((e.backT - e.lowT) / DAY) : ''])];
+  const deep = E.filter(e => e.depth <= -20).length;
+  setNote(c, `${s.label}: ${E.length} fall${E.length > 1 ? 's' : ''} of 10% or more since ${ddYr(s.t[0])}, ${deep} of them 20% or more. Days are calendar days: from the high to the lowest close, then from that low back to the old high.`);
+  setSource(c, s.source || srcOf([s.id]));
+}
+function buildDrawdowns(g) {
+  makeCard(g, { key: 'dd_table', title: 'How far from the high', wide: true, range: false, render: renderDdTable });
+  makeCard(g, { key: 'dd_chart', title: 'Below its high', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), render: renderDdChart });
+  makeCard(g, { key: 'dd_events', title: 'Past falls of 10% or more', range: false, render: renderDdEvents });
+  for (const k of ['dd_table', 'dd_events']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+}
+SUBTABS.alloc.splice(2, 0, ['Drawdowns', ['dd_table', 'dd_chart', 'dd_events']]);

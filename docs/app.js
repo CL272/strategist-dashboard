@@ -5782,7 +5782,7 @@ function renderModelChart(c) {
 
 function buildAlloc() {   // Allocation: the Evidence board (alloc.js), then In ringgit and Drawdowns (Steps 4, 5), then the Model portfolio
   const g = $('#allocGrid');
-  if (typeof buildEvidence === 'function') { buildEvidence(g); buildRinggit(g); }   // alloc.js
+  if (typeof buildEvidence === 'function') { buildEvidence(g); buildRinggit(g); buildDrawdowns(g); }   // alloc.js
   makeCard(g, { key: 'idea_model', range: false, title: 'Model portfolio', render: renderModel });
   makeCard(g, { key: 'idea_modelchart', range: false, title: 'Model portfolio vs world equities', render: renderModelChart });
   if (typeof buildModelStress === 'function') buildModelStress(g);   // WP47 (more.js)

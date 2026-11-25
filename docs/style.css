@@ -1131,3 +1131,4 @@ table.alloc tr.row td:first-child { font-weight: 500; }
 .al-how p { margin: 6px 0 0; }
 @media (max-width: 640px) { .ev > li { grid-template-columns: 18px minmax(0, 1fr); } .ev > li > span:last-child { grid-column: 2; } }
 #alLead h2 { max-width: none; }   /* the lead fits one line at 1280 and wider */
+.dd-mark { color: var(--neg); font-size: 9px; margin-right: 6px; vertical-align: 1px; }   /* Drawdowns: 20% or more below the record high */
