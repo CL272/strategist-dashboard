@@ -5675,6 +5675,7 @@ function renderWatch(c) {
   } else if (state.watchView === 'All') ids = all.slice().sort((x, y) => S[x].short.localeCompare(S[y].short));
   else ids = all.filter(id => tickMarket(id) === state.watchView).sort((x, y) => S[x].short.localeCompare(S[y].short));
   const rowsAll = ids.map(id => tickRow(id)).filter(Boolean), cap = state.watchShow || 25, rows = rowsAll.slice(0, cap);
+  state.watchFirst = rows.length ? rows[0].id : null;   // the chart below shows it until a row is picked
   const sizes = [[3], [6], [10], [25], [30]];
   rows.forEach((r, k) => {
     if (!q && state.watchView === 'Movers' && (k === 0 || k === 10)) tb.append(el('tr', { class: 'grp' }, el('td', { colspan: heads.length, text: k === 0 ? 'Biggest risers this week' : 'Biggest fallers this week' })));
@@ -5697,8 +5698,8 @@ function renderWatch(c) {
   c.csv = csv;
   setNote(c, `${all.length} tickers with daily closes from Yahoo Finance (built-in list: KLCI and STI constituents, US large caps, popular ETFs, key Hong Kong, Japan, Korea, Taiwan and Australia names, major crypto${(TICK.watchlist || []).length ? `; plus ${TICK.watchlist.length} from watchlist.txt` : ''}). Prices are last daily closes in each ticker's own currency, refreshed twice a day; not live quotes.` + ((TICK.failed || []).length ? ` Not found on Yahoo: ${TICK.failed.join(', ')}.` : ''));
 }
-function renderWatchChart(c) {   // the ticker picked in the watchlist, else the first starred one
-  const id = [state.watchSel, ...getWatch()].find(x => x && S[x]); if (!id) return setEmpty(c, TICK ? 'Tap a ticker in the list above to chart it.' : 'Loading ticker prices…');
+function renderWatchChart(c) {   // the ticker picked in the watchlist, else the first starred one, else the list's first row
+  const id = [state.watchSel, ...getWatch(), state.watchFirst].find(x => x && S[x]); if (!id) return setEmpty(c, TICK ? 'Tap a ticker in the list above to chart it.' : 'Loading ticker prices…');
   const s = S[id]; c.titleEl.textContent = `${s.short} (${s.sym})`; c.subEl.textContent = `Daily close, ${s.ccy || 'local currency'}. ${s.exch || ''}`;
   drawLines(c, [{ name: s.label, data: pts(s, state.from, state.to) }], { fmt: v => fmtNum(v, autoDec(v)) + ' ' + (s.ccy || ''), axisFmt: v => fmtNum(v, autoDec(v)), endLabels: false });
   setSource(c, `Yahoo Finance (${s.sym})`); setNote(c, 'The last 12 months unless you pick another range in the header; tickers carry up to about 3 years of history.');
