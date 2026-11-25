@@ -5,7 +5,11 @@ The owner cannot edit code; every change is made here and published by GitHub Ac
 **Design plan 3** (`DESIGN_PLAN_3.md`, approved and built 25 Nov 2026, Steps 1 to 9, one commit each): the menu as a tree,
 the Idea log and Notebook removed, the Allocation page (Evidence board, In ringgit, Drawdowns, Model portfolio), US profits,
 Malaysia flows and finances, and the MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html` (not
-published). Its rules are folded into the list below. No design work is open.
+published). Its rules are folded into the list below.
+
+**Open design work:** `DESIGN_PLAN_4.md` (planned 25 Nov 2026, waiting for the owner's answers; nothing built): a portfolio
+allocator on Allocation (saved portfolios, a custom benchmark, tracking error, "Add a fund" what-if), with weekly fund data
+in a new `funds.json`. Mockup: `design/portfolio.html`. Build only what the owner approves, one step per commit.
 
 **Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
 the reference mockups stay in `design/` (not published). Its rules are folded into the list below.

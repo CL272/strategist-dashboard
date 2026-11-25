@@ -1,0 +1,41 @@
+/* ===================================================================
+   Design plan 4 (25 Nov 2026): reference styles for design/portfolio.html (Allocation → Portfolio and Add a fund).
+   Tokens only, so light and dark both work. When a step is built, move its rules into docs/style.css unchanged
+   (the "mock-only" block at the end stays behind).
+   =================================================================== */
+
+/* ---- P1 · the portfolio bar: which portfolio, currency, window; one line above the tiles */
+.pb-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; font-size: 12.5px; color: var(--ink-2); }
+.pb-bar label { display: inline-flex; align-items: center; gap: 6px; }
+.pb-bar .mini-select { font-size: 13px; padding: 3px 6px; font-weight: 600; color: var(--ink); }
+.pb-bar .ghost { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+.pb-bar .sp { flex: 1 1 auto; }
+
+/* ---- P2 · mix by asset class: the portfolio (solid) over the benchmark (outline) */
+.pb-h { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.pb-mix { display: grid; grid-template-columns: 76px minmax(0, 1fr) 96px; align-items: center; column-gap: 10px; font-size: 12.5px; padding: 3px 0; }
+.pb-mix .bar { position: relative; height: 12px; background: var(--wash); border-radius: 3px; }
+.pb-mix .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--s1); border-radius: 3px; }
+.pb-mix .bar b { position: absolute; left: 0; top: -2px; bottom: -2px; border-right: 2px solid var(--ink); }
+.pb-mix .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- P3 · share of tracking error per holding (a negative share offsets) */
+.pb-share { display: block; width: 110px; height: 8px; background: var(--wash); border-radius: 2px; }
+.pb-share i { display: block; height: 100%; background: var(--s1); border-radius: 2px; }
+.pb-share.neg i { background: var(--muted); }
+
+/* ---- P4 · what if: the controls, then before → after */
+.pb-what { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+.pb-what label { display: inline-flex; align-items: center; gap: 7px; }
+.pb-what .mini-select { font-size: 13px; padding: 3px 6px; }
+.pb-ba { border-top: 1px solid var(--grid); }
+.pb-ba > div { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.pb-ba .k { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.pb-ba .v { font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-ba .v b { color: var(--ink); font-weight: 700; }
+.pb-ba .arr { color: var(--muted); margin: 0 2px; }
+.pb-ba .d { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* mock-only (not for docs/style.css) */
+.mock-note { font-size: 12px; color: var(--muted); margin: 26px 0 8px; padding-top: 14px; border-top: 2px dashed var(--border); }
+.card .note { font-size: 12.5px; color: var(--ink-2); margin: 8px 0 0; }

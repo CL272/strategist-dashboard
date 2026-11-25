@@ -7,3 +7,7 @@ Serve the repository root (`python3 -m http.server`) and open `design/strategist
 
 Design plan 3 (`DESIGN_PLAN_3.md`, 25 Nov 2026) adds `design/menu.html` (the menu as a tree, three states) and
 `design/allocation.html` (the Allocation page), with their classes in `design/redesign3.css`.
+
+Design plan 4 (`DESIGN_PLAN_4.md`, 25 Nov 2026) adds `design/portfolio.html` (the portfolio allocator: the Portfolio and
+Add a fund sub-tabs on one page), with its classes in `design/redesign4.css`. Its figures are real, from the planning
+prototype (weekly closes with dividends to 21 Nov 2026, in ringgit, three years).
