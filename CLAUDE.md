@@ -2,6 +2,11 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
+**Open design work:** `DESIGN_PLAN_3.md` (planned 25 Nov 2026, waiting for the owner's answers; nothing built): the menu
+as a tree, removing the Idea log and Notebook, an Allocation page (evidence board, in ringgit, drawdowns), profits, Malaysia
+flows and finances, and a MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html`. Build only what the
+owner approves, one step per commit.
+
 **Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
 the reference mockups stay in `design/` (not published). Its rules are folded into the list below.
 

@@ -1,0 +1,64 @@
+/* ===================================================================
+   Design plan 3 (25 Nov 2026): reference styles for design/menu.html and design/allocation.html.
+   Tokens only, so light and dark both work. When a step is built, move its rules into docs/style.css unchanged
+   (the "mock-only" block at the end stays behind).
+   =================================================================== */
+
+/* ---- M1 · the menu as a tree: groups are headers, pages hang from a rail, countries hang from their region */
+.nav3 { display: flex; flex-direction: column; gap: 0; }
+.nav3 .nav-sec { padding: 6px 0 4px; border-top: 1px solid var(--border); }
+.nav3 .nav-sec:first-child { border-top: 0; padding-top: 2px; }
+.nav3 .nav-head { display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: transparent; border-radius: 7px; padding: 5px 8px; margin: 0;
+  font-size: 12.5px; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--ink); cursor: pointer; text-align: left; }
+.nav3 .nav-head:hover { background: var(--wash); }
+.nav3 .nav-head .chev { display: inline-block; width: 10px; height: 10px; line-height: 10px; text-align: center; font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
+.nav3 .nav-sec:not(.folded) > .nav-head .chev { transform: rotate(90deg); }
+.nav3 .nav-head .cnt { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav3 .nav-items { margin: 1px 0 0 12px; padding-left: 7px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 1px; }
+.nav3 .nav-items button { position: relative; display: flex; align-items: center; width: 100%; border: 0; background: transparent; border-radius: 6px; margin: 0;
+  padding: 4px 8px; font-size: 13px; font-weight: 450; color: var(--ink-2); text-align: left; cursor: pointer; box-shadow: none; }
+.nav3 .nav-items button:hover { background: var(--wash); color: var(--ink); }
+.nav3 .nav-items button[aria-selected="true"] { background: var(--wash); color: var(--sel); font-weight: 650; }
+.nav3 .nav-items button[aria-selected="true"]::before { content: ""; position: absolute; left: -8px; top: 3px; bottom: 3px; width: 2px; border-radius: 2px; background: var(--sel); }
+.nav3 .nav-items .nav-caret { margin-left: auto; font-size: 9px; color: var(--muted); }
+.nav3 .nav-items .nav-items { margin-left: 10px; }                                  /* countries under their region */
+.nav3 .nav-items .nav-items button { font-size: 12.5px; padding: 3px 8px; }
+.nav3 .nav-sec.folded > .nav-items > button:not([aria-selected="true"]), .nav3 .nav-sec.folded > .nav-items > .nav-items { display: none; }
+.nav3 .nav-sec.folded > .nav-items > .nav-items:has([aria-selected="true"]) { display: flex; }
+.nav3 .nav-sec.folded > .nav-items > .nav-items:has([aria-selected="true"]) button:not([aria-selected="true"]) { display: none; }
+:root[data-theme="dark"] .nav3 .nav-items button[aria-selected="true"] { color: #9fbaf0; }
+:root[data-theme="dark"] .nav3 .nav-items button[aria-selected="true"]::before { background: #9fbaf0; }
+
+/* ---- A1 · Allocation board: asset rows, one mark per pillar, a plain tally, the evidence on demand */
+table.alloc { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.alloc th, table.alloc td { padding: 6px 8px; border-bottom: 1px solid var(--grid); text-align: center; white-space: nowrap; }
+table.alloc th { font-size: 12px; font-weight: 600; color: var(--muted); border-bottom-color: var(--axis); }
+table.alloc th:first-child, table.alloc td:first-child { text-align: left; }
+table.alloc th:last-child, table.alloc td:last-child { text-align: right; }
+table.alloc tr.grp td { text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 10px; }
+table.alloc tr.row { cursor: pointer; }
+table.alloc tr.row:hover td, table.alloc tr.row.sel td { background: var(--wash); }
+table.alloc tr.row.sel td:first-child { box-shadow: inset 2px 0 0 var(--sel); font-weight: 650; }
+.pm { display: inline-block; width: 18px; height: 18px; line-height: 18px; border-radius: 5px; font-size: 10px; }
+.pm.up { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); }
+.pm.dn { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); }
+.pm.mid { color: var(--muted); background: var(--wash); }
+.pm.na { color: var(--axis); }
+.tally { font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.tally b.up { color: var(--pos); } .tally b.dn { color: var(--neg); }
+.ev { list-style: none; margin: 4px 0 0; padding: 0; }
+.ev > li { display: grid; grid-template-columns: 18px 124px minmax(0, 1fr); column-gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13px; line-height: 1.4; }
+.ev > li:last-child { border-bottom: 0; }
+.ev .pl { font-weight: 600; }
+.ev a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+.ev a:hover { text-decoration: underline; }
+.legend-line { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.legend-line .pm { margin-right: 4px; }
+
+/* mock-only (not for docs/style.css) */
+.mock-row { display: flex; gap: 28px; align-items: flex-start; padding: 22px 26px; flex-wrap: wrap; }
+.mock-col { width: 216px; }
+.mock-col h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+.mock-side { background: var(--surface); border: 1px solid var(--border) !important; border-radius: 12px; padding: 12px 10px !important; }
+.mock-note { font-size: 12px; color: var(--muted); padding: 0 26px 18px; max-width: 900px; }
+.ph { height: 230px; border-radius: 8px; background: repeating-linear-gradient(135deg, var(--surface-2), var(--surface-2) 10px, var(--wash) 10px, var(--wash) 20px); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
