@@ -18,6 +18,7 @@ const ALLOW = [
   ['health', '*', 'rows'],                       // a diagnostics page
   ['markets', 'Watchlist', 'rows'],              // 20 rows: ten risers plus ten fallers
   ['fixed', 'Income menu', 'rows'],              // grouped by asset class (cash, government, credit, equity income, options)
+  ['alloc', 'Evidence board', 'rows'],           // Design plan 3: one grouped table of 13 assets (16 rows with the group rows)
   ['us', '*', 'first300'],                       // Design plan 2, Step 5: a group row sits above the sub-tab bar (limit 300px)
   ['regime', '*', 'first300'],
 ];

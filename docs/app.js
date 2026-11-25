@@ -3589,7 +3589,7 @@ function renderAI() {
 
 // ------------------------------------------------------------------ VALUATION
 const REER = ['REER_USD', 'REER_EUR', 'REER_JPY', 'REER_CNY', 'REER_GBP', 'REER_SGD', 'REER_MYR', 'REER_KRW', 'REER_INR', 'REER_AUD', 'REER_IDR'];
-const STRETCH_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'NIFTY', 'AS51', 'IBOV', 'EEM'];
+const STRETCH_EQ = ['SPX', 'NDX', 'SX5E', 'UKX', 'NKY', 'CSI300', 'HSI', 'KOSPI', 'TWSE', 'STI', 'KLCI', 'NIFTY', 'AS51', 'IBOV', 'EEM', 'AAXJ'];
 function pctile(s, to, from = -Infinity) {   // share of history (from..to) at or below the latest value
   const a = asOf(s, to); if (!a) return null;
   let n = 0, below = 0; for (let i = 0; i <= a.i; i++) { if (s.t[i] < from) continue; n++; if (s.v[i] <= a.v) below++; }
@@ -3608,7 +3608,7 @@ function stretch(id) {   // % above/below a 10-year log-linear trend, and its z-
   let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
   const b = sxy / sxx, a = my - b * mx, res = ys.map((y, i) => y - (a + b * xs[i]));
   const sd = Math.sqrt(res.reduce((m, r) => m + r * r, 0) / (n - 2)), last = res[n - 1];
-  return { pct: (Math.exp(last) - 1) * 100, z: last / sd, trend: (Math.exp(b * 52) - 1) * 100 };
+  return { pct: (Math.exp(last) - 1) * 100, z: last / sd, trend: (Math.exp(b * 52) - 1) * 100, p: res.filter(r => r <= last).length / n * 100 };   // p: percentile of today's gap among the 10 years'
 }
 const READ = p => p == null ? ['–', ''] : p >= 80 ? ['Expensive', '--critical'] : p >= 60 ? ['Rich', '--serious'] : p > 40 ? ['Fair', '--muted'] : p > 20 ? ['Cheapish', '--s3'] : ['Cheap', '--good'];
 function valRows() {
@@ -3625,6 +3625,10 @@ function valRows() {
   for (const id of REER) if (has(id)) { const c = pctile(S[id], to); if (c) add('FX (real effective rate)', S[id].label.replace(' REER', ''), fmtNum(c.v, 1), c.p, `percentile since ${new Date(c.since).getUTCFullYear()}; high = strong / expensive`, 'BIS via FRED'); }
   if (has('WTI_LONG', 'CPI')) { const r = combine(S.WTI_LONG, S.CPI, (a, b) => a / b, {}, 40 * DAY); const c = pctile({ ...r, t: r.t, v: r.v }, to);
     if (c) add('Commodities', 'Real oil price (WTI / CPI)', '', c.p, 'since 1959', 'FRED WTISPLC, CPIAUCSL'); }
+  if (has('GOLD', 'CPI')) { const r = combine(S.GOLD, S.CPI, (a, b) => a / b, {}, 75 * DAY), c = pctile({ ...r, t: r.t, v: r.v }, to);   // Design plan 3: read by the Evidence board
+    if (c) add('Commodities', 'Real gold price (gold / US CPI)', '', c.p, 'since 2005', 'Yahoo Finance (GC=F); FRED CPIAUCSL'); }
+  if (has('MY_MGS_10Y', 'MY_CPI_YOY')) { const r = combine(S.MY_MGS_10Y, S.MY_CPI_YOY, (a, b) => a - b, {}, 75 * DAY), c = pctile({ ...r, t: r.t, v: r.v }, to);
+    if (c) add('Malaysia', 'MGS 10Y real yield (minus CPI)', fmtNum(c.v, 2) + '%', c.p, 'since 2019; high yield = cheap bonds', 'Bank Negara Malaysia (MGS 10Y); DOSM (CPI)', true); }
   return rows;
 }
 function renderValTable(c) {
@@ -5776,8 +5780,9 @@ function renderModelChart(c) {
   setNote(c, '= 100 at the start of the range; weekly.');
 }
 
-function buildAlloc() {   // Allocation: the Model portfolio moved here (Step 2); the Evidence board and the rest follow (Steps 3 to 5)
+function buildAlloc() {   // Allocation: the Evidence board (alloc.js), then In ringgit and Drawdowns (Steps 4, 5), then the Model portfolio
   const g = $('#allocGrid');
+  if (typeof buildEvidence === 'function') buildEvidence(g);
   makeCard(g, { key: 'idea_model', range: false, title: 'Model portfolio', render: renderModel });
   makeCard(g, { key: 'idea_modelchart', range: false, title: 'Model portfolio vs world equities', render: renderModelChart });
   if (typeof buildModelStress === 'function') buildModelStress(g);   // WP47 (more.js)
