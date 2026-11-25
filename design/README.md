@@ -10,4 +10,5 @@ Design plan 3 (`DESIGN_PLAN_3.md`, 25 Nov 2026) adds `design/menu.html` (the men
 
 Design plan 4 (`DESIGN_PLAN_4.md`, 25 Nov 2026) adds `design/portfolio.html` (the portfolio allocator: the Portfolio and
 Add a fund sub-tabs on one page), with its classes in `design/redesign4.css`. Its figures are real, from the planning
-prototype (weekly closes with dividends to 21 Nov 2026, in ringgit, three years).
+prototype (weekly closes with dividends to 21 Nov 2026, in ringgit, three years). Built the same day; the build names its classes
+`po-*` rather than the mock's `pb-*` (the Playbook already uses `pb-*`).

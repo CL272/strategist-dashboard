@@ -1,7 +1,7 @@
 # Design plan 4: a portfolio allocator (tracking error against a benchmark you choose)
 
-**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
-Nothing is built yet. Build Steps 1 to 5 in order, one step per commit.**
+**Status (25 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end)
+and built, Steps 1 to 5, one commit each. Departures from the plan are listed under "As built" at the end.**
 Written after the owner asked for "a portfolio allocator": start a new portfolio or open an existing one, add an ETF,
 and see the tracking error against a benchmark that can be customised ("like 60/40"). `CLAUDE.md` rules still apply;
 where a step changes a standing rule it says so.
@@ -193,3 +193,31 @@ Every default in brackets below is approved. The alternatives were not chosen: d
    Alternative: one portfolio only, as today. **Approved as the default: several saved portfolios.**
 5. **The ranked table** ("What 10% of each fund would do"). [Include it, worded as arithmetic, never a recommendation.]
    Alternative: leave it out and keep only the one-fund what-if. **Approved as the default: include the table.**
+
+## As built (25 Nov 2026)
+
+All five steps are live, one commit each. Where the build departs from the text above:
+
+- **Names.** Everything the plan calls `pb*` (`PB_UNIVERSE`, `PB_BENCH`, `.pb-bar`, `.pb-ba`, `#pbBar`, `#pbKpis`) is `po*` in
+  the build (`poBlocks()`, `PO_BENCH`, `.po-bar`, `.po-ba`, `#poBar`, `#poKpis`; new card keys `po_bench`, `po_src`): the
+  Playbook in `docs/more.js` already uses `pb*` and the two clashed. The mockup keeps its `pb-*` classes.
+- **Step 1.** Each week is dated by its last trading day, not by the Friday, so the current week never carries a future
+  date. 52 funds, 597 KB. One-year returns against the issuers' NAV returns: IEF −3.75 vs −3.73, CSPX.L 12.08 vs 11.85,
+  AGGU.L 0.10 vs 0.16 (the issuer's default page is the euro-hedged class; the check used the dollar-hedged one). The
+  pence fund IWDP.L moves with its dollar twin VNQ (weekly correlation 0.86). `thin`: Bursa funds 0.10 to 0.13, MBH.SI 0.15,
+  SPY 0. A run with Yahoo blocked keeps every fund; Data health lists the 52 weekly series.
+- **Step 2.** `tools/port-check.js` runs 19 checks: the seven in the plan on fixtures, then the same identities on the real
+  `funds.json` when it is there; it passes with no network.
+- **Step 3.** A real data-loss bug in vault sync turned up while testing and was fixed in its own commit: the last-sync time
+  was taken after the upload, so an edit made during an upload could be skipped by the next sync; it is now taken when the
+  payload is read, and `vault-sync-check.js` has a regression test for it. A locked vault clears the card before showing
+  the lock (`poEmpty`). On phones the portfolio bar is compacted so the first card starts within 380px. The stress test
+  gained the benchmark column, as planned, and keeps its risk-contribution row.
+- **Step 4.** The curve's title is "Tracking error by weight added" (the plan's title is over 32 characters). `pmAdd`
+  raises the chosen fund by exactly the weight picked, also when it is already held. The what-if uses the weights rounded
+  to two decimals as they are saved (`poRound2`), so "after" equals what Apply or Save as new then shows on Portfolio to
+  the last digit. Apply and Save as new open Portfolio. Clicking a row of the ranked table loads that fund into the
+  what-if and the curve. Every allocator card is dated by the last week analysed (`poAsOf`), not by the exchange rates
+  read on the way. On phones the before → after rows stack and the buttons wrap.
+- **Step 5.** The advice-word scan reads the visible cards, tiles and portfolio bar of each sub-tab after `funds.json` has
+  loaded; no allowance was needed.

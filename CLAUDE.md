@@ -2,14 +2,15 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
+**Design plan 4** (`DESIGN_PLAN_4.md`, approved and built 25 Nov 2026, Steps 1 to 5, one commit each): a portfolio
+allocator on Allocation (Portfolio and Add a fund: saved portfolios, a benchmark you choose, tracking error, the "Add a fund"
+what-if), with weekly fund data in `funds.json`. Mockup: `design/portfolio.html` (not published). Its rules are folded into
+the list below.
+
 **Design plan 3** (`DESIGN_PLAN_3.md`, approved and built 25 Nov 2026, Steps 1 to 9, one commit each): the menu as a tree,
-the Idea log and Notebook removed, the Allocation page (Evidence board, In ringgit, Drawdowns, Model portfolio), US profits,
+the Idea log and Notebook removed, the Allocation page (Evidence board, In ringgit, Drawdowns, Model portfolio, which Design plan 4 replaced), US profits,
 Malaysia flows and finances, and the MOVE-spike study. Mockups: `design/menu.html`, `design/allocation.html` (not
 published). Its rules are folded into the list below.
-
-**Open design work:** `DESIGN_PLAN_4.md` (approved by the owner 25 Nov 2026, all five decisions as recommended; Steps 1 to 4 built, Step 5 next): a portfolio
-allocator on Allocation (saved portfolios, a custom benchmark, tracking error, "Add a fund" what-if), with weekly fund data
-in a new `funds.json`. Mockup: `design/portfolio.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.
 
 **Design plan 2** (`DESIGN_PLAN_2.md`, approved and built 25 Nov 2026): Strategist View, Weekly brief and click-through;
 the reference mockups stay in `design/` (not published). Its rules are folded into the list below.
@@ -149,7 +150,7 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Malaysia → Rates & bonds: "MGS yields" (`my_mgs`) and "Rate gap vs USD/MYR" (`my_gap`: US 3Y − MGS 3Y, 10Y − MGS 10Y,
   "2Y (monthly)" = US 2Y at month-end − the bulletin's MGS 2Y (`MY_MGS_2Y_M`), or US 2Y − OPR, with the level correlation
   over the shown range in the note).
-- **Allocation** (Design plan 3, `docs/alloc.js`, loaded after au.js): Evidence board · In ringgit · Drawdowns · Model portfolio.
+- **Allocation** (Design plan 3, `docs/alloc.js`, loaded after au.js): Evidence board · In ringgit · Drawdowns · Portfolio · Add a fund.
   The **Evidence board** is 13 assets × 6 pillars (cycle, valuation, trend, sentiment, policy & liquidity, signals), one mark
   per cell (▲ ● ▼ –) from one registry, `AL_ROWS`; the rules are printed from `AL_RULES` under the board (change both
   together). Every mark reads a card that is already on the dashboard (`valRows`, `stretch`, `trendStats`, `cbStats`, `fedRow`,
@@ -157,7 +158,29 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   fixed (evidence, for, against, tally); never buy, sell, overweight or recommend: the design check fails on those words.
   **In ringgit**: own-currency return × currency effect = ringgit return (`rgSplit`); hedging cost = ringgit 3M interbank −
   US 3M bill (an estimate, not a quote; from Dec 2023). **Drawdowns**: `events.json` histories since 1990 are spliced in
-  front of the dashboard series (`ddSer`). The Model portfolio and its stress test moved here from the Idea log.
+  front of the dashboard series (`ddSer`). The stress test (`idea_stress`) moved here from the Idea log and sits on Portfolio.
+- **Portfolio allocator** (Design plan 4): Allocation → Portfolio and Add a fund. Data: `pipeline/funds.py` → `funds.json`
+  (`FUNDS`: 52 funds plus every ticker in `watchlist.txt`; Yahoo adjusted closes from 2005, the last trading day of each
+  Saturday-to-Friday week, `GBp` ÷ 100 stored as GBP; `thin` = share of unchanged weeks over three years; a fund that fails
+  keeps its history), loaded only when a Portfolio sub-tab opens (`loadFunds`). Maths: `docs/port-model.js` (`PM`, pure, shared
+  with `tools/port-check.js`); page: `docs/port.js` (prefix `po`, never `pb`: the Playbook uses `pb*`).
+  **One universe registry**: `poBlocks()` = every fund in `funds.json` + the index series in `PO_INDEX` ("index, no dividends")
+  + cash (`PO_CASH_RATE`: OPR, SORA, US 3M bill). A new fund goes into `FUNDS` (or `watchlist.txt`), never into page code.
+  **The method** (printed in the cards' notes; change both together): weekly returns with dividends, in the portfolio's
+  currency at each week's closing rate; both sides held at their weights (rebalanced weekly); tracking error = √(52 · aᵀΣa)
+  on the weeks every holding shares (equal to the realised spread of weekly gaps × √52); share of holding i = aᵢ(Σa)ᵢ ÷ aᵀΣa;
+  window 1Y · 3Y · 5Y · Max, cut by the shortest history (the card names that fund); under 52 shared weeks, no figure. History,
+  not a forecast, before costs and tax. **Thin trading**: `thin` above 0.08 (`PO_THIN`) gives a "thinly traded" tag and the
+  figure says it may be understated. **Benchmarks** (`PO_BENCH`): world mixes = ACWI + AGGU.L (USD-hedged aggregate);
+  Malaysia 60/40 = FBM KLCI index + 0800EA.KL; editing a preset makes it "Custom". **Storage**: `sd-ports-v1` in `VAULT_ITEMS`
+  through `pstore()` (`{v, sel, ports: [{id, name, ccy, win, rows, bench: {preset, rows}, updated}]}`); the first visit copies
+  the old model portfolio (`sd-model-v1`, left untouched); a locked vault shows the lock (`poEmpty` clears the card first),
+  never defaults. **Add a fund**: `pmAdd` raises the fund by exactly x points, paid for by all holdings in proportion, cash
+  first, or one holding first (never below zero); the what-if uses the weights rounded as they are saved (`poRound2`), so
+  "after" equals what Apply or Save as new then shows on Portfolio. The ranked table adds every fund at 5/10/20% (eight lowest
+  and six highest at rest). Allocator cards are dated by the last week analysed (`poAsOf`). Wording is arithmetic on past
+  returns: never buy, sell, overweight or recommend (the design check scans both sub-tabs). Run `node tools/port-check.js`
+  after any change to `port-model.js` or the method; it must pass before pushing.
 - **Profits** (Design plan 3): US → Economy → Profits (`docs/more.js`, `PF_SUB`, pushed last in `init`): profits vs the
   S&P 500, profits ÷ GDP (GDP fetched from 1959), S&P 500 trailing EPS (`SH_EPS`, Shiller's E column; the page falls back to
   price ÷ P/E). Forward earnings are licensed: never shown.
@@ -190,7 +213,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Since Design plan 2 it also fails on a lone half-width card (`lone`), a desktop sub-tab bar that hides tabs (`bar-hidden`),
   the Strategist View over 1,350px or the Weekly brief over 1,500px (at 1440 and 1280), and a brief that prints on more than
   one A4 page. Deliberate exceptions are listed in its `ALLOW` table (`first300` for the two pages with a group row).
-  Since Design plan 3 it also fails on a menu list that scrolls more than 200px and on advice words on the Evidence board.
+  Since Design plan 3 it also fails on a menu list that scrolls more than 200px and on advice words on the Evidence board
+  (since Design plan 4 also on Allocation → Portfolio and Add a fund).
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.
 - Dual-axis charts are the owner's preference for two-series comparisons (`drawPair`).
@@ -198,7 +222,7 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 ## Data and privacy
 
 - Public data only; secrets (`FRED_API_KEY`, `ESTAT_API_KEY`) live in GitHub repository secrets, never in code.
-- The repository and site are public. Everything the owner writes (watchlist, model portfolio, signal watch and dismiss,
+- The repository and site are public. Everything the owner writes (watchlist, saved portfolios, signal watch and dismiss,
   structured notes) goes through `pstore()`, which is the **private vault**
   (`docs/vault.js`) once it is set up: AES-256-GCM with a key derived from the owner's passphrase (PBKDF2-SHA-256,
   600,000 rounds) in the browser; only ciphertext is stored or synced. A new private item must use a key listed in
@@ -208,8 +232,9 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 - The Idea log, house views and the Notebook were removed (Design plan 3, Step 2, owner's request 25 Nov 2026). Their stored
   items (`sd-ideas-v1`, `sd-views-v1`, `sd-notebook-v1`) stay in `VAULT_ITEMS`, untouched, encrypted and synced; no page reads
   them; the vault dialog (the vault button at the foot of the menu, which also holds the vault and sync settings) exports
-  them as a JSON file. Never delete them or drop them from `VAULT_ITEMS`. The Watchlist is Markets → Watchlist and the
-  Model portfolio is Allocation → Model portfolio (card keys `idea_*` kept); old `#tab=ideas` / `#tab=notebook` links are mapped.
+  them as a JSON file. Never delete them or drop them from `VAULT_ITEMS`. The Watchlist is Markets → Watchlist; the old
+  model portfolio became the first saved portfolio on Allocation → Portfolio (card keys `idea_model`, `idea_modelchart`,
+  `idea_stress` kept; `sd-model-v1` stays in `VAULT_ITEMS`, untouched); old `#tab=ideas` / `#tab=notebook` links are mapped.
 - After any change to `docs/vault.js` or to how private data is stored, run `node tools/vault-check.js` and
   `node tools/vault-sync-check.js` (local server up); both must pass before pushing.
 - A login screen in front of the public site would only be cosmetic (the files are public); hiding the whole site needs

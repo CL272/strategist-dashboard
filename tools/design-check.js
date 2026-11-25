@@ -83,11 +83,17 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
     const n = document.querySelector('.side .tabs'); return { scroll: n.scrollHeight - n.clientHeight, heads: n.querySelectorAll('.nav-sec > .nav-head').length }; });
   if (!menu.heads) problems.push('menu: no group headers (.nav-sec > .nav-head): the tree markup is missing');
   if (menu.scroll > 200) problems.push(`menu: the page list scrolls ${menu.scroll}px at 1440x900 with every group open and the region trees closed (limit 200)`);
-  // Design plan 3, Step 3: the Evidence board is a tally of evidence, never advice: no buy, sell, overweight or recommend
-  const advice = await page.evaluate(async () => { goSub('alloc', 'Evidence board'); await new Promise(r => setTimeout(r, 800));
-    const T = [document.querySelector('#tab-alloc').textContent, ...(state.alRes || []).flatMap(x => Object.values(x.c).map(y => y.txt))].join(' ').replace(/not a recommendation/gi, '');
-    return [...new Set((T.match(/\b(buy|buying|sell(?!-off)|selling|overweight|underweight|recommend\w*)\b/gi) || []).map(w => w.toLowerCase()))]; });
-  if (advice.length) problems.push(`alloc › Evidence board: advice words on the page (${advice.join(', ')}); the board is a tally of evidence, not a recommendation`);
+  // Design plan 3, Step 3: the Evidence board is a tally of evidence, never advice: no buy, sell, overweight or recommend.
+  // Design plan 4, Step 5: the same rule on the allocator's two sub-tabs (Portfolio, Add a fund), with the fund data loaded
+  for (const sub of ['Evidence board', 'Portfolio', 'Add a fund']) {
+    const advice = await page.evaluate(async sub => { goSub('alloc', sub);
+      for (let i = 0; i < 40 && (sub !== 'Evidence board' && typeof FUNDS !== 'undefined' && !FUNDS); i++) await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 1200));
+      const vis = [...document.querySelectorAll('#tab-alloc .card, #tab-alloc .kpis, #tab-alloc .po-bar')].filter(e => e.offsetParent).map(e => e.textContent);
+      const T = [...vis, ...(sub === 'Evidence board' ? (state.alRes || []).flatMap(x => Object.values(x.c).map(y => y.txt)) : [])].join(' ').replace(/not a recommendation/gi, '');
+      return [...new Set((T.match(/\b(buy|buying|sell(?!-off)|selling|overweight|underweight|recommend\w*)\b/gi) || []).map(w => w.toLowerCase()))]; }, sub);
+    if (advice.length) problems.push(`alloc › ${sub}: advice words on the page (${advice.join(', ')}); ${sub === 'Evidence board' ? 'the board is a tally of evidence' : 'the allocator is arithmetic on past returns'}, not a recommendation`);
+  }
   // the daily pages again on a small laptop (1280x720), and the brief on one A4 page
   const lap = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   lap.on('pageerror', e => errors.push(e.message));
