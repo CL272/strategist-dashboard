@@ -6995,16 +6995,19 @@ function buildGapCards() {
   // shortest 3Y: there is no 2-year MGS benchmark)
   state.myGapVs = 'mgs3';
   makeCard($('#myGrid'), { key: 'my_gap', title: 'Rate gap vs USD/MYR', defaultRange: '5Y', wide: true,
-    seg: { key: 'myGapVs', options: [['mgs3', '3Y vs MGS'], ['mgs10', '10Y vs MGS'], ['opr', '2Y vs OPR']] }, render: c => {
+    seg: { key: 'myGapVs', options: [['mgs3', '3Y vs MGS'], ['mgs10', '10Y vs MGS'], ['mgs2m', '2Y (monthly)'], ['opr', '2Y vs OPR']] }, render: c => {
     if (!has('USDMYR')) return setEmpty(c, 'Waiting for data.');
     const V = { mgs3: ['UST3Y', 'MY_MGS_3Y', 'US 3Y − MGS 3Y', '3 years', 'FRED (DGS3); Bank Negara Malaysia API (MGS 3Y benchmark close)'],
       mgs10: ['UST10Y', 'MY_MGS_10Y', 'US 10Y − MGS 10Y', '10 years', 'FRED (DGS10); Bank Negara Malaysia API (MGS 10Y benchmark close)'],
+      mgs2m: ['UST2Y', 'MY_MGS_2Y_M', 'US 2Y − MGS 2Y (month-end)', '2 years', 'FRED (DGS2); Bank Negara Malaysia API (Monthly Statistical Bulletin, table 2.5: MGS 2Y, monthly)'],
       opr: ['UST2Y', 'MY_OPR', 'US 2Y yield − OPR', 'two years', 'FRED (DGS2); Bank Negara Malaysia (OPR)'] };
     let k = state.myGapVs in V ? state.myGapVs : 'mgs3';
     const wait = k !== 'opr' && !has(V[k][0], V[k][1]); if (wait) k = 'opr';
     const [us, my, name, ten, src] = V[k];
     if (!has(us, my)) return setEmpty(c, 'Waiting for data.');
-    const gap = k === 'opr' ? combine(S[us], S[my], (a, b) => a - b, {}, 400 * DAY) : combine(S[my], S[us], (m, u) => u - m, {}, 7 * DAY);
+    const gap = k === 'opr' ? combine(S[us], S[my], (a, b) => a - b, {}, 400 * DAY)
+      : k === 'mgs2m' ? (() => { const M = S[my], t = [], v = []; for (let i = 0; i < M.t.length; i++) { const u = asOf(S[us], addMonths(M.t[i], 1) - DAY); if (u && addMonths(M.t[i], 1) - u.t < 10 * DAY) { t.push(u.t); v.push(u.v - M.v[i]); } } return { ...M, kind: 'level', t, v }; })()   // the month's MGS 2Y against the US 2Y at the month's end, dated that day
+      : combine(S[my], S[us], (m, u) => u - m, {}, 7 * DAY);
     drawPair(c, { name: name + ', pp', data: pts(gap, state.from, state.to) }, { name: 'USD/MYR', data: pts(S.USDMYR, state.from, state.to) },
       { fmtA: v => sign(v) + fmtNum(Math.abs(v), 2) + 'pp', fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 1), axisB: v => fmtNum(v, 2) });
     const a = asOf(gap, state.to), a1 = a ? asOf(gap, addMonths(a.t, -1)) : null, u = a ? asOf(S[us], a.t) : null, m = a ? asOf(S[my], a.t) : null;
@@ -7014,7 +7017,7 @@ function buildGapCards() {
     setNote(c, lead + 'In theory a wider gap weakens the ringgit (USD/MYR up), since holding dollars pays more'
       + (r != null ? `; over the period shown the two ${r > 0.3 ? 'moved together' : r < -0.3 ? 'moved in opposite directions' : 'had little to do with each other'} (correlation ${fmtNum(r, 2)}). ` : '. ')
       + (wait ? 'MGS history arrives with the next data runs; showing the OPR view meanwhile. ' : '')
-      + 'Bank Negara publishes MGS benchmarks from 3 years out (no 2-year benchmark), so “3Y vs MGS” is the closest like-for-like match to the US 2-year; “2Y vs OPR” uses the policy rate instead. MGS closes are the benchmark issue’s last traded yield; days it did not trade are skipped.');
+      + 'The daily MGS benchmarks start at 3 years (no 2-year benchmark), so “3Y vs MGS” is the closest daily match to the US 2-year; “2Y (monthly)” uses the 2-year yield in Bank Negara’s monthly bulletin against the US 2-year at each month’s end; “2Y vs OPR” uses the policy rate. MGS closes are the benchmark issue’s last traded yield; days it did not trade are skipped.');
     setSource(c, src + '; Yahoo Finance (MYR=X)'); } });
   makeCard($('#myGrid'), { key: 'my_mgs', title: 'MGS yields', defaultRange: '3Y', render: c => {
     const ids = ['MY_MGS_3Y', 'MY_MGS_5Y', 'MY_MGS_10Y', 'MY_MGS_20Y', 'MY_MGS_30Y'].filter(id => has(id));
@@ -7541,6 +7544,7 @@ async function init() {
   buildOverview(); buildLiquidity(); buildRegime(); buildFixedIncome(); buildAsia(); buildCnJp(); buildAsiaMore(); buildMySectors(); buildAI(); buildChip(); buildValuation(); buildPosVol(); buildSentiment(); buildStress(); buildMarkets(); buildTrend(); buildSeasonality(); buildSens(); buildUncertainty(); buildSignals(); buildScorecard(); buildBreadth(); buildStyles(); buildCommod(); buildCorrelation(); buildLeadLag(); buildFedPath(); buildCbWatch(); applySources(); applyPairToggles(); wire();
   SUBTABS.markets.push(['Watchlist', ['idea_watch', 'idea_chart']]);   // Design plan 3, Step 2: moved from the Idea log, the last sub-tab
   if (typeof PF_SUB !== 'undefined') SUBTABS.us.push(PF_SUB);   // Design plan 3, Step 6: US → Economy → Profits, last so older links keep their place
+  if (typeof MYF_SUB !== 'undefined') SUBTABS.my.push(MYF_SUB);   // Design plan 3, Step 7: Malaysia → Flows & finances, last for the same reason
   mergeMarkets();   // Design plan 2, Step 4: the indexes below are the merged ones
   if (['ideas', 'notebook'].includes(h.get('tab'))) {   // Design plan 3, Step 2: the Idea log and the Notebook were removed
     const s = h.get('tab') === 'ideas' ? +h.get('sub') || 0 : -1, to = s === 1 ? ['markets', 'Watchlist'] : s === 5 ? ['alloc', 'Model portfolio'] : ['overview', ''];
@@ -7560,7 +7564,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildProfits === 'function') buildProfits(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildProfits === 'function') buildProfits(); if (typeof buildMyFlows === 'function') buildMyFlows(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly();

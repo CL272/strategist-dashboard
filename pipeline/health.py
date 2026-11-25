@@ -24,6 +24,7 @@ SLOW.update({k: 200 for k in ("MY_ALR", "MY_BR", "MY_FD12", "MY_M2", "MY_M3", "M
 SLOW.update({f"REER_{c}": 190 for c in ("USD", "EUR", "JPY", "CNY", "GBP", "SGD", "MYR", "KRW", "INR", "AUD", "IDR")})
 SLOW["ID_IP_YOY"] = 200
 SLOW["EPU_GLOBAL"] = 200   # global policy uncertainty is published about four months late
+SLOW.update({"MY_NR_DEBT": 230, "MY_FED_BAL": 230, "MY_FED_REV": 230, "MY_RESERVES": 75, "MY_MGS_2Y_M": 75, "MY_MGS_10Y_M": 75})   # BNM bulletin (Design plan 3)
 SLOW.update({k: 21 for k in ("GPR_DAILY", "GPR_MA30", "GPR_ACTS", "GPR_THREATS")})   # the daily GPR file is posted one to two weeks after the last day it covers
 SLOW["MMF_RETAIL"] = 50
 SLOW["UK_UNEMP"] = 170   # ONS labour data reach the OECD feed about four months after the month

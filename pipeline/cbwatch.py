@@ -5,6 +5,7 @@ credit premium; the dashboard compares each with its own 2-year average and neve
 probabilities.
 
   BNM  interbank rates (overnight to 6 months)      Bank Negara Malaysia API, interest-rate?product=interbank
+       Monthly Statistical Bulletin (msb): reserves, non-resident holdings of ringgit debt, federal finance, MGS by tenor
   RBA  bank bills (1, 3, 6 months), 3Y bond         RBA tables F1 (daily) and F2 (daily)
   ECB  deposit facility rate; instantaneous forwards (3M, 6M, 1Y, 2Y) on the AAA government curve
                                                     ECB Data Portal (FM and YC datasets)
@@ -188,6 +189,107 @@ def bnm_bills(old: dict) -> tuple[dict[str, pd.Series], list[str], list[str]]:
     return out, sorted(empty), sorted(no_mgs)
 
 
+# ---- Design plan 3, Step 7: Bank Negara's Monthly Statistical Bulletin, api.bnm.gov.my/public/msb/{table}[/year/{y}]
+# Checked 25 Nov 2026 against published figures: values are RM million as strings (gross reserves RM 520.9bn at end-2023
+# = BNM's USD 113.5bn at the year-end rate); table 2.5's yields are in % and match the daily MGS closes. Table 3.1's
+# fields from "ov_sur_def" on are shifted by one place, so the overall balance is worked out from the fields before it:
+# (revenue - operating expenditure) - net development expenditure. Records with no month or quarter are annual summaries
+# and are skipped. The API refuses bursts ("Too Many Attempts"): one call every 3.5 seconds, the history once (carried
+# over between runs in "msb_years"), then only the current year (and the year before in the first quarter).
+BNM_MSB = "https://api.bnm.gov.my/public/msb/{t}/year/{y}"
+MSB_GAP = 3.5
+MSB_MAX_CALLS = 60
+MSB = {   # table: (first year, quarterly?, {series id: (value from the record in RM million or %, label, unit, scale)})
+    "3.8": (2000, False, {"MY_RESERVES": (lambda r: r.get("bnm_gro_int_res_tot"), "BNM international reserves (gross)", "RM bn", 1000)}),
+    "3.7": (2005, True, {"MY_NR_DEBT": (lambda r: r.get("ext_deb_out_non_hol_of_rin_den_deb_tot"), "Non-resident holdings of ringgit debt securities", "RM bn", 1000)}),
+    "3.1": (2005, True, {
+        "MY_FED_BAL": (lambda r: _msb_sub(r, "cur_bud_rev", "cur_bud_exp", "dev_exp_net_dev_exp"), "Federal government overall balance, quarter", "RM bn", 1000),
+        "MY_FED_REV": (lambda r: r.get("cur_bud_rev"), "Federal government revenue, quarter", "RM bn", 1000)}),
+    "2.5": (2005, False, {
+        "MY_MGS_2Y_M": (lambda r: r.get("mat_yr_two"), "MGS 2Y yield (monthly)", "%", 1),
+        "MY_MGS_10Y_M": (lambda r: r.get("mat_yr_ten"), "MGS 10Y yield (monthly)", "%", 1)}),
+}
+
+
+def _msb_sub(r: dict, rev: str, exp: str, dev: str):
+    try:
+        return float(r[rev]) - float(r[exp]) - float(r[dev])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _msb_date(r: dict, quarterly: bool):
+    y = r.get("year_dt")
+    if quarterly:
+        m = re.match(r"([1-4])Q", str(r.get("period") or ""))
+        return pd.Timestamp(int(y), (int(m.group(1)) - 1) * 3 + 1, 1) if y and m else None
+    mo = r.get("month_dt")
+    return pd.Timestamp(int(y), int(mo), 1) if y and mo else None
+
+
+def bnm_msb(old: dict) -> tuple[dict[str, pd.Series], dict[str, list[int]]]:
+    """Bulletin tables 3.8, 3.7, 3.1 and 2.5 -> {series id: pd.Series}, plus the years read so far for each table."""
+    today = date.today()
+    done = {t: set((old.get(next(iter(spec[2]))) or {}).get("msb_years", [])) for t, spec in MSB.items()}
+    plan = []
+    for t, (first, _, _) in MSB.items():
+        recent = {today.year} | ({today.year - 1} if today.month <= 3 else set())
+        plan += [(t, y) for y in sorted(recent | (set(range(first, today.year + 1)) - done[t]), reverse=True)]
+    plan = plan[:MSB_MAX_CALLS]
+    got: dict[str, dict] = {sid: {} for spec in MSB.values() for sid in spec[2]}
+    calls = 0
+    for t, y in plan:
+        first, quarterly, series = MSB[t]
+        data = None
+        for attempt in range(2):
+            if calls:
+                time.sleep(MSB_GAP)
+            calls += 1
+            try:
+                r = requests.get(BNM_MSB.format(t=t, y=y), headers=BNM_HDR, timeout=30)
+            except requests.RequestException as e:
+                print(f"  BNM bulletin {t} {y}: {type(e).__name__}")
+                break
+            if r.status_code == 429 or "Too Many" in r.text[:200]:
+                time.sleep(20)
+                continue
+            if r.ok:
+                try:
+                    data = r.json().get("data")
+                except ValueError:
+                    data = None
+            break
+        if data is None:
+            print(f"  BNM bulletin {t} {y}: no answer; the rest waits for the next run")
+            if calls > 3 and not any(got.values()):
+                break
+            continue
+        for rec in (data if isinstance(data, list) else [data]):
+            d = _msb_date(rec, quarterly)
+            if d is None:
+                continue
+            for sid, (fn, _, _, scale) in series.items():
+                try:
+                    v = fn(rec)
+                    v = None if v in (None, "") else float(v) / scale
+                except (TypeError, ValueError):
+                    v = None
+                if v is not None:
+                    got[sid][d] = v
+        if y < today.year:
+            done[t].add(y)
+    out = {}
+    for t, (_, _, series) in MSB.items():
+        for sid in series:
+            new = pd.Series(got[sid], dtype="float64").sort_index()
+            prev = unpack(old[sid]) if sid in old else pd.Series(dtype="float64")
+            s = new.combine_first(prev) if len(new) else prev
+            if len(s):
+                out[sid] = s
+    print(f"  BNM bulletin: {calls} calls; " + ", ".join(f"{sid} {len(s)} pts" for sid, s in out.items()))
+    return out, {t: sorted(v) for t, v in done.items()}
+
+
 def ecb_series(flow: str, key: str, start: str = "2010-01-01", min_len: int = 50) -> pd.Series | None:
     r = get(ECB.format(flow=flow, key=key), {"startPeriod": start, "format": "csvdata"})
     if r is None:
@@ -234,6 +336,18 @@ def build(status: dict) -> None:
         out["MY_MTB_3M"]["no_trading"] = no_trading   # holidays already asked about
     if "MY_MGS_10Y" in out:
         out["MY_MGS_10Y"]["no_mgs"] = no_mgs
+    try:   # Design plan 3, Step 7: Malaysia → Flows & finances, and the monthly MGS 2Y for the rate-gap card
+        msb, msb_years = bnm_msb(old)
+    except Exception as e:
+        print(f"  BNM bulletin failed ({type(e).__name__}); kept previous")
+        msb, msb_years = {}, None
+    for t, (_, quarterly, series) in MSB.items():
+        for sid, (_, label, unit, _) in series.items():
+            keep(sid, msb.get(sid), dict(label=label, group="Macro · Malaysia" if unit != "%" else "Rates · Malaysia", kind="yield" if unit == "%" else "level", unit=unit,
+                                         source=f"Bank Negara Malaysia API (Monthly Statistical Bulletin, table {t})"))
+        first = next(iter(series))
+        if first in out:
+            out[first]["msb_years"] = (msb_years or {}).get(t) or (old.get(first) or {}).get("msb_years", [])
     import rba
     tables = {t: rba.rba_table(t) for t in ("f1", "f2")}
     for sid, t, code, label in RBA_SERIES:

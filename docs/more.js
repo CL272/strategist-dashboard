@@ -484,3 +484,61 @@ function buildProfits() {
   makeCard(g, { key: 'pf_margin', title: 'Profit margin', defaultRange: 'MAX', earliest: Date.UTC(1959, 0, 1), render: renderPfMargin });
   makeCard(g, { key: 'pf_eps', title: 'S&P 500 earnings', defaultRange: '10Y', earliest: Date.UTC(1950, 0, 1), render: renderPfEps });
 }
+
+// ------------------------------------------------------------------ MALAYSIA → FLOWS & FINANCES (Design plan 3, Step 7)
+// Bank Negara's Monthly Statistical Bulletin (pipeline/cbwatch.py, bnm_msb): non-resident holdings of ringgit debt securities
+// (table 3.7, quarterly), international reserves (3.8, monthly) and the federal government's finances (3.1, quarterly).
+// Values are RM billion. Bursa's foreign equity flows are not public in a form that can be read automatically.
+const MYF_SUB = ['Flows & finances', ['#sa_my_flows', 'my_nrdebt', 'my_resv', 'my_budget']];   // pushed last on Malaysia in init
+const myfQ = t => `Q${Math.floor(new Date(t).getUTCMonth() / 3) + 1} ${new Date(t).getUTCFullYear()}`;
+const rmBn = v => `${v < 0 ? '−' : ''}RM ${fmtNum(Math.abs(v), 1)}bn`;
+function myfMonthEnd(s, t) { return asOf(s, addMonths(t, 1) - DAY); }   // a monthly or quarterly stock dated the 1st, read at the period's end
+function renderMyNrDebt(c) {
+  if (!has('MY_NR_DEBT')) return setEmpty(c, 'Bank Negara’s bulletin arrives with the next data run.');
+  const s = S.MY_NR_DEBT, fx = has('USDMYR') ? S.USDMYR : null;
+  drawPair(c, { name: 'Held by non-residents, RM bn', data: pts(s, state.from, state.to) },
+    fx ? { name: 'USD/MYR', data: pts(fx, state.from, state.to) } : { name: '', data: [] },
+    { fmtA: v => rmBn(v), fmtB: v => fmtNum(v, 4), axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 2) });
+  const a = asOf(s, state.latest), q1 = a && asOf(s, addMonths(a.t, -3)), y1 = a && asOf(s, addMonths(a.t, -12));
+  const xs = [], ys = [];   // quarterly change in holdings against the quarter's move in USD/MYR
+  if (fx) for (let i = 1; i < s.t.length; i++) { if (s.t[i] < state.from) continue; const f1 = myfMonthEnd(fx, addMonths(s.t[i], 2)), f0 = myfMonthEnd(fx, addMonths(s.t[i - 1], 2));
+    if (f1 && f0) { xs.push(s.v[i] - s.v[i - 1]); ys.push((f1.v / f0.v - 1) * 100); } }
+  const r = xs.length > 8 ? pearson(xs, ys) : null;
+  setNote(c, `Non-residents held ${rmBn(a.v)} of ringgit debt securities at the end of ${myfQ(a.t)}`
+    + (q1 && q1.t < a.t ? `, ${sign(a.v - q1.v)}${rmBn(Math.abs(a.v - q1.v))} on the quarter` : '') + (y1 && y1.t < a.t ? ` and ${sign(a.v - y1.v)}${rmBn(Math.abs(a.v - y1.v))} on the year` : '') + '.'
+    + (r != null ? ` Over the range shown, quarters when foreigners added ringgit bonds were ${r < -0.2 ? 'mostly quarters when the ringgit firmed' : r > 0.2 ? 'more often quarters when the ringgit weakened' : 'not reliably quarters when the ringgit moved one way'} (correlation of quarterly changes with USD/MYR ${r < 0 ? '−' : ''}${fmtNum(Math.abs(r), 2)}).` : '')
+    + ' Government and other ringgit bonds and bills held by non-residents, from Bank Negara’s external debt table; published about three months after each quarter. Foreign flows into Bursa equities are not shown: Bursa Malaysia’s data does not allow automated reading.');
+  setSource(c, 'Bank Negara Malaysia API (Monthly Statistical Bulletin, table 3.7, external debt); Yahoo Finance (MYR=X)');
+}
+function renderMyResv(c) {
+  if (!has('MY_RESERVES')) return setEmpty(c, 'Bank Negara’s bulletin arrives with the next data run.');
+  const s = S.MY_RESERVES, usd = has('USDMYR') ? { ...s, id: 'MY_RESERVES_USD', t: [], v: [] } : null;
+  if (usd) for (let i = 0; i < s.t.length; i++) { const f = myfMonthEnd(S.USDMYR, s.t[i]); if (f) { usd.t.push(s.t[i]); usd.v.push(s.v[i] / f.v); } }
+  drawPair(c, { name: 'Reserves, RM bn', data: pts(s, state.from, state.to) }, usd ? { name: 'Reserves, US$ bn (month-end rate)', data: pts(usd, state.from, state.to) } : { name: '', data: [] },
+    { fmtA: v => rmBn(v), fmtB: v => 'US$' + fmtNum(v, 1) + 'bn', axisA: v => fmtNum(v, 0), axisB: v => fmtNum(v, 0) });
+  const a = asOf(s, state.latest), y = asOf(s, addMonths(a.t, -12)), u = usd && asOf(usd, a.t), uy = usd && asOf(usd, addMonths(a.t, -12));
+  setNote(c, `Gross international reserves were ${rmBn(a.v)}${u ? ` (US$${fmtNum(u.v, 1)}bn)` : ''} at the end of ${monthLab(a.t)}`
+    + (y ? `, ${sign(a.v - y.v)}${rmBn(Math.abs(a.v - y.v))} on a year earlier` : '') + (u && uy ? ` (${sign(u.v - uy.v)}US$${fmtNum(Math.abs(u.v - uy.v), 1)}bn)` : '') + '.'
+    + ' In ringgit the total also moves with the exchange rate, so the dollar line is the better read of intervention; Bank Negara’s own dollar figure uses its valuation date and can differ slightly.');
+  setSource(c, 'Bank Negara Malaysia API (Monthly Statistical Bulletin, table 3.8); Yahoo Finance (MYR=X); US$ figure calculated');
+}
+function renderMyBudget(c) {
+  if (!has('MY_FED_BAL')) return setEmpty(c, 'Bank Negara’s bulletin arrives with the next data run.');
+  const s = S.MY_FED_BAL, roll = { ...s, id: 'MY_FED_BAL_4Q', t: [], v: [] };
+  for (let i = 3; i < s.t.length; i++) if (s.t[i] - s.t[i - 3] < 300 * DAY) { roll.t.push(s.t[i]); roll.v.push(s.v[i] + s.v[i - 1] + s.v[i - 2] + s.v[i - 3]); }
+  drawLines(c, [{ name: 'Overall balance, four quarters, RM bn', data: pts(roll, state.from, state.to) }, { name: 'Overall balance, one quarter, RM bn', data: pts(s, state.from, state.to), extra: { lineStyle: { width: 1.2, type: 'dashed' } } }],
+    { fmt: v => rmBn(v), axisFmt: v => fmtNum(v, 0), zero: true, endLabels: false });
+  const a = asOf(roll, state.latest), y = a && asOf(roll, addMonths(a.t, -12));
+  let rev = null; if (has('MY_FED_REV')) { const R = S.MY_FED_REV, i = idxLE(R, a.t); if (i >= 3) rev = R.v[i] + R.v[i - 1] + R.v[i - 2] + R.v[i - 3]; }
+  setNote(c, `Over the four quarters to ${myfQ(a.t)} the federal government ran a ${a.v < 0 ? 'deficit' : 'surplus'} of ${rmBn(Math.abs(a.v))}` + (rev ? `, ${fmtNum(Math.abs(a.v) / rev * 100, 0)}% of its revenue` : '')
+    + (y ? `; a year earlier it was ${rmBn(Math.abs(y.v))}` : '') + '.'
+    + ' Overall balance = revenue minus operating spending minus net development spending (Bank Negara’s bulletin, which runs about a quarter behind). The finance ministry’s annual figure, usually quoted as a share of GDP, can differ after revisions.');
+  setSource(c, 'Bank Negara Malaysia API (Monthly Statistical Bulletin, table 3.1, federal government finance); balance calculated');
+}
+function buildMyFlows() {
+  const g = $('#myGrid'); if (!g) return;
+  seeAlso('sa_my_flows', g, [['Malaysia fund (EWM) flows: Country funds', 'asia', 'Across Asia'], ['Rate gap vs USD/MYR', 'my', 'Rates & bonds']]);
+  makeCard(g, { key: 'my_nrdebt', title: 'Foreign holdings of ringgit bonds', wide: true, defaultRange: '10Y', earliest: Date.UTC(2009, 0, 1), render: renderMyNrDebt });
+  makeCard(g, { key: 'my_resv', title: 'International reserves', defaultRange: '10Y', earliest: Date.UTC(2000, 0, 1), render: renderMyResv });
+  makeCard(g, { key: 'my_budget', title: 'Federal budget balance', defaultRange: '10Y', earliest: Date.UTC(2005, 0, 1), render: renderMyBudget });
+}
