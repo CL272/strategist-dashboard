@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–5 built): Strategist View, Weekly brief and
+**Open design work:** `DESIGN_PLAN_2.md` (approved by the owner 25 Nov 2026; Steps 1–6 built): Strategist View, Weekly brief and
 click-through, in seven steps, with reference mockups in `design/`. Build it in order, one step per commit; when a step
 ships, note it in the plan's status line and update the rules below that it changes.
 
@@ -23,7 +23,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Strategist View). The page-wide date bar was removed (owner, 19 Nov 2026): each card's range pill sets its dates, cards
   without their own `defaultRange` use 3Y; then the sub-tab bar (underlined text on one line, scrolls sideways, never
   wraps); then tiles; then cards. Flat cards (no shadows, hairline borders). Colour belongs to data; navy marks
-  "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages).
+  "selected". The menu is a light panel (`docs/ui.js`: foldable groups, up to five pinned pages); on a desktop only the page list scrolls
+  (brand, search and the foot stay put); groups: Overview · Macro · Regions · Markets & themes; Data health opens from the foot.
 - **Sources and dates sit under every card** (owner's request, 19 Nov 2026): one muted line, source on the left (click to
   show in full), "Data to …" on the right. `setSource` sets the source; the date is worked out after each render (`showAsOf`)
   from the series the card read (`idxLE`/`pts` record them), one date per frequency, with each series listed in the date's

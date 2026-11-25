@@ -845,7 +845,7 @@ function renderNbForm(c) {
 // "What changed" lines for the Strategist View (never in the printed brief)
 function spNoteAlerts() {
   const out = []; if (!SPH && nbLoad().length) { loadSPH(); return out; }
-  for (const n of nbLoad()) { const s = nbStatus(n); if (s.err || s.st === 'Matured') continue;
+  for (const n of nbLoad()) { let s; try { s = nbStatus(n); } catch (e) { continue; } if (!s || s.err || s.st === 'Matured') continue;   // a note that cannot be read is skipped
     if (s.knocked) out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is through the knock-in (${fmtNum(s.worst.now, 1)}% of initial).`]);
     else if (s.st === 'Below knock-in') out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is below the knock-in at ${n.ki}% (${fmtNum(s.worst.now, 1)}% of initial; checked at maturity, ${dShort(Date.parse(n.maturity))}).`]);
     else if (s.toKi < 10) out.push([1, `Note “${n.label}”: ${SP_TINY(s.worst.id)} is within ${fmtNum(s.toKi, 1)} points of the knock-in at ${n.ki}%.`]);

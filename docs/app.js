@@ -1191,7 +1191,7 @@ function renderPoints(c) {
 // Rule-based list of changes over the week to `end`, most important first. Monthly signals (regime, signposts)
 // count as changed when the latest data month differs from the one before.
 function goSub(tab, name) { setTab(tab); if (name && SUBTABS[tab]) { const i = subIndexOf(tab, name); if (i >= 0) setSub(tab, i); } }
-function whatChanged(end = state.latest, { moves = true } = {}) {
+function whatChanged(end = state.latest, { moves = true, notes = true } = {}) {
   // each item: pri (1 = most important), text (one sentence), head + detail (two-part form for lists), tab/sub to open,
   // phrase (a short clause for the week's lead sentence; only regime, stress band, breadth and VIX-curve changes have one)
   const out = [], wk = end - 7 * DAY, add = (pri, text, tab, sub, head, detail, phrase) => out.push({ pri, text, tab, sub, head: head || text, detail: detail || '', phrase: phrase || null });
@@ -1239,7 +1239,7 @@ function whatChanged(end = state.latest, { moves = true } = {}) {
     if (h && h.t > wk && h.t <= end) add(1, `Idea “${x.title}” hit its ${h.what} on ${dShort(h.t)}.`, 'ideas', null, `Idea “${x.title}”`, `hit its ${h.what} on ${dShort(h.t)}`); }
   // stale data
   if (HEALTH && HEALTH.n_bad) add(4, `${HEALTH.n_bad} data series stale or missing (Data health page).`, 'health', null, `${HEALTH.n_bad} data series stale`, 'see Data health');
-  if (typeof spNoteAlerts === 'function') for (const [p, t] of spNoteAlerts()) add(p, t, 'sp', 'My notes');   // the owner's structured notes (browser only)
+  if (notes && typeof spNoteAlerts === 'function') { try { for (const [p, t] of spNoteAlerts()) add(p, t, 'sp', 'My notes'); } catch (e) { console.warn('note alerts', e); } }   // the owner's structured notes (browser only)
   return out.sort((a, b) => a.pri - b.pri);
 }
 // The week in one sentence (Design plan 2): the Strategist View's lead and the Weekly brief's lead, from the same rules, so
@@ -1260,7 +1260,7 @@ function weekLine(end = state.latest) {
   const keep = state.to; state.to = end; const vz = has('VIX') ? moveZ('VIX', 1) : null; state.to = keep;
   const hy = has('HY_OAS') ? wkChange('HY_OAS', end) : null, hyw = hy && hy.w != null ? hy.w : 0;   // bp
   const tone = dir < 0 && ((vz && vz.z >= 2) || hyw > 5) ? 'Risk-off: ' : dir > 0 && ((vz && vz.z <= -2) || hyw < -5) ? 'Risk-on: ' : '';
-  let ph = whatChanged(end, { moves: false }).filter(x => x.phrase).slice(0, 2).map(x => x.phrase);
+  let ph = whatChanged(end, { moves: false, notes: false }).filter(x => x.phrase).slice(0, 2).map(x => x.phrase);
   const d = has('DXY') ? wkChange('DXY', end) : null, r = has('REAL10Y') ? wkChange('REAL10Y', end) : null;
   const dd = d && d.w != null && Math.abs(d.w) >= 0.3 ? Math.sign(d.w) : 0, rr = r && r.w != null && Math.abs(r.w) >= 5 ? Math.sign(r.w) : 0;
   const vb = s => s > 0 ? 'rose' : 'fell';
@@ -1275,7 +1275,8 @@ function weekLine(end = state.latest) {
 const lineEl = (tag, w, attrs = {}) => el(tag, attrs, ...w.segs.map(x => typeof x === 'string' ? x : el('span', { class: x.cls, text: x.t })));
 function renderOvLead() {   // Strategist View → Today: the week in one sentence, above the tiles
   const box = $('#ovLead'); if (!box) return; box.replaceChildren();
-  const w = weekLine(state.latest); if (!w) return;
+  let w = null; try { w = weekLine(state.latest); } catch (e) { console.warn('week line', e); }
+  if (!w) return;
   box.append(el('div', { class: 'eyebrow', text: `This week · to ${dLong(w.t)}` }), lineEl('h2', w));
 }
 function renderChanges(c) {   // Design plan 2: at most five rows (dot, subject, one line); market moves live in What moved
@@ -6066,9 +6067,10 @@ function renderIdeaChart(c) {
   const from = c.range ? state.from : addMonths(a, -3), to = c.range ? state.to : Math.max(end, state.latest);
   c.titleEl.textContent = `Idea chart: ${x.title}`;
   c.subEl.textContent = `${s.label} from 3 months before the idea. Entry, target and stop shown as lines.`;
-  const hl = [{ y: x.entry, label: `entry ${ideaLevel(x, x.entry)}` }];
-  if (x.target != null) hl.push({ y: x.target, label: `target ${ideaLevel(x, x.target)}`, color: tok('--good') });
-  if (x.stop != null) hl.push({ y: x.stop, label: `stop ${ideaLevel(x, x.stop)}`, color: tok('--critical') });
+  const num = v => v != null && v !== '' && isFinite(+v), hl = [];   // an idea may have no entry, target or stop: draw only the levels it has
+  if (num(x.entry)) hl.push({ y: +x.entry, label: `entry ${ideaLevel(x, x.entry)}` });
+  if (num(x.target)) hl.push({ y: +x.target, label: `target ${ideaLevel(x, x.target)}`, color: tok('--good') });
+  if (num(x.stop)) hl.push({ y: +x.stop, label: `stop ${ideaLevel(x, x.stop)}`, color: tok('--critical') });
   const keep = [state.from, state.to]; [state.from, state.to] = [from, to];
   drawLines(c, [{ name: s.label, data: pts(s, from, to) }], { fmt: v => ideaLevel(x, v), axisFmt: v => ideaLevel(x, v).replace(/\.0+%$/, '%'), endLabels: false, hlines: hl,
     areas: [[a, end, hexA(tok('--accent'), 0.08), 'idea open']], yExtra: { min: v => Math.min(v.min, ...hl.map(h => h.y)), max: v => Math.max(v.max, ...hl.map(h => h.y)) } });
@@ -7740,7 +7742,8 @@ function setTab(t) {
   // section label above the title: the sidebar group the page sits in
   const btn = document.querySelector(`.tabs button[data-tab="${t}"]:not([data-pin])`), par = btn && btn.dataset.parent;
   let g = btn; while (g && !g.classList.contains('nav-group')) g = g.previousElementSibling;
-  $('#pageGroup').textContent = (g ? g.textContent : '') + (par ? ' · ' + TAB_TITLES[par] : '');
+  $('#pageGroup').textContent = btn && btn.dataset.sys ? 'System' : (g ? g.textContent : '') + (par ? ' · ' + TAB_TITLES[par] : '');
+  { const hl = $('#healthLink'); if (hl) hl.setAttribute('aria-current', String(t === 'health')); }
   if (par || t in NAV_OPEN) navOpen(par || t, true);
   setGreeting();
   $('#side').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
@@ -7840,7 +7843,7 @@ async function init() {
   // latest trading day = most recent close among the major indices (ignores stray weekend bars)
   const lasts = ['SPX', 'SX5E', 'NKY', 'HSI', 'STI'].filter(id => has(id)).map(id => S[id].t[S[id].t.length - 1]);
   state.latest = lasts.length ? Math.max(...lasts) : Date.now();
-  $('#asof').textContent = `Data to ${nice(state.latest)}` + (META.updated_utc ? ` · refreshed ${META.updated_utc}` : '');
+  $('#asof').textContent = `Data to ${nice(state.latest)}`; if (META.updated_utc) $('#asof').title = `Refreshed ${META.updated_utc}`;
   const fredOk = has('NET_LIQ');
   const pill = $('#status');
   if (META.total) {
@@ -7848,11 +7851,13 @@ async function init() {
     pill.textContent = fredOk ? `${META.ok}/${META.total} series live` : `${META.ok}/${META.total} series · FRED pending`;
     if (HEALTH && HEALTH.n_bad) { pill.textContent += ` · ${HEALTH.n_bad} stale`; pill.classList.add('warn'); }
     pill.style.cursor = 'pointer'; pill.addEventListener('click', () => setTab('health'));
+    pill.title = 'Open Data health';
     const bad = Object.entries(META.status || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}: ${v}`);
     pill.title = (bad.length ? bad.join('\n') : 'All series refreshed') +
       ('fred_key_found' in META ? `\n\nFRED API key on GitHub: ${META.fred_key_found ? 'found' : 'NOT found'}` : '') +
       ((META.errors || []).length ? '\nErrors:\n' + META.errors.join('\n') : '');
   }
+  { const hl = $('#healthLink'); if (hl) hl.addEventListener('click', () => setTab('health')); }
   // restore view from URL
   const h = new URLSearchParams(location.hash.slice(1));
   applyPreset(['1M', '3M', '6M', 'YTD', '1Y', '3Y', '5Y', '10Y', 'MAX'].includes(h.get('range')) ? h.get('range') : '3Y');

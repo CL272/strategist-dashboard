@@ -1,7 +1,9 @@
 # Design plan 2: a front page, a one-page brief, fewer clicks
 
-**Status (25 Nov 2026): approved by the owner; Steps 1–5 built.** Departures: Step 4 made Australia's "AUD/USD vs the Australia − US 2Y gap" half-width so it pairs with iron ore
-(Markets stayed under 2,300px), and on phones a merged "See also" row stays on one line. Step 2: "My open ideas" (the owner's
+**Status (25 Nov 2026): approved by the owner; Steps 1–6 built.** Departures: Step 4 made Australia's "AUD/USD vs the Australia − US 2Y gap" half-width so it pairs with iron ore
+(Markets stayed under 2,300px), and on phones a merged "See also" row stays on one line. Step 6: the Data health button stays
+in the menu's markup, hidden, so search and the design check still reach the page; the foot holds a "Data health" link and
+the status pill, with the theme button beside the link and the vault button on its own row. Step 2: "My open ideas" (the owner's
 own, shown only when the Idea log has open ideas) stays on the brief, at most three rows, under Week ahead. All five decisions at the end were answered "yes, as
 recommended", so every step, including Step 4, can be built. Written after the owner said the Strategist View and the Weekly brief
 are "too messy and clunky" and that some pages are "not very clean to click through". This plan adds no data: it

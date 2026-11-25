@@ -22,6 +22,7 @@ function navGroupsApply() {
   for (const n of $('.side .tabs').children) {
     if (n.classList.contains('nav-group')) { fold = !n.classList.contains('pins') && folded.has(n.textContent); n.classList.toggle('folded', fold); n.setAttribute('aria-expanded', String(!fold)); continue; }
     if (n.dataset.pin) continue;
+    if (n.dataset.sys) { n.hidden = true; continue; }   // Data health lives in the foot of the menu
     const childHidden = n.dataset.parent && !NAV_OPEN[n.dataset.parent];
     n.hidden = childHidden || (fold && n.dataset.tab !== state.tab && n.dataset.parent !== state.tab && !(n.dataset.tab && document.querySelector(`.tabs button[data-parent="${n.dataset.tab}"][aria-selected="true"]`)));
   }

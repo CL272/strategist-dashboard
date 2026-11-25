@@ -1049,3 +1049,36 @@ table.cal a.cal-link::after { content: ' ↗'; font-size: 0.8em; color: var(--mu
 .subgroups button[aria-selected="true"] { background: var(--sel); border-color: var(--sel); color: #fff; font-weight: 600; }
 .subgroups .cnt { opacity: .7; font-weight: 400; margin-left: 5px; }
 @media print { .subgroups { display: none; } }
+
+/* ===== Design plan 2, Step 6: the menu: only the list scrolls; brand and search stay at the top, the foot at the bottom ===== */
+@media (min-width: 901px) {
+  .side { overflow: hidden; }
+  .side .tabs { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-bottom: 18px;
+    -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); }
+  .side .side-foot { flex: 0 0 auto; margin-top: 0; padding-top: 10px; gap: 6px; }
+}
+.tabs button { padding-top: 4px; padding-bottom: 4px; }
+.tabs button.nav-child { padding-top: 3px; padding-bottom: 3px; }
+.nav-group { margin-top: 9px; }
+.foot-link { align-self: flex-start; background: none; border: 0; padding: 0; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.foot-link:hover, .foot-link[aria-current="true"] { color: var(--accent); }
+.foot-link[aria-current="true"] { font-weight: 650; }
+@media (min-width: 901px) {   /* the foot in four short rows: vault and theme, the data date, Data health, the status pill */
+  .side .side-foot { display: grid; grid-template-columns: minmax(0, auto) auto; justify-content: start; align-items: center; column-gap: 6px; row-gap: 5px; }
+  .side-foot #lockBtn { grid-row: 1; grid-column: 1; }
+  .side-foot #themeBtn { grid-row: 1; grid-column: 2; }
+  .side-foot #asof { grid-row: 2; grid-column: 1 / -1; }
+  .side-foot #healthLink { grid-row: 3; grid-column: 1 / -1; }
+  .side-foot #status { grid-row: 4; grid-column: 1 / -1; justify-self: start; }
+}
+@media (min-width: 901px) {
+  .side-foot #lockBtn { white-space: nowrap; font-size: 12px; padding: 3px 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .side-foot #themeBtn { width: 30px; height: 26px; padding: 0; font-size: 15px; line-height: 1; justify-self: start; }
+  .side-foot #healthLink { justify-self: start; text-align: left; }
+}
+@media (min-width: 901px) {   /* final foot layout: vault (full row) · data date · Data health with the theme button · status */
+  .side .side-foot { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; }
+  .side-foot #lockBtn { grid-row: 1; grid-column: 1 / -1; justify-self: start; max-width: 100%; }
+  .side-foot #healthLink { grid-row: 3; grid-column: 1; }
+  .side-foot #themeBtn { grid-row: 3; grid-column: 2; justify-self: end; }
+}

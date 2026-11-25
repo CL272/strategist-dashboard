@@ -56,22 +56,22 @@
     <button role="tab" data-tab="in" data-parent="asia" class="nav-child" aria-selected="false" hidden>India</button>
     <button role="tab" data-tab="japan" aria-selected="false"><span class="ic">◑</span>Japan</button>
     <button role="tab" data-tab="australia" aria-selected="false"><span class="ic">◒</span>Australia</button>
-    <div class="nav-group">Markets</div>
+    <div class="nav-group">Markets &amp; themes</div>
     <button role="tab" data-tab="markets" aria-selected="false"><span class="ic">▤</span>Markets</button>
     <button role="tab" data-tab="fixed" aria-selected="false"><span class="ic">⌒</span>Fixed Income</button>
     <button role="tab" data-tab="valuation" aria-selected="false"><span class="ic">⚖</span>Valuation</button>
     <button role="tab" data-tab="posvol" aria-selected="false"><span class="ic">⇅</span>Positioning &amp; Vol</button>
     <button role="tab" data-tab="sp" aria-selected="false"><span class="ic">◇</span>Structured products</button>
     <button role="tab" data-tab="correlation" aria-selected="false"><span class="ic">▦</span>Correlation</button>
-    <div class="nav-group">Themes</div>
     <button role="tab" data-tab="ai" aria-selected="false"><span class="ic">✦</span>AI</button>
-    <div class="nav-group">System</div>
-    <button role="tab" data-tab="health" aria-selected="false"><span class="ic">✓</span>Data health</button>
+    <!-- Data health opens from the foot of the menu (Design plan 2, Step 6); the button stays for search and checks -->
+    <button role="tab" data-tab="health" data-sys="1" aria-selected="false" hidden><span class="ic">✓</span>Data health</button>
   </nav>
   <div class="side-foot">
     <span id="asof" class="muted small">Loading data…</span>
+    <button id="healthLink" class="foot-link" type="button">Data health</button>
     <span id="status" class="status-pill" hidden></span>
-    <button id="themeBtn" class="ghost" type="button" aria-label="Toggle dark mode">◐ Theme</button>
+    <button id="themeBtn" class="ghost" type="button" aria-label="Toggle dark mode" title="Light or dark theme">◐</button>
   </div>
 </aside>
 
