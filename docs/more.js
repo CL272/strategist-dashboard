@@ -167,10 +167,11 @@ function addEarningsToCal() {
   CAL.events.sort((a, b) => a.d.localeCompare(b.d));
 }
 
-// ------------------------------------------------------------------ WP47. Model portfolio: past episodes and risk contribution (Idea log → Model portfolio)
+// ------------------------------------------------------------------ WP47. Model portfolio: past episodes and risk contribution (Allocation → Model portfolio)
 const MP_EPISODES = [['Global financial crisis', '2007-10-09', '2009-03-09'], ['Taper tantrum', '2013-05-21', '2013-06-24'], ['China devaluation', '2015-08-10', '2016-02-11'],
   ['Late-2018 sell-off', '2018-09-20', '2018-12-24'], ['Covid crash', '2020-02-19', '2020-03-23'], ['2022 rates shock', '2022-01-03', '2022-10-12']];
 function renderModelStress(c) {
+  if (typeof vaultLockedCard === 'function' && vaultLockedCard(c)) return;
   const o = mpLoad(), b = htmlBody(c), rows = o.rows.filter(([id, w]) => w > 0), tot = rows.reduce((a, [, w]) => a + w, 0); if (!tot) { b.append(el('div', { class: 'empty', text: 'Add weights first.' })); return; }
   const lab = id => (MP_ASSETS.find(x => x[0] === id) || [, id])[1].replace(/ \(.*\)$/, '');
   const ret = (id, a, z) => { if (id === 'CASH') { const cr = CASH_RATE[o.ccy], r = has(cr) ? asOf(S[cr], a) : null; return r ? r.v * (z - a) / (365.25 * DAY) : 0; }
@@ -200,7 +201,7 @@ function renderModelStress(c) {
 }
 function buildModelStress(g) {
   makeCard(g, { key: 'idea_stress', title: 'Stress test and risk', wide: true, range: false, render: renderModelStress });
-  const r = cards.idea_stress.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; r.hidden = true;
+  const r = cards.idea_stress.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true;
 }
 
 // ------------------------------------------------------------------ WP48. Credit cycle (Stress & Signposts → Credit cycle)

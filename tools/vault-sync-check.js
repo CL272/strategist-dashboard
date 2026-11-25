@@ -24,6 +24,9 @@ const PASS = 'correct horse battery staple 42';
     });
   }
   const laptopCtx = await b.newContext(), phoneCtx = await b.newContext(); await wire(laptopCtx); await wire(phoneCtx);
+  // list helpers on the old Notebook item: its page was removed in Design plan 3, but what is stored there still syncs, and no page
+  // reads it, so the test does not wake other pages (the structured notes would load their price history mid-test)
+  for (const ctx of [laptopCtx, phoneCtx]) await ctx.addInitScript(() => { window.nload = () => JSON.parse(pstore().getItem('sd-notebook-v1') || '[]'); window.nsave = L => pstore().setItem('sd-notebook-v1', JSON.stringify(L)); });
   const laptop = await laptopCtx.newPage(), phone = await phoneCtx.newPage();
   for (const p of [laptop, phone]) p.on('pageerror', e => errors.push(e.message));
   console.log('Vault sync check');
@@ -39,15 +42,15 @@ const PASS = 'correct horse battery staple 42';
   await phone.goto(SITE + '#tab=overview'); await phone.evaluate(() => localStorage.clear()); await phone.reload(); await phone.waitForTimeout(6000);
   const wrong = await phone.evaluate(async () => { try { await vaultConnectNew('me/strategist-private', 'test-token', 'wrong passphrase here'); return false; } catch (e) { return true; } });
   ok(wrong, 'connecting a new device with a wrong passphrase is refused');
-  const ph = await phone.evaluate(async P => { await vaultConnectNew('me/strategist-private', 'test-token', P); const ideas = IDEAS.map(x => x.title);
-    nbkSave([{ id: 'p1', title: 'Phone note', text: 'from the phone', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); return ideas; }, PASS);
-  ok(ph.includes('Laptop idea'), 'the phone receives the laptop\'s ideas');
-  // laptop: syncs, sees the phone's note; both edit the notebook between syncs; the lists are joined
-  const lp = await laptop.evaluate(async () => { await vaultSync(); const got = nbkLoad().map(n => n.title);
-    nbkSave([...nbkLoad(), { id: 'l2', title: 'Laptop note', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); return got; });
+  const ph = await phone.evaluate(async P => { await vaultConnectNew('me/strategist-private', 'test-token', P); const ideas = JSON.parse(pstore().getItem('sd-ideas-v1') || '[]').map(x => x.title);
+    nsave([{ id: 'p1', title: 'Phone note', text: 'from the phone', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); return ideas; }, PASS);
+  ok(ph.includes('Laptop idea'), 'the phone receives the laptop\'s stored items (an old idea kept in the vault)');
+  // laptop: syncs, sees the phone's note; both edit the notes between syncs; the lists are joined
+  const lp = await laptop.evaluate(async () => { await vaultSync(); const got = nload().map(n => n.title);
+    nsave([...nload(), { id: 'l2', title: 'Laptop note', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); return got; });
   ok(lp.includes('Phone note'), 'the laptop receives the phone\'s note');
-  await phone.evaluate(async () => { nbkSave([...nbkLoad(), { id: 'p3', title: 'Second phone note', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); });
-  const both = await laptop.evaluate(async () => { await vaultSync(); return nbkLoad().map(n => n.id).sort().join(','); });
+  await phone.evaluate(async () => { nsave([...nload(), { id: 'p3', title: 'Second phone note', text: '', tags: [], updated: new Date().toISOString(), created: new Date().toISOString() }]); await vaultSave(); await vaultSync(); });
+  const both = await laptop.evaluate(async () => { await vaultSync(); return nload().map(n => n.id).sort().join(','); });
   ok(both === 'l2,p1,p3', 'edits made on both devices between syncs are joined (' + both + ')');
   const tokLocal = await phone.evaluate(() => !!vSyncCfg() && vSyncCfg().repo === 'me/strategist-private');
   ok(tokLocal, 'each device keeps its own sync settings');

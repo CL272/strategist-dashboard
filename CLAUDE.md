@@ -166,13 +166,18 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 ## Data and privacy
 
 - Public data only; secrets (`FRED_API_KEY`, `ESTAT_API_KEY`) live in GitHub repository secrets, never in code.
-- The repository and site are public. Everything the owner writes (ideas, watchlist, house views, model portfolio,
-  signal watch and dismiss, structured notes, the Notebook) goes through `pstore()`, which is the **private vault**
+- The repository and site are public. Everything the owner writes (watchlist, model portfolio, signal watch and dismiss,
+  structured notes) goes through `pstore()`, which is the **private vault**
   (`docs/vault.js`) once it is set up: AES-256-GCM with a key derived from the owner's passphrase (PBKDF2-SHA-256,
   600,000 rounds) in the browser; only ciphertext is stored or synced. A new private item must use a key listed in
   `VAULT_ITEMS` and read and write through `pstore()`, never `localStorage` directly. Sync (optional) writes the same
   encrypted file to the owner's own private GitHub repository with a fine-grained token kept inside the vault; the
   token and the passphrase never enter this repository. A forgotten passphrase cannot be recovered: never add a back door.
+- The Idea log, house views and the Notebook were removed (Design plan 3, Step 2, owner's request 25 Nov 2026). Their stored
+  items (`sd-ideas-v1`, `sd-views-v1`, `sd-notebook-v1`) stay in `VAULT_ITEMS`, untouched, encrypted and synced; no page reads
+  them; the vault dialog (the vault button at the foot of the menu, which also holds the vault and sync settings) exports
+  them as a JSON file. Never delete them or drop them from `VAULT_ITEMS`. The Watchlist is Markets → Watchlist and the
+  Model portfolio is Allocation → Model portfolio (card keys `idea_*` kept); old `#tab=ideas` / `#tab=notebook` links are mapped.
 - After any change to `docs/vault.js` or to how private data is stored, run `node tools/vault-check.js` and
   `node tools/vault-sync-check.js` (local server up); both must pass before pushing.
 - A login screen in front of the public site would only be cosmetic (the files are public); hiding the whole site needs

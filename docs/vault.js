@@ -1,6 +1,7 @@
-// ------------------------------------------------------------------ PRIVATE VAULT, SYNC AND NOTEBOOK (WP70 to WP72, owner's request, 17 Nov 2026)
-// Everything the owner writes (ideas, watchlist, house views, model portfolio, signal watch/dismiss, structured notes,
-// the Notebook, the sync settings) is encrypted in this browser with a passphrase only the owner knows:
+// ------------------------------------------------------------------ PRIVATE VAULT AND SYNC (WP70, WP71, owner's request, 17 Nov 2026)
+// Everything the owner writes (watchlist, model portfolio, signal watch/dismiss, structured notes, the sync settings, and
+// what is kept from the Idea log, house views and Notebook removed on 25 Nov 2026) is encrypted in this browser with a
+// passphrase only the owner knows:
 //   key  = PBKDF2-SHA-256(passphrase, random 16-byte salt, 600,000 rounds)   (Web Crypto, no library)
 //   data = AES-256-GCM(key, fresh 12-byte nonce per save, JSON of the items)
 // Stored as `sd-vault-v1` = { v, kdf, iter, salt, iv, ct, saved }. The passphrase and the key are never stored or sent;
@@ -10,6 +11,8 @@
 'use strict';
 
 const VAULT_KEY = 'sd-vault-v1', VAULT_CFG_KEY = 'sd-vault-cfg', VAULT_ITER = 600000;
+// sd-ideas-v1, sd-views-v1 and sd-notebook-v1 belong to pages removed in Design plan 3: no page reads them, but they stay
+// listed so what is stored keeps being encrypted, synced and exportable (vaultExportOld). Never drop them from this list.
 const VAULT_ITEMS = ['sd-ideas-v1', 'sd-watch-v1', 'sd-views-v1', 'sd-model-v1', 'sd-signals-v1', 'sd-notes-v1', 'sd-notebook-v1', 'sd-sync-v1'];
 const VAULT_LOCAL_ONLY = ['sd-sync-v1'];   // per-device: never copied to the synced file
 const V = { key: null, salt: null, items: null, mtime: {}, rev: 0, lastAct: Date.now(), timer: null, syncTimer: null, sync: { state: '', at: 0, msg: '' } };
@@ -73,8 +76,7 @@ async function vaultUnlock(pass) {
 }
 function vaultLock() {
   Object.assign(V, { key: null, items: null, mtime: {} });
-  Object.assign(state, { watchMem: null, sigMem: null, hvMem: null, mpMem: null, nbkSel: null });
-  if (typeof loadIdeas === 'function') loadIdeas();   // the ideas already in memory go too
+  Object.assign(state, { watchMem: null, sigMem: null, mpMem: null });   // copies kept in memory go too
   closeVDialog(); vaultRefresh();
 }
 function vaultSaveSoon() { clearTimeout(V.timer); V.timer = setTimeout(vaultSave, 300); }
@@ -91,7 +93,6 @@ async function vaultChangePass(pass) {
 }
 function vaultAfterOpen() {
   V.lastAct = Date.now();
-  if (typeof loadIdeas === 'function') loadIdeas();
   vaultRefresh(); vaultSyncSoon(500);
 }
 function vaultRefresh() { vaultFootUi(); if (typeof renderTab === 'function' && state.tab) renderTab(); }
@@ -114,11 +115,11 @@ function vaultAsk(then) {   // unlock (or set up) and then carry on
   if (vaultOpen()) { if (then) then(); return; }
   if (!vaultOn()) { vaultSetupDialog(then); return; }
   const pw = el('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Passphrase', class: 'vdlg-in', name: 'vault-passphrase' });
-  const msg = el('p', { class: 'muted small', text: 'Your notes, ideas and views are encrypted on this device. Enter your passphrase to open them.' });
+  const msg = el('p', { class: 'muted small', text: 'Your watchlist, model portfolio and notes are encrypted on this device. Enter your passphrase to open them.' });
   const go = el('button', { type: 'button', class: 'primary', text: 'Unlock' });
   const run = async () => { go.disabled = true; go.textContent = 'Opening…'; try { await vaultUnlock(pw.value); closeVDialog(); if (then) then(); } catch (e) { msg.textContent = e.message; msg.classList.add('vdlg-err'); go.disabled = false; go.textContent = 'Unlock'; pw.select(); } };
   go.onclick = run; pw.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
-  vDialog('Unlock your private notes', [msg, el('form', { onsubmit: e => { e.preventDefault(); run(); } }, el('input', { type: 'text', name: 'username', value: 'strategist-dashboard', autocomplete: 'username', hidden: true }), pw)],
+  vDialog('Unlock your private vault', [msg, el('form', { onsubmit: e => { e.preventDefault(); run(); } }, el('input', { type: 'text', name: 'username', value: 'strategist-dashboard', autocomplete: 'username', hidden: true }), pw)],
     [el('button', { type: 'button', class: 'ghost', text: 'Cancel', onclick: closeVDialog }), go]);
 }
 function vStrength(p) {
@@ -140,10 +141,10 @@ function vaultSetupDialog(then) {
     try { await vaultSetup(p1.value); closeVDialog(); if (then) then(); } catch (e) { msg.textContent = e.message; go.disabled = false; go.textContent = 'Encrypt my notes'; }
   };
   vDialog('Set up your private vault', [
-    el('p', { class: 'small', text: 'Choose a passphrase. Your ideas, watchlist, house views, model portfolio, structured notes and Notebook will be encrypted on this device with it, and the unencrypted copies deleted.' }),
+    el('p', { class: 'small', text: 'Choose a passphrase. Your watchlist, model portfolio, signal watch, structured notes and anything kept from the old Idea log and Notebook will be encrypted on this device with it, and the unencrypted copies deleted.' }),
     p1, st, p2,
     el('label', { class: 'small vdlg-ok' }, ok, ' I understand that nobody can recover a forgotten passphrase. I will keep it in my password manager.'),
-    el('p', { class: 'muted small', text: 'Tip: to use the same notes on your phone, turn on sync afterwards (Notebook → Vault & sync).' }), msg],
+    el('p', { class: 'muted small', text: 'Tip: to use the same vault on your phone, turn on sync afterwards (the vault button at the foot of the menu).' }), msg],
     [el('button', { type: 'button', class: 'ghost', text: 'Not now', onclick: closeVDialog }), go]);
 }
 
@@ -156,7 +157,7 @@ function vaultBackup() {
 async function vaultRestore(file) {
   let j; try { j = JSON.parse(await file.text()); } catch (e) { alert('That file is not a vault backup.'); return; }
   const rec = j && j.kind === 'vault-backup' ? j.record : null;
-  if (!rec || !rec.ct) { alert('That file is not a vault backup (an older unencrypted export goes through Idea log → Import).'); return; }
+  if (!rec || !rec.ct) { alert('That file is not a vault backup.'); return; }
   const pw = el('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Passphrase used for that backup', class: 'vdlg-in' }), msg = el('p', { class: 'muted small', text: 'Items in the backup that are newer than yours replace yours; nothing else is removed.' });
   const go = el('button', { type: 'button', class: 'primary', text: 'Restore' });
   go.onclick = async () => {
@@ -228,8 +229,7 @@ async function vaultSync(askPass = true) {
     if (!put.ok) throw new Error(`saving the synced copy failed (${put.status})`);
     vSyncSet({ ...vSyncCfg(), last: Date.now() });
     const rec = await vEncrypt(V.key, V.salt, vPayload()); localStorage.setItem(VAULT_KEY, JSON.stringify(rec));
-    if (typeof loadIdeas === 'function') loadIdeas();
-    vSyncStatus('ok'); if (['ideas', 'notebook', 'sp'].includes(state.tab)) renderTab();
+    vSyncStatus('ok'); if (['sp', 'markets', 'alloc', 'signals'].includes(state.tab)) renderTab();
     return;
   }
   throw new Error('the synced copy kept changing; try again');
@@ -260,21 +260,9 @@ function vaultFootUi() {
   const foot = $('.side-foot'); if (!foot) return;
   let b = $('#lockBtn'); if (!b) { b = el('button', { id: 'lockBtn', class: 'ghost', type: 'button' }); foot.prepend(b); }
   const on = vaultOn(), open = vaultOpen();
-  b.textContent = !on ? '🔒 Set up private vault' : open ? '🔓 Notes open · Lock' : '🔒 Notes locked · Unlock';
-  b.title = !on ? 'Encrypt your notes, ideas and views with a passphrase' : open ? `Locks after ${vCfg().autolock} minutes without activity. ${vSyncLine()}` : 'Enter your passphrase to open your private notes';
-  b.onclick = () => !on ? vaultSetupDialog() : open ? vaultLock() : vaultAsk();
-}
-// a locked private area shows this instead of its content (returns true when locked)
-function vaultGate(host, what = 'This page') {
-  const locked = vaultOn() && !vaultOpen();
-  let g = host.querySelector(':scope > .vgate');
-  if (locked && !g) { g = el('div', { class: 'vgate card' }, el('h2', { text: '🔒 ' + what + ' is locked' }),
-      el('p', { class: 'muted small', text: 'Your notes, ideas and views are encrypted on this device. Unlock to see and change them.' }),
-      el('button', { type: 'button', class: 'primary', text: 'Unlock', onclick: () => vaultAsk() }));
-    host.prepend(g); }
-  if (g) g.hidden = !locked;
-  host.classList.toggle('vlocked', locked);
-  return locked;
+  b.textContent = !on ? '🔒 Set up private vault' : open ? '🔓 Vault open' : '🔒 Vault locked · Unlock';
+  b.title = !on ? 'Encrypt your watchlist, model portfolio and notes with a passphrase' : open ? `Vault and sync settings, and Lock. Locks after ${vCfg().autolock} minutes without activity. ${vSyncLine()}` : 'Enter your passphrase to open your private vault';
+  b.onclick = () => !on || open ? vaultSettings() : vaultAsk();
 }
 function vaultLockedCard(c) {   // for single cards (structured notes): an empty state with an unlock button
   if (!(vaultOn() && !vaultOpen())) return false;
@@ -282,89 +270,22 @@ function vaultLockedCard(c) {   // for single cards (structured notes): an empty
   return true;
 }
 
-// ------------------------------------------------------------------ WP72. Notebook
-const NBK_KEY = 'sd-notebook-v1';
-const nbkLoad = () => { try { const j = JSON.parse(pstore().getItem(NBK_KEY) || '[]'); return Array.isArray(j) ? j : []; } catch (e) { return []; } };
-const nbkSave = L => pstore().setItem(NBK_KEY, JSON.stringify(L));
-const nbkId = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const subLabel = (t, i) => SUBTABS[t] && SUBTABS[t][i] ? SUBTABS[t][i][0] : '';
-const pageRef = (card) => ({ tab: state.tab, sub: SUBTABS[state.tab] ? (state.sub[state.tab] || 0) : null, subLabel: SUBTABS[state.tab] ? subLabel(state.tab, state.sub[state.tab] || 0) : '', card: card ? card.key : null, cardTitle: card ? (card.titleEl.textContent || card.title) : '' });
-const pageRefTxt = p => !p ? '' : [TAB_TITLES[p.tab] || p.tab, p.subLabel, p.cardTitle].filter(Boolean).join(' → ');
-function nbkGo(p) { if (!p) return; setTab(p.tab); if (p.subLabel && SUBTABS[p.tab]) goSub(p.tab, p.subLabel); const c = p.card && cards[p.card]; if (c) setTimeout(() => { c.root.scrollIntoView({ block: 'center', behavior: 'smooth' }); c.root.classList.remove('flash'); void c.root.offsetWidth; c.root.classList.add('flash'); }, 150); }
-// the quick-note panel: from the page header or a card's menu
-function noteQuick(card = null) {
-  if (vaultOn() && !vaultOpen()) { vaultAsk(() => noteQuick(card)); return; }
-  if (!vaultOn()) { vaultSetupDialog(() => noteQuick(card)); return; }
-  const ref = pageRef(card), here = nbkLoad().filter(n => n.page && n.page.tab === ref.tab && (!card || n.page.card === ref.card)).slice(-4).reverse();
-  const title = el('input', { type: 'text', class: 'vdlg-in', placeholder: 'Title', value: ref.cardTitle || ref.subLabel || TAB_TITLES[ref.tab] || '' });
-  const text = el('textarea', { class: 'vdlg-in', rows: 6, placeholder: 'Your note' }), tags = el('input', { type: 'text', class: 'vdlg-in', placeholder: 'Tags, separated by commas (optional)' });
-  const list = here.length ? el('div', { class: 'vdlg-list' }, el('div', { class: 'pop-label', text: card ? 'Notes on this chart' : 'Recent notes on this page' }),
-    ...here.map(n => el('button', { type: 'button', class: 'vdlg-note', onclick: () => { closeVDialog(); state.nbkSel = n.id; setTab('notebook'); goSub('notebook', 'Notes'); } }, el('b', { text: n.title }), ` · ${nice(Date.parse(n.updated))}`))) : null;
-  const go = el('button', { type: 'button', class: 'primary', text: 'Save note', onclick: () => {
-    if (!text.value.trim() && !title.value.trim()) return;
-    const now = new Date().toISOString(), L = nbkLoad();
-    L.push({ id: nbkId(), title: title.value.trim() || 'Note', text: text.value, tags: tags.value.split(',').map(s => s.trim()).filter(Boolean), page: ref, created: now, updated: now, pinned: false });
-    nbkSave(L); closeVDialog(); afterRenderNotes(); } });
-  vDialog(card ? 'Note on this chart' : 'Note on this page', [el('p', { class: 'muted small', text: pageRefTxt(ref) + ' · encrypted in your vault' }), ...(list ? [list] : []), title, text, tags],
-    [el('button', { type: 'button', class: 'ghost', text: 'Cancel', onclick: closeVDialog }), go]);
-}
-state.nbkQ = ''; state.nbkTag = ''; state.nbkSel = null;
-function renderNbkList(c) {
-  const b = htmlBody(c);
-  if (!vaultOn()) { b.append(el('div', { class: 'empty' }, 'Notes are kept in your private vault. ', el('button', { type: 'button', class: 'primary', text: 'Set up the vault', onclick: () => vaultSetupDialog() }))); return; }
-  if (vaultLockedCard(c)) return;
-  const L = nbkLoad(), tagsAll = [...new Set(L.flatMap(n => n.tags || []))].sort();
-  const q = el('input', { type: 'search', class: 'nbk-q', placeholder: 'Search notes', value: state.nbkQ });
-  q.addEventListener('input', () => { state.nbkQ = q.value; c.render(); setTimeout(() => { const x = c.root.querySelector('.nbk-q'); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 0); });
-  const tg = el('select', { class: 'mini-select', 'aria-label': 'Tag' }, el('option', { value: '', text: 'All tags' }), ...tagsAll.map(t => el('option', { value: t, text: t })));
-  tg.value = state.nbkTag; tg.onchange = () => { state.nbkTag = tg.value; c.render(); };
-  const add = el('button', { type: 'button', class: 'primary', text: '＋ New note', onclick: () => { const now = new Date().toISOString(), n = { id: nbkId(), title: 'New note', text: '', tags: [], page: null, created: now, updated: now, pinned: false }; nbkSave([...nbkLoad(), n]); state.nbkSel = n.id; renderTab(); } });
-  b.append(el('div', { class: 'controls nbk-bar' }, q, tg, add));
-  const words = state.nbkQ.toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = L.filter(n => (!state.nbkTag || (n.tags || []).includes(state.nbkTag)) && words.every(w => [n.title, n.text, (n.tags || []).join(' '), pageRefTxt(n.page)].join(' ').toLowerCase().includes(w)))
-    .sort((x, y) => (y.pinned - x.pinned) || Date.parse(y.updated) - Date.parse(x.updated));
-  if (!rows.length) { b.append(el('div', { class: 'empty', text: L.length ? 'No note matches.' : 'No notes yet. Use “＋ Note” in any page header, or the “⋯” menu on a chart, to write one there.' })); return; }
-  const tb = el('tbody');
-  for (const n of rows) tb.append(el('tr', { class: 'row' + (n.id === state.nbkSel ? ' sel' : ''), style: 'cursor:pointer', onclick: () => { state.nbkSel = n.id; renderTab(); } },
-    el('td', { class: 'l' }, n.pinned ? '📌 ' : '', el('b', { text: n.title }), el('span', { class: 'cell-sub', text: (n.text || '').slice(0, 110) })),
-    el('td', { class: 'l muted', text: (n.tags || []).join(', ') }), el('td', { class: 'l muted', text: pageRefTxt(n.page) || '–' }), el('td', { class: 'num muted', text: nice(Date.parse(n.updated)) })));
-  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf watch' }, el('thead', {}, el('tr', {}, ...['Note', 'Tags', 'Written on', 'Updated'].map((h, i) => el('th', { text: h, class: i < 3 ? 'l' : '' })))), tb)));
-  capRows(tb, 'nbk', 16);
-  c.csv = [['Title', 'Text', 'Tags', 'Page', 'Updated'], ...rows.map(n => [n.title, n.text, (n.tags || []).join('; '), pageRefTxt(n.page), n.updated])];
-  setNote(c, `${L.length} note${L.length === 1 ? '' : 's'}, encrypted in your vault${vSyncCfg() ? ' and synced to your private repository' : ' on this device'}. Search covers titles, text, tags and pages; Ctrl+K finds notes too while the vault is open.`);
-}
-function renderNbkEdit(c) {
-  const b = htmlBody(c); if (!vaultOn() || vaultLockedCard(c)) { if (!vaultOn()) b.append(el('div', { class: 'empty', text: 'Set up the vault to write notes.' })); return; }
-  const L = nbkLoad(), n = L.find(x => x.id === state.nbkSel);
-  if (!n) { b.append(el('div', { class: 'empty', text: 'Pick a note on the left, or start a new one.' })); c.titleEl.textContent = 'Note'; return; }
-  c.titleEl.textContent = 'Note';
-  const title = el('input', { type: 'text', class: 'vdlg-in', value: n.title }), text = el('textarea', { class: 'vdlg-in nbk-text', rows: 14, text: n.text || '' });
-  const tags = el('input', { type: 'text', class: 'vdlg-in', value: (n.tags || []).join(', '), placeholder: 'Tags, separated by commas' });
-  const save = () => { const all = nbkLoad(), x = all.find(y => y.id === n.id); if (!x) return; Object.assign(x, { title: title.value.trim() || 'Note', text: text.value, tags: tags.value.split(',').map(s => s.trim()).filter(Boolean), updated: new Date().toISOString() }); nbkSave(all); st.textContent = 'Saved ' + new Date().toLocaleTimeString(); cards.nbk_list && cards.nbk_list.render(); };
-  let t = null; const soon = () => { clearTimeout(t); st.textContent = 'Editing…'; t = setTimeout(save, 700); };
-  [title, text, tags].forEach(x => x.addEventListener('input', soon));
-  const st = el('span', { class: 'muted small', text: 'Saved' });
-  const pin = el('button', { type: 'button', class: 'ghost', text: n.pinned ? 'Unpin' : '📌 Pin', onclick: () => { const all = nbkLoad(), x = all.find(y => y.id === n.id); x.pinned = !x.pinned; nbkSave(all); renderTab(); } });
-  const del = el('button', { type: 'button', class: 'ghost', text: 'Delete', onclick: () => { if (!confirm('Delete this note?')) return; nbkSave(nbkLoad().filter(y => y.id !== n.id)); state.nbkSel = null; renderTab(); } });
-  b.append(title, text, tags, el('div', { class: 'controls' }, n.page ? el('a', { href: '#', text: 'Open ' + pageRefTxt(n.page) + ' →', onclick: e => { e.preventDefault(); nbkGo(n.page); } }) : el('span', { class: 'muted small', text: 'Not tied to a page' }), pin, del, st));
-  setNote(c, 'Changes save themselves a moment after you stop typing, encrypted in your vault.');
-}
-function renderVaultSet(c) {
-  const b = htmlBody(c), on = vaultOn(), open = vaultOpen(), cfg = vCfg(), sc = open ? vSyncCfg() : null;
+function vaultSetRows(fill) {   // the rows of the settings dialog; fill() redraws them
+  const b = [], on = vaultOn(), open = vaultOpen(), cfg = vCfg(), sc = open ? vSyncCfg() : null;
   const row = (label, ...kids) => el('div', { class: 'vset-row' }, el('div', { class: 'vset-l', text: label }), el('div', { class: 'vset-r' }, ...kids));
   if (!on) {
-    b.append(row('Status', el('span', { text: 'Not set up. Your ideas and notes are stored unencrypted in this browser.' })),
+    b.push(row('Status', el('span', { text: 'Not set up. Your watchlist, model portfolio and notes are stored unencrypted in this browser.' })),
       row('Start', el('button', { type: 'button', class: 'primary', text: 'Set up the vault on this device', onclick: () => vaultSetupDialog() })),
-      row('Or', el('div', {}, el('div', { class: 'small', text: 'Already set up on another device with sync? Connect this one:' }), vConnectForm())));
-    setNote(c, 'Encryption happens in your browser; nothing readable leaves this device.'); return;
+      row('Or', el('div', {}, el('div', { class: 'small', text: 'Already set up on another device with sync? Connect this one:' }), vConnectForm())), ...vOldRow(),
+      el('p', { class: 'muted small vset-note', text: 'Encryption happens in your browser; nothing readable leaves this device.' })); return b;
   }
-  if (!open) { b.append(row('Status', el('span', { text: '🔒 Locked' }), el('button', { type: 'button', class: 'primary', text: 'Unlock', onclick: () => vaultAsk() }))); return; }
+  if (!open) { b.push(row('Status', el('span', { text: '🔒 Locked' }), el('button', { type: 'button', class: 'primary', text: 'Unlock', onclick: () => vaultAsk(vaultSettings) }))); return b; }
   const al = el('select', { class: 'mini-select', 'aria-label': 'Auto-lock' }, ...[[5, '5 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [0, 'Never (not advised)']].map(([v, t]) => el('option', { value: v, text: t })));
   al.value = String(cfg.autolock); al.onchange = () => { vCfgSet({ autolock: +al.value }); vaultFootUi(); };
   const file = el('input', { type: 'file', accept: '.json,application/json', hidden: true }); file.onchange = () => { if (file.files[0]) vaultRestore(file.files[0]); file.value = ''; };
   const repo = el('input', { type: 'text', class: 'vdlg-in', placeholder: 'your-name/strategist-private', value: sc ? sc.repo : '' }), tok = el('input', { type: 'password', class: 'vdlg-in', placeholder: sc ? 'Token saved (enter a new one to replace it)' : 'Fine-grained access token', autocomplete: 'off' });
   const smsg = el('div', { class: 'small', id: 'vSyncState', text: vSyncLine() });
-  b.append(row('Status', el('span', { text: '🔓 Open on this device' }), el('button', { type: 'button', class: 'ghost', text: 'Lock now', onclick: vaultLock })),
+  b.push(row('Status', el('span', { text: '🔓 Open on this device' }), el('button', { type: 'button', class: 'ghost', text: 'Lock now', onclick: vaultLock })),
     row('Auto-lock after', al),
     row('Passphrase', el('button', { type: 'button', class: 'ghost', text: 'Change passphrase', onclick: vChangeDialog })),
     row('Backup', el('button', { type: 'button', class: 'ghost', text: '⤓ Download encrypted backup', onclick: vaultBackup }), el('button', { type: 'button', class: 'ghost', text: 'Restore from a backup', onclick: () => file.click() }), file),
@@ -373,15 +294,44 @@ function renderVaultSet(c) {
         const r = repo.value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''); if (!/^[\w.-]+\/[\w.-]+$/.test(r)) { smsg.textContent = 'Repository: owner/name, for example your-name/strategist-private.'; return; }
         const t = tok.value.trim() || (sc && sc.token); if (!t) { smsg.textContent = 'Paste the access token.'; return; }
         vSyncSet({ ...(sc || {}), repo: r, token: t, path: 'vault.json', last: sc && sc.repo === r ? sc.last || 0 : 0 }); tok.value = ''; vaultSaveSoon();
-        try { await vaultSync(); } catch (e) { vSyncStatus('error', e.message); } c.render(); } }),
-      sc ? el('button', { type: 'button', class: 'ghost', text: 'Turn off sync', onclick: () => { delete V.items['sd-sync-v1']; V.mtime['sd-sync-v1'] = Date.now(); vaultSaveSoon(); vSyncStatus(''); c.render(); } }) : null), smsg,
+        try { await vaultSync(); } catch (e) { vSyncStatus('error', e.message); } fill(); } }),
+      sc ? el('button', { type: 'button', class: 'ghost', text: 'Turn off sync', onclick: () => { delete V.items['sd-sync-v1']; V.mtime['sd-sync-v1'] = Date.now(); vaultSaveSoon(); vSyncStatus(''); fill(); } }) : null), smsg,
       el('details', { class: 'vset-help' }, el('summary', { text: 'How to set up sync (about five minutes, once)' }), el('ol', {},
         el('li', { text: 'On github.com, create a new repository, for example “strategist-private”, and choose Private.' }),
         el('li', { text: 'Go to Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Repository access: Only select repositories → strategist-private. Permissions: Contents → Read and write. Expiry: one year.' }),
         el('li', { text: 'Copy the token, paste it above with the repository name, and press “Turn on sync”.' }),
-        el('li', { text: 'On your phone, open the dashboard → Notebook → Vault & sync → “Connect this device”, with the same repository, a token (the same or a second one) and your passphrase.' }),
-        el('li', { text: 'If a device is lost, delete its token on GitHub. Keep two-step login on for your GitHub account.' }))))));
-  setNote(c, 'What is encrypted: ideas, watchlist, house views, model portfolio, signal watch and dismiss, structured notes, the Notebook, and the sync token itself. The synced file is encrypted before it leaves this device; GitHub only ever sees ciphertext. It protects against anyone opening the site and anyone with the stored or synced file. It does not protect against malware on the device. Follow your employer’s policy on client information.');
+        el('li', { text: 'On your phone, open the dashboard → the vault button at the foot of the menu → “Connect this device”, with the same repository, a token (the same or a second one) and your passphrase.' }),
+        el('li', { text: 'If a device is lost, delete its token on GitHub. Keep two-step login on for your GitHub account.' }))))), ...vOldRow());
+  b.push(el('p', { class: 'muted small vset-note', text: 'What is encrypted: watchlist, model portfolio, signal watch and dismiss, structured notes, anything kept from the old Idea log, house views and Notebook, and the sync token itself. The synced file is encrypted before it leaves this device; GitHub only ever sees ciphertext. It protects against anyone opening the site and anyone with the stored or synced file. It does not protect against malware on the device. Follow your employer’s policy on client information.' }));
+  return b;
+}
+function vaultSettings() {   // Design plan 3, Step 2: the vault and sync settings, in a dialog from the vault button (was Notebook → Vault & sync)
+  const body = el('div', { class: 'vset' });
+  const box = vDialog('Private vault and sync', [body], [el('button', { type: 'button', class: 'ghost', text: 'Close', onclick: closeVDialog })]);
+  box.classList.add('vdlg-wide');
+  const fill = () => body.replaceChildren(...vaultSetRows(fill)); fill();
+}
+// The Idea log, house views and Notebook were removed (Design plan 3, Step 2). What the owner wrote there stays in storage,
+// untouched and encrypted with the rest; this row downloads it as a plain JSON file to keep on the owner's own drive.
+const VAULT_RETIRED = ['sd-ideas-v1', 'sd-views-v1', 'sd-notebook-v1'];
+function vaultOldData() {
+  const out = {}; for (const k of VAULT_RETIRED) { const x = pstore().getItem(k); if (x != null) { try { out[k] = JSON.parse(x); } catch (e) { out[k] = x; } } }
+  return out;
+}
+function vaultExportOld() {
+  const go = () => {
+    const d = vaultOldData(); if (!Object.keys(d).length) { alert('There are no old ideas, house views or notes stored here.'); return; }
+    const blob = new Blob([JSON.stringify({ app: 'strategist-dashboard', kind: 'old-ideas-and-notes', exported: new Date().toISOString(),
+      ideas: d['sd-ideas-v1'] || [], house_views: d['sd-views-v1'] || null, notebook: d['sd-notebook-v1'] || [] }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); download(url, `old-ideas-and-notes_${iso(Date.now())}.json`); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+  if (vaultOn() && !vaultOpen()) vaultAsk(go); else go();
+}
+function vOldRow() {   // shown only when something old is stored
+  if (!Object.keys(vaultOldData()).length) return [];
+  return [el('div', { class: 'vset-row' }, el('div', { class: 'vset-l', text: 'Old ideas and notes' }), el('div', { class: 'vset-r' },
+    el('span', { class: 'small', text: 'The Idea log, house views and Notebook were removed; what you wrote there is still stored here, untouched.' }),
+    el('button', { type: 'button', class: 'ghost', text: '⤓ Export my old ideas and notes', onclick: vaultExportOld })))];
 }
 function vConnectForm() {
   const repo = el('input', { type: 'text', class: 'vdlg-in', placeholder: 'your-name/strategist-private' }), tok = el('input', { type: 'password', class: 'vdlg-in', placeholder: 'Fine-grained access token', autocomplete: 'off' });
@@ -397,35 +347,4 @@ function vChangeDialog() {
       await vaultChangePass(p1.value); closeVDialog(); alert('Passphrase changed.'); } })]);
 }
 
-// ---- notes in the page header, card menus, dots on cards with notes, and search
-function afterRenderNotes() {
-  const btn = $('#noteBtn'); if (!btn) return;
-  const open = vaultOpen(), L = open ? nbkLoad() : [], here = L.filter(n => n.page && n.page.tab === state.tab);
-  btn.textContent = here.length ? `＋ Note · ${here.length}` : '＋ Note';
-  btn.title = open ? (here.length ? `${here.length} note${here.length > 1 ? 's' : ''} on this page; add another` : 'Write a note on this page') : 'Write a private note on this page (encrypted)';
-  const keys = new Set(L.filter(n => n.page && n.page.card).map(n => n.page.card));
-  for (const [k, c] of Object.entries(cards)) c.root.classList.toggle('has-note', open && keys.has(k));
-}
-function vaultSearch() {
-  if (!vaultOpen()) return [];
-  return nbkLoad().map(n => ({ kind: 'Note', label: n.title, where: 'Notebook' + (n.page ? ' · ' + pageRefTxt(n.page) : ''), tab: 'notebook', note: n.id, hay: [n.title, n.text, (n.tags || []).join(' ')].join(' ') }));
-}
-function buildVault() {
-  // notebook page
-  const g = $('#nbkGrid');
-  makeCard(g, { key: 'nbk_list', title: 'Notes', range: false, render: renderNbkList });
-  makeCard(g, { key: 'nbk_edit', title: 'Note', range: false, render: renderNbkEdit });
-  makeCard(g, { key: 'vault_set', title: 'Vault and sync', wide: true, range: false, render: renderVaultSet });
-  for (const k of ['nbk_list', 'nbk_edit', 'vault_set']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  // "+ Note" in the page header and in every card's menu
-  const pg = $('.page-head .ph-title'); if (pg && !$('#noteBtn')) pg.append(el('button', { id: 'noteBtn', type: 'button', class: 'ghost note-btn', text: '＋ Note', onclick: () => noteQuick() }));
-  for (const c of Object.values(cards)) if (c.menuEl && !c.menuEl.querySelector('.menu-note')) {
-    const src = c.menuEl.querySelector('.menu-src-wrap');
-    const b = el('button', { class: 'menu-item menu-note', type: 'button', text: '＋ Note on this chart', onclick: () => { closePops(); noteQuick(c); } });
-    if (src) src.before(b); else c.menuEl.append(b);
-  }
-  vaultFootUi();
-}
-SUBTABS.notebook = [['Notes', ['nbk_list', 'nbk_edit']], ['Vault & sync', ['vault_set']]];
-TAB_TITLES.notebook = 'Notebook';
-TILE_SETS.notebook = {};
+function buildVault() { vaultFootUi(); }

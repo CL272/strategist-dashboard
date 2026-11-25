@@ -16,7 +16,7 @@ const ALLOW = [
   ['valuation', 'Scorecard', 'rows'],            // grouped by asset class, same reason
   ['weekly', '*', 'rows'],                       // the printable one-page brief
   ['health', '*', 'rows'],                       // a diagnostics page
-  ['ideas', 'Watchlist', 'rows'],                // 20 rows: ten risers plus ten fallers
+  ['markets', 'Watchlist', 'rows'],              // 20 rows: ten risers plus ten fallers
   ['fixed', 'Income menu', 'rows'],              // grouped by asset class (cash, government, credit, equity income, options)
   ['us', '*', 'first300'],                       // Design plan 2, Step 5: a group row sits above the sub-tab bar (limit 300px)
   ['regime', '*', 'first300'],
@@ -36,7 +36,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
   for (const t of tabs) {
     await page.evaluate(t => setTab(t), t);
     await page.waitForTimeout(700);
-    const subs = await page.evaluate(t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : t === 'ideas' ? IDEA_VIEWS : [[t]])).map(x => x[0]), t);
+    const subs = await page.evaluate(t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [[t]])).map(x => x[0]), t);
     for (let i = 0; i < subs.length; i++) {
       if (subs.length > 1) {
         await page.evaluate(([t, i]) => { if (SUBTABS[t]) setSub(t, i); else { state.sub[t] = i; renderTab(); } }, [t, i]);
