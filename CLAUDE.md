@@ -2,6 +2,11 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
+**Open design work:** `DESIGN_PLAN_5.md` (26 Nov 2026; waiting for the owner's four decisions, nothing built): a China →
+Property sub-tab from the statistics bureau's monthly releases (prices by city tier, sales, building), University of
+Michigan sentiment by party, the Chicago Fed's weekly retail sales, and a reconstructed "excess liquidity" card.
+Mockup: `design/plan5.html`. Build Steps 1 to 5 in order, one step per commit, once approved; update this note as steps land.
+
 **Design plan 4** (`DESIGN_PLAN_4.md`, approved and built 25 Nov 2026, Steps 1 to 5, one commit each): a portfolio
 allocator on Allocation (Portfolio and Add a fund: saved portfolios, a benchmark you choose, tracking error, the "Add a fund"
 what-if), with weekly fund data in `funds.json`. Mockup: `design/portfolio.html` (not published). Its rules are folded into

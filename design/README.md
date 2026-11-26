@@ -12,3 +12,7 @@ Design plan 4 (`DESIGN_PLAN_4.md`, 25 Nov 2026) adds `design/portfolio.html` (th
 Add a fund sub-tabs on one page), with its classes in `design/redesign4.css`. Its figures are real, from the planning
 prototype (weekly closes with dividends to 21 Nov 2026, in ringgit, three years). Built the same day; the build names its classes
 `po-*` rather than the mock's `pb-*` (the Playbook already uses `pb-*`).
+
+Design plan 5 (`DESIGN_PLAN_5.md`, 26 Nov 2026) adds `design/plan5.html` (China → Property, the two new US cards and the
+excess-liquidity card on one page), with `design/redesign5.css` (the mock's note style only). Its figures are real, from the
+planning prototype: the statistics bureau's releases to October 2026, Michigan's party table, FRED and the OECD.
