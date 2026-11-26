@@ -16,3 +16,7 @@ prototype (weekly closes with dividends to 21 Nov 2026, in ringgit, three years)
 Design plan 5 (`DESIGN_PLAN_5.md`, 26 Nov 2026) adds `design/plan5.html` (China → Property, the two new US cards and the
 excess-liquidity card on one page), with `design/redesign5.css` (the mock's note style only). Its figures are real, from the
 planning prototype: the statistics bureau's releases to October 2026, Michigan's party table, FRED and the OECD. Built the same day.
+
+Design plan 6 (`DESIGN_PLAN_6.md`, 26 Nov 2026) adds `design/portfolio2.html` (the one Portfolio sub-tab with unsaved
+changes: change bar, Holdings, and the right-hand card on its three tabs), with its classes in `design/redesign6.css`
+(already named `po-*`). Its figures are real, from the planning prototype (185 funds read from Yahoo on 26 Nov 2026).

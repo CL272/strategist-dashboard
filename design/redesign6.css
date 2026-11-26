@@ -1,0 +1,36 @@
+/* Design plan 6 (26 Nov 2026): the portfolio workspace. New classes on the existing tokens, already named po-* as the
+   build needs (the Playbook owns pb-*). Move them into docs/style.css unchanged when a step is built
+   (the "mock-only" block at the end stays behind). The classes from Design plan 4 (.po-bar, .po-what, .po-target,
+   .po-mix, .po-ba …) are in docs/style.css already. */
+.po-sentence label { font-size: 13px; }
+.po-was { color: var(--muted); font-weight: 500; text-decoration: line-through; text-decoration-thickness: 1px; }
+.po-arr { color: var(--muted); font-weight: 400; }
+.kpi .k-value .po-was { font-size: .78em; }
+.po-changes { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--sel); border-radius: 10px;
+  background: color-mix(in srgb, var(--sel) 6%, var(--surface)); font-size: 12.5px; color: var(--ink-2); position: sticky; top: 56px; z-index: 5; }
+.po-changes b { color: var(--ink); }
+.po-changes .po-chg { padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.po-changes .sp { flex: 1 1 auto; }
+.po-changes .ghost, .po-changes .primary { font-size: 12px; padding: 4px 11px; border-radius: 7px; }
+.po-step { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.po-step button { width: 26px; height: 28px; border: 0; background: transparent; color: var(--ink-2); font-size: 15px; cursor: pointer; }
+.po-step button:hover { background: var(--wash); }
+.po-step input { width: 52px; height: 28px; border: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); text-align: right; padding: 0 7px;
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; background: transparent; color: var(--ink); }
+.po-wascol { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+tr.po-new td { background: color-mix(in srgb, var(--sel) 5%, transparent); }
+.po-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--sel); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 600; }
+.po-acts { white-space: nowrap; text-align: right; }
+.po-acts .ghost { font-size: 12px; padding: 3px 8px; border-radius: 7px; }
+.po-rule { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+.po-rule .mini-select { max-width: 250px; font-size: 13px; padding: 3px 6px; }
+.po-tabs { display: flex; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--grid); }
+.po-tabs button { border: 0; background: transparent; padding: 6px 11px; font: inherit; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.po-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--sel); }
+.po-groups { margin-bottom: 8px; }
+.po-groups button { font-size: 12px; padding: 2px 9px; }
+.po-addat { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; font-size: 12.5px; color: var(--ink-2); }
+.po-two { display: grid; gap: 6px; font-size: 13px; }
+.po-two .mini-select { max-width: 300px; font-size: 13px; padding: 3px 6px; }
+/* mock-only (not for docs/style.css) */
+.mock-note { font-size: 12px; color: var(--muted); margin: 26px 0 8px; padding-top: 14px; border-top: 2px dashed var(--border); }
