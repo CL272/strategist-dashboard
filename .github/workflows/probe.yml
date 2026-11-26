@@ -1,0 +1,13 @@
+name: Source probe (temporary)
+on:
+  push:
+    branches: ["probe/**"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/probe_sources.py
