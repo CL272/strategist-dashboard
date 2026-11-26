@@ -82,7 +82,6 @@ SAV_NAME = {"USA": "US", "CAN": "Canada", "GBR": "UK", "DEU": "Germany", "FRA": 
             "AUS": "Australia", "JPN": "Japan", "KOR": "Korea", "CHN": "China", "EA": "Euro area"}
 SAV_Q = ["USA", "CAN", "GBR", "DEU", "FRA", "ITA", "ESP", "AUS", "JPN", "KOR"]
 SAV_A = ["USA", "EA", "DEU", "FRA", "ITA", "ESP", "GBR", "CAN", "AUS", "JPN", "KOR", "CHN"]
-NBS = "https://data.stats.gov.cn/english/easyquery.htm"
 
 
 def _oecd_raw(flow: str, key: str, start: str) -> pd.DataFrame:
@@ -155,54 +154,8 @@ def savings_japan() -> dict:
                               group="Macro · Households", freq="Q")}
 
 
-def savings_china() -> dict:
-    """China, trailing four quarters: 1 − per-capita consumption ÷ per-capita disposable income (NBS, nationwide).
-    NBS publishes year-to-date sums; they are turned into single quarters, then summed over the last four."""
-    ses = requests.Session()
-    ses.headers.update({"User-Agent": "Mozilla/5.0", "Referer": "https://data.stats.gov.cn/english/easyquery.htm?cn=B01"})
-    tree = ses.post(NBS, data={"id": "A05", "dbcode": "hgjd", "wdcode": "zb", "m": "getTree"}, timeout=60).json()
-    groups = {n["id"]: (n.get("name") or "").lower() for n in tree}
-
-    def ytd(word: str) -> pd.Series:
-        for gid in [g for g, n in groups.items() if word in n]:
-            r = ses.get(NBS, params={"m": "QueryData", "dbcode": "hgjd", "rowcode": "zb", "colcode": "sj", "wds": "[]",
-                                     "dfwds": json.dumps([{"wdcode": "zb", "valuecode": gid}, {"wdcode": "sj", "valuecode": "LAST80"}]),
-                                     "k1": int(datetime.now().timestamp() * 1000)}, timeout=60)
-            j = r.json()["returndata"]
-            names = {n["code"]: n["cname"].lower() for w in j["wdnodes"] if w["wdcode"] == "zb" for n in w["nodes"]}
-            want = [c for c, n in names.items() if "per capita" in n and "accumulated" in n and word in n
-                    and not any(x in n for x in ("urban", "rural", "median", "growth"))]
-            if not want:
-                continue
-            v = {}
-            for d in j["datanodes"]:
-                w = {x["wdcode"]: x["valuecode"] for x in d["wds"]}
-                if w.get("zb") == want[0] and d["data"].get("hasdata"):
-                    yq = w["sj"]
-                    v[pd.Period(f"{yq[:4]}Q{'ABCD'.index(yq[4]) + 1}", freq="Q")] = float(d["data"]["data"])
-            if len(v) >= 12:
-                return pd.Series(v).sort_index()
-        raise RuntimeError(f"NBS: no per-capita '{word}' series")
-
-    inc, con = ytd("disposable income"), ytd("consumption expenditure")
-
-    def single(x: pd.Series) -> pd.Series:   # year-to-date -> single quarter
-        prev = x.shift(1).where(x.index.quarter > 1, 0.0)
-        return (x - prev).where(x.index.to_series().diff().apply(lambda d: getattr(d, "n", 1) == 1).values | (x.index.quarter == 1))
-    i4, c4 = single(inc).rolling(4).sum(), single(con).rolling(4).sum()
-    s = (1 - c4 / i4) * 100
-    s.index = s.index.to_timestamp()
-    s = s.dropna()
-    if len(s) < 8:
-        raise RuntimeError("NBS: too short")
-    return {"SAVQ_CHN": _ser(s, "China household saving rate (trailing 4 quarters)", "%",
-                             "National Bureau of Statistics: 1 − per-capita consumption expenditure ÷ per-capita disposable income, nationwide, last four quarters",
-                             group="Macro · Households", freq="Q")}
-
-
-# ------------------------------------------------------------------ FINRA margin statistics (owner's request, 22 Nov 2026)
-FINRA_PAGE = "https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics"
-FINRA_XLSX = "https://www.finra.org/sites/default/files/2021-03/margin-statistics.xlsx"   # updated in place each month
+# China's quarterly household saving rate was read from the bureau's database (data.stats.gov.cn), which refuses cloud
+# servers (GitHub's included): it never loaded and was removed in Design plan 5, Step 5. The China card shows the OECD annual rate.
 
 
 def finra_margin() -> dict:
@@ -542,7 +495,7 @@ def derived(files: list[dict], have: dict) -> dict:
 
 
 def build(status: dict) -> None:
-    print("Leading indicators (NY Fed, Zillow, OECD, data.gov.my, NBS, FINRA, derived)")
+    print("Leading indicators (NY Fed, Zillow, OECD, data.gov.my, FINRA, derived)")
     old = load_existing("leads.json")
     fred, yahoo, asia = load_existing("fred.json"), load_existing("yahoo.json"), load_existing("asia.json")
     files = [fred, yahoo, asia, load_existing("korea.json"), load_existing("taiwan.json"), load_existing("derived.json")]
@@ -552,7 +505,6 @@ def build(status: dict) -> None:
              ("OECD money", lambda: money(fred, asia), ("LD_RNM6", "LD_RBM6")), ("Malaysia pulse", malaysia, ("MY_",)),
              ("G10 excess liquidity", lambda: excess_liquidity(fred, yahoo), ("LD_EL_",)),
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
-             ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),
              ("Japan household saving (OECD sector accounts)", savings_japan, ("SAVQN_JPN",)),
              ("Euro area household saving (ECB sector accounts)", savings_ea, ("SAVQ_EA",)),
              ("FINRA margin statistics", finra_margin, ("FINRA_",)),

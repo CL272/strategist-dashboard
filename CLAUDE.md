@@ -2,10 +2,10 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_5.md` (approved by the owner 26 Nov 2026, all four decisions as recommended; Steps 1 to 4 built, Step 5 next): a China →
-Property sub-tab from the statistics bureau's monthly releases (prices by city tier, sales, building), University of
-Michigan sentiment by party, the Chicago Fed's weekly retail sales, and a reconstructed "excess liquidity" card.
-Mockup: `design/plan5.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.
+**Design plan 5** (`DESIGN_PLAN_5.md`, approved and built 26 Nov 2026, Steps 1 to 5, one commit each): China → Property from the
+statistics bureau's monthly releases (prices by city tier, sales, building), University of Michigan sentiment by party, the
+Chicago Fed's weekly retail sales, and a reconstructed "excess liquidity" card. Mockup: `design/plan5.html` (not published).
+Its rules are folded into the list below.
 
 **Design plan 4** (`DESIGN_PLAN_4.md`, approved and built 25 Nov 2026, Steps 1 to 5, one commit each): a portfolio
 allocator on Allocation (Portfolio and Add a fund: saved portfolios, a benchmark you choose, tracking error, the "Add a fund"
@@ -126,8 +126,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Add publication delays for new series to `PUB_LAG` (app.js) and `lag_of` (signals.py). Tiles for app.js pages are added
   through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
 - **Household saving rates** (owner's request, 20 Nov 2026) come from `pipeline/leads.py` (`savings_oecd`: OECD quarterly
-  GROSS rate `SAVQ_*` and annual NET rate `SAVA_*`; `savings_china`: NBS per-capita income and spending, `SAVQ_CHN`, tried
-  each run and skipped if the site does not answer; `savings_japan`: OECD quarterly sector accounts, households, NET rate
+  GROSS rate `SAVQ_*` and annual NET rate `SAVA_*` (China: the OECD annual rate only; the bureau's quarterly figure came from
+  its database, which refuses cloud servers, and was removed in Design plan 5); `savings_japan`: OECD quarterly sector accounts, households, NET rate
   `SAVQN_JPN` from 1994, kept apart from the gross `SAVQ_*`; `savings_ea`: ECB quarterly sector accounts, euro area 21,
   gross rate `SAVQ_EA` from 1999, same definition as the OECD gross rates). Page code is in `docs/leads.js` (`buildSavings`): Regime & Leading →
   Household saving (table, quarterly, annual) plus one card on the US, Europe, UK, Japan, Korea and China pages (Australia's
@@ -192,6 +192,33 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   answer lies beyond 50% (the slider follows). Allocator cards are dated by the last week analysed (`poAsOf`). Wording is arithmetic on past
   returns: never buy, sell, overweight or recommend (the design check scans both sub-tabs). Run `node tools/port-check.js`
   after any change to `port-model.js` or the method; it must pass before pushing.
+- **China → Property** (Design plan 5; `pipeline/cnprop.py` → `cnprop.json`, page code `CNP_SUB` in `docs/more.js`, last on
+  China, loaded when the sub-tab opens). Two monthly press releases of the National Bureau of Statistics, listed on
+  `www.stats.gov.cn/sj/zxfb/`: "70个大中城市…" (70-city prices, two tables: new and second-hand, index on the month and on the
+  year) and "全国房地产…" (year to date: investment, building, new-home sales, second-hand transactions, unsold stock,
+  developers' funding). **Never build on `data.stats.gov.cn`**: the bureau's database refuses cloud servers, GitHub's included.
+  The raw figures as published are archived (`archive/cn_cities.csv`, `cn_realestate.csv`; every release found and whether it
+  was read in `cn_releases.csv`) because the list holds about five years; every series is derived from the archive, so a
+  run that cannot reach the site rebuilds the same file. Each run reads the first two list pages and anything unread,
+  within 240 seconds (`CNPROP_BUDGET`). Tiers live in one place (`TIERS`, from the bureau's own note; English city names
+  in `CITY_EN`); a tier figure is the simple average of its cities' indices as published, so it can differ from the bureau's
+  own (which averages unrounded indices) by up to 0.1 point. Growth is the bureau's "comparable basis": stored as published,
+  never recomputed from the levels. January is never published alone: January and February are one reading, dated
+  February. Sales cards show residential figures (the headline counts offices and shops). Run
+  `python3 tools/cnprop-check.py` after any change to the reader: it checks the tiers against the bureau's published figures
+  for three months, completeness, figures from the release text and the arithmetic. BIS quarterly prices (`CN_HPI_BIS`,
+  `CN_HPI_BIS_REAL`, FRED) give the long view from 2005.
+- **US → Housing & consumer additions** (Design plan 5): "Consumer sentiment by party" (University of Michigan Table 5b,
+  read by `umich_party` in `pipeline/sentiment.py`: the tables page first, because the .xls link carries a changing key;
+  `UMS_*`, `UMC_*`, `UME_*` for Democrats, Independents, Republicans; final monthly readings, every month since Feb 2017) and
+  "Weekly retail sales" (Chicago Fed CARTS on FRED, `CARTS`, `CARTS_REAL`; its calendar has 48 weeks a year, so a year
+  earlier is 48 rows back; FRED's own "change from a year ago" counts 52 rows and is off by a month: never use it).
+- **Excess liquidity** (Design plan 5): `excess_liquidity` in `pipeline/leads.py` (`LD_EL_G10`, with `LD_EL_MONEY` and
+  `LD_EL_IP`): GDP-weighted real narrow-money growth for the US, euro area, Japan, UK and Canada in US dollars (monthly
+  average rates, US CPI) minus their industrial-production growth, from 2006. A reconstruction on public data of the idea in a
+  Bloomberg chart, never called Bloomberg's series. One `LB_ROWS` line against the S&P 500; the dashboard's test finds a weak
+  link (best fit about 10 months, correlation about 0.24), so it shows as context. Card on Regime & Leading → Global breadth
+  & money.
 - **Profits** (Design plan 3): US → Economy → Profits (`docs/more.js`, `PF_SUB`, pushed last in `init`): profits vs the
   S&P 500, profits ÷ GDP (GDP fetched from 1959), S&P 500 trailing EPS (`SH_EPS`, Shiller's E column; the page falls back to
   price ÷ P/E). Forward earnings are licensed: never shown.
@@ -225,7 +252,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   the Strategist View over 1,350px or the Weekly brief over 1,500px (at 1440 and 1280), and a brief that prints on more than
   one A4 page. Deliberate exceptions are listed in its `ALLOW` table (`first300` for the two pages with a group row).
   Since Design plan 3 it also fails on a menu list that scrolls more than 200px and on advice words on the Evidence board
-  (since Design plan 4 also on Allocation → Portfolio and Add a fund).
+  (since Design plan 4 also on Allocation → Portfolio and Add a fund). Model checks run beside it when their code changes:
+  `tools/sp-check.js`, `tools/port-check.js`, `tools/cnprop-check.py`.
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.
 - Dual-axis charts are the owner's preference for two-series comparisons (`drawPair`).
@@ -233,6 +261,10 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
 ## Data and privacy
 
 - Public data only; secrets (`FRED_API_KEY`, `ESTAT_API_KEY`) live in GitHub repository secrets, never in code.
+- **Licensed or private data: never scraped or shown**: S&P Global PMIs; Robinhood, JPMorgan and Vanda retail-flow data; the
+  Redbook index; the Conference Board's consumer confidence index and its party split; Bloomberg's own indices and its
+  excess-liquidity series; forward earnings; China's daily property sales, developers' sales, land sales and developer bond
+  prices (Wind, CRIC, CREIS). Where a free equivalent exists, the dashboard shows that and says what it is.
 - The repository and site are public. Everything the owner writes (watchlist, saved portfolios, signal watch and dismiss,
   structured notes) goes through `pstore()`, which is the **private vault**
   (`docs/vault.js`) once it is set up: AES-256-GCM with a key derived from the owner's passphrase (PBKDF2-SHA-256,

@@ -1,7 +1,7 @@
 # Design plan 5: four charts the owner sent, and China property
 
-**Status (26 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end).
-Nothing is built yet. Build Steps 1 to 5 in order, one step per commit.**
+**Status (26 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end)
+and built, Steps 1 to 5, one commit each. Departures from the plan are listed under "As built" at the end.**
 Written after the owner sent four charts (Robinhood retail flows, Bloomberg's "G10 excess liquidity" against the S&P 500,
 the Conference Board's consumer confidence with its split by party, the Redbook index) and asked: "Are you able to
 replicate these chart properly? Also can you find details about China property health (eg: sales, prices, tier 123) in
@@ -224,3 +224,32 @@ Every default in brackets below is approved. The alternatives were not chosen: d
 3. **The two US cards.** [Build both: Michigan sentiment by party, and the Chicago Fed's weekly retail sales.]
    Alternative: either one alone. **Approved as the default: both.**
 4. **Robinhood retail flows.** [Build nothing: no public data.] **Approved as the default: nothing is built.**
+
+## As built (26 Nov 2026)
+
+All five steps are live, one commit each. Where the build departs from the text above:
+
+- **Step 1.** The tier check allows 0.10 point, not 0.05: the bureau averages its cities' unrounded indices, the dashboard
+  the published ones (rounded to 0.1), so the two can differ by up to 0.05 + 0.05. In the three test months 34 of 36 tier
+  figures round to the bureau's own; the largest gap is 0.075 (December 2024, tier-1 new homes on the month: +0.125
+  against the bureau's +0.2). Instead of `_meta.done`, every release found is recorded in `archive/cn_releases.csv`, and the
+  raw figures as published are archived (`cn_cities.csv`: each city's four indices every month; `cn_realestate.csv`: the
+  real-estate table as published); every series is derived from them each run. The archive was seeded once from the
+  planning downloads (all 114 releases, none failed), so the first daily run already had five years and read only two
+  list pages (8 seconds). Each run then stops after 240 seconds or 45 pages. Units are converted for the page (CNY bn,
+  million square metres). Developers' funding (total, loans, deposits, mortgages, own funds) is kept as well.
+  `tools/cnprop-check.py` (new) checks the tiers, completeness, release-text figures and the arithmetic.
+- **Step 2.** The sales card is "Home sales" and shows residential figures (the bureau's headline also counts offices and
+  shops), with second-hand transactions as a third line; the bureau has published those only since August 2026. "Building:
+  starts, completions, investment" is titled "Starts, completions, investment" (the plan's title is over 32 characters).
+  The long view (BIS) switches the card to its full length and back. Tiers 2 and 3 in the city table show 14 rows at rest.
+  A tile's change on the month can read 0.1 point away from the bureau's (October 2026, tier 1: +0.1 against "flat").
+- **Step 3.** The sub-tab pairs "Consumer sentiment" with "by party", and the mortgage card with weekly retail sales (seven
+  cards with the saving-rate card from an earlier plan; 2,155px at 1440). Michigan's party series are also written to
+  `archive/` (the sentiment module's rule). Publication delays: `CARTS`, `UMS_`, `UMC_`, `UME_`, `CNP_`, `CNR_` lag one month
+  in `signals.py`; `PUB_LAG` already defaults to one. Data health allows CARTS 45 days.
+- **Step 4.** A separate `excess_liquidity()` (`money()` is untouched). Canada's money is converted to dollars too (the
+  prototype left it in Canadian dollars), so February 2026 reads +6.8 points (prototype +6.4) and August −0.4 (−0.3). The
+  dashboard's test: best fit at 10 months, correlation +0.24, not a passing lead, so the card and the Leading board show it
+  as context. With only one toggle, the card relabels its own lead button ("Best fit +10m"). Data health allows 165 days.
+- **Step 5.** `savings_china` was removed; the China saving card shows the OECD annual rate.
