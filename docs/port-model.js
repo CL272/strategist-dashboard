@@ -90,6 +90,31 @@
     const { C } = pmCov(A.R), B = pmVec(ids, b);
     return xs.map(x => [x, pmTE(C, pmVec(ids, pmAdd(w, k, x, how)), B)]);
   }
+  // Target a tracking error: the weight of fund k (0 to xmax points of the whole portfolio, paid for as in pmAdd) at which
+  // the tracking error first reaches `target` (% a year). It searches every `step` points from 0, then halves the interval
+  // where it first crosses the target, to 1e-7 of a point. From above ('down'), x is the smallest weight that brings the
+  // tracking error down to the target; from below ('up'), the largest weight that keeps it within the target. x is null when
+  // no weight up to xmax reaches it; lo and hi are the lowest and highest points found ([x, te]); te0 = nothing added.
+  function pmTarget(A, ids, w, b, k, how = 'all', target = 3, xmax = 100, step = 0.1) {
+    const { C } = pmCov(A.R), B = pmVec(ids, b), f = x => pmTE(C, pmVec(ids, pmAdd(w, k, x, how)), B);
+    const te0 = f(0), s0 = te0 - target, out = { te0, target, dir: Math.abs(s0) < 1e-9 ? 'at' : s0 > 0 ? 'down' : 'up', x: null };
+    if (out.dir === 'at') out.x = 0;
+    let lo = [0, te0], hi = [0, te0], px = 0;
+    const n = Math.round(xmax / step);
+    for (let i = 1; i <= n; i++) {
+      const x = Math.min(xmax, i * step), v = f(x);
+      if (v < lo[1]) lo = [x, v];
+      if (v > hi[1]) hi = [x, v];
+      if (out.x == null && (v - target) * s0 <= 0) {   // first crossing: f(px) is still on the starting side, f(x) is not
+        let a = px, z = x;
+        for (let j = 0; j < 60 && z - a > 1e-7; j++) { const m = (a + z) / 2; if ((f(m) - target) * s0 > 0) a = m; else z = m; }
+        out.x = z;
+      }
+      px = x;
+    }
+    out.lo = lo; out.hi = hi; out.teAt = out.x == null ? null : f(out.x);
+    return out;
+  }
   // tracking error over the 52 weeks to each week: [[date, % a year]]
   function pmRolling(A, w, b, n = 52) {
     const st = pmStats(A, w, b); if (!st || st.gap.length < n) return [];
@@ -97,7 +122,7 @@
     return out;
   }
 
-  const api = { weekKey, pmAlign, pmCov, pmVec, pmTE, pmStats, pmAdd, pmCurve, pmRolling };
+  const api = { weekKey, pmAlign, pmCov, pmVec, pmTE, pmStats, pmAdd, pmCurve, pmTarget, pmRolling };
   g.PM = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : this);

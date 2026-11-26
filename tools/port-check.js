@@ -51,6 +51,25 @@ function fixture(k, n) {   // k price series, n + 1 Fridays, correlated through 
   ok(!neg, '“from one holding” never takes a weight below zero, and the total stays 100');
   ok(close(M.pmAdd({ A: 1, B: 3 }, 'C', 50).C, 50, 1e-9) && close(M.pmAdd({ A: 1, B: 3 }, 'C', 50).B, 37.5, 1e-9), 'amounts are scaled to 100% before the change');
 }
+{   // target a tracking error
+  const A = M.pmAlign(fixture(3, 150)), ids = ['P', 'K', 'Z'];
+  // portfolio all P, benchmark all K: adding x of K (paid for in proportion) gives a = (1 − x/100)(P − K), so TE(x) = (1 − x/100) · TE(0)
+  const te0 = M.pmStats(A, [1, 0, 0], [0, 1, 0]).te, h = M.pmTarget(A, ids, { P: 100 }, { K: 100 }, 'K', 'all', te0 / 2), q = M.pmTarget(A, ids, { P: 100 }, { K: 100 }, 'K', 'all', te0 / 4);
+  ok(h.dir === 'down' && close(h.x, 50, 1e-6) && close(q.x, 75, 1e-6), `target, known answer: half the tracking error at 50% of the benchmark's fund, a quarter at 75% (${h.x.toFixed(6)}%, ${q.x.toFixed(6)}%)`);
+  // portfolio = benchmark: adding x of Z gives a = x/100 · (Z − benchmark), so TE(x) = x/100 · TE(Z alone); the target T is reached at 100 · T / TE(Z alone)
+  const full = M.pmStats(A, [0, 0, 1], [40, 60, 0]).te, u = M.pmTarget(A, ids, { P: 40, K: 60 }, { P: 40, K: 60 }, 'Z', 'all', full / 5);
+  ok(u.dir === 'up' && close(u.x, 20, 1e-6) && close(u.te0, 0, 1e-9), `target from below: the largest weight that keeps the tracking error within the target (${u.x.toFixed(6)}% = 20%)`);
+  const at = M.pmTarget(A, ids, { P: 100 }, { K: 100 }, 'K', 'all', te0);
+  ok(at.dir === 'at' && at.x === 0, 'a target equal to the current tracking error needs nothing added');
+}
+{   // the target on real-looking fixtures: paid from cash (a kink where the cash runs out), the first crossing, out of reach
+  const A = M.pmAlign(fixture(5, 200)), ids = ['a', 'b', 'CASH', 'd', 'e'], w = { a: 30, b: 25, CASH: 20, d: 15, e: 10 }, b = { a: 10, b: 10, CASH: 0, d: 30, e: 50 };
+  const grid = Array.from({ length: 1001 }, (_, i) => i / 10), C = M.pmCurve(A, ids, w, b, 'e', 'cash', grid);
+  const T = (C[200][1] + Math.min(...C.map(x => x[1]))) / 2, t = M.pmTarget(A, ids, w, b, 'e', 'cash', T);   // between the kink at 20% (cash used up) and the lowest point
+  ok(t.x > 20 && close(t.teAt, T, 1e-6) && C.filter(([x]) => x < t.x - 1e-6).every(([, v]) => v > T), `paid from cash, past the point where the cash runs out: the tracking error is ${t.teAt.toFixed(6)}% = target ${T.toFixed(6)}% at ${t.x.toFixed(4)}%, and above it at every smaller weight`);
+  const lowest = Math.min(...C.map(x => x[1])), none = M.pmTarget(A, ids, w, b, 'e', 'cash', lowest / 2);
+  ok(none.x == null && close(none.lo[1], lowest, 1e-9), `out of reach: no weight found, and the lowest point (${none.lo[1].toFixed(4)}% at ${none.lo[0].toFixed(1)}%) is the curve's minimum`);
+}
 
 // ---------------------------------------------------------------- 2. real data (when on disk)
 const D = path.join(__dirname, '..', 'docs', 'data');

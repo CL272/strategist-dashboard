@@ -150,6 +150,10 @@ no advice words on either sub-tab (the design check's Evidence-board rule is ext
 ## Later, if wanted (not in this plan's steps)
 
 1. **Target a tracking error**: "what weight of this fund brings tracking error to 3%?" (the curve already holds the answer).
+   **Built 26 Nov 2026 at the owner's request:** a target per portfolio (3% until set) in "What if I add a fund?", the weight
+   that reaches it (or the lowest point when none does) with a "Use" button, and the target as a dashed rule on the curve.
+   Checked by `tools/port-check.js` (an exact answer: with the portfolio all P and the benchmark all K, half the tracking
+   error is reached at exactly 50% of K).
 2. **Malaysian unit trusts**: Yahoo carries some under fund codes; each would need checking before it is trusted.
 3. **A factsheet page for one portfolio**, printable like the Weekly brief.
 

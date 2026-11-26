@@ -178,7 +178,13 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   never defaults. **Add a fund**: `pmAdd` raises the fund by exactly x points, paid for by all holdings in proportion, cash
   first, or one holding first (never below zero); the what-if uses the weights rounded as they are saved (`poRound2`), so
   "after" equals what Apply or Save as new then shows on Portfolio. The ranked table adds every fund at 5/10/20% (eight lowest
-  and six highest at rest). Allocator cards are dated by the last week analysed (`poAsOf`). Wording is arithmetic on past
+  and six highest at rest). **Target a tracking error** (owner's request, 26 Nov 2026; the plan's "Later" item 1): each
+  portfolio keeps a target (`target` in its record, 3% until set, `PO_TARGET`); `PM.pmTarget` tries every 0.1 point of the
+  chosen fund from 0 to 100%, paid for as chosen, and halves the interval where the tracking error first crosses the target.
+  The row in "What if I add a fund?" rounds that weight to 0.1 point on the safe side (up when bringing it down, down when
+  keeping it within), quotes the figure worked out again at that weight (`poTargetFor`), and "Use" sets the weight; out of
+  reach, it gives the lowest point instead. The curve draws the target as a dashed rule and runs to 100% only when the
+  answer lies beyond 50% (the slider follows). Allocator cards are dated by the last week analysed (`poAsOf`). Wording is arithmetic on past
   returns: never buy, sell, overweight or recommend (the design check scans both sub-tabs). Run `node tools/port-check.js`
   after any change to `port-model.js` or the method; it must pass before pushing.
 - **Profits** (Design plan 3): US → Economy → Profits (`docs/more.js`, `PF_SUB`, pushed last in `init`): profits vs the

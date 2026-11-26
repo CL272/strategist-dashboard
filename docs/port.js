@@ -344,6 +344,20 @@ function poWhatIf(k = state.poAdd.id, x = state.poAdd.x) {   // before and after
   return { R, A, ids, how, w1, st0: PM.pmStats(A, PM.pmVec(ids, R.wObj), B), st1: PM.pmStats(A, PM.pmVec(ids, w1), B) };
 }
 const poAsOf = (c, t) => { setAsOf(c, t); c.read && c.read.clear(); c.used && c.used.clear(); };   // date = the last week analysed, not the exchange rates read on the way
+// Target a tracking error (DESIGN_PLAN_4, "Later" item 1; owner's request 26 Nov 2026): the weight of the chosen fund at which
+// the tracking error reaches the portfolio's target (PM.pmTarget, searched every 0.1 point from 0 to 100%, paid for as chosen).
+// The weight is rounded to 0.1 point on the safe side (up when bringing it down, down when keeping it within) and the figure
+// shown is worked out again at that weight with the weights as they would be saved, like every 'after' figure.
+const PO_TARGET = 3;   // % a year, until the owner sets a target for a portfolio (kept with the portfolio in the vault)
+const poTgtOf = p => p && +p.target > 0 ? +p.target : PO_TARGET;
+function poTargetFor(W) {
+  const a = state.poAdd, T = poTgtOf(W.R.p), key = [W.R.key, a.id, W.how, T].join('|');
+  if (state.poTgt && state.poTgt.key === key) return state.poTgt;
+  const t = PM.pmTarget(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, T);
+  const xr = t.x == null ? null : Math.min(100, t.dir === 'down' ? Math.ceil(t.x * 10 - 1e-6) / 10 : Math.floor(t.x * 10 + 1e-6) / 10);
+  const W2 = xr == null || t.dir === 'at' ? null : poWhatIf(a.id, xr);
+  return (state.poTgt = { ...t, key, T, xr, teR: t.dir === 'at' ? t.te0 : W2 && W2.st1 ? W2.st1.te : null, loX: Math.round(t.lo[0] * 10) / 10 });
+}
 const poRound2 = w => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, +v.toFixed(2)]));
 const poRowsFrom = (p, w1) => { const out = [...new Set(p.rows.map(r => r[0]))].filter(id => (w1[id] || 0) > 1e-4).map(id => [id, +w1[id].toFixed(2)]);
   for (const [id, v] of Object.entries(w1)) if (v > 1e-4 && !out.some(r => r[0] === id)) out.push([id, +v.toFixed(2)]); return out; };
@@ -353,7 +367,7 @@ function renderPoWhatIf(c) {
   if (!poBlocks()[a.id]) a.id = poBlocks().ACWI ? 'ACWI' : Object.keys(poBlocks()).find(k => poBlocks()[k].kind === 'fund');
   const portSel = el('select', { class: 'mini-select', 'aria-label': 'Portfolio' }, ...o.ports.map(x => el('option', { value: x.id, text: x.name }))); portSel.value = o.sel;
   portSel.onchange = () => poMutate(q => { q.sel = portSel.value; });
-  const slider = el('input', { type: 'range', min: 0, max: 50, step: 1, value: a.x, 'aria-label': 'Weight to add' }), xLab = el('b', { text: a.x + '%' });
+  const slider = el('input', { type: 'range', min: 0, max: a.x > 50 ? 100 : 50, step: 0.1, value: a.x, 'aria-label': 'Weight to add' }), xLab = el('b', { text: a.x + '%' });
   slider.addEventListener('input', () => { xLab.textContent = slider.value + '%'; });
   slider.addEventListener('change', () => { a.x = +slider.value; PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); });
   const how = el('select', { class: 'mini-select', 'aria-label': 'Paid for by' }, el('option', { value: 'all', text: 'all holdings, in proportion' }), el('option', { value: 'cash', text: 'cash first' }),
@@ -365,6 +379,17 @@ function renderPoWhatIf(c) {
       poSearch('Change fund: name or ticker', id => { a.id = id; if (a.from === id) { a.how = 'all'; a.from = null; } PO_CARDS_ADD.forEach(k => cards[k].render()); }, [a.id])));
   const W = poWhatIf();
   if (!W.st1) { b.append(el('div', { class: 'empty', text: W.reason || 'Waiting for data.' })); setCount(c, ''); c.csv = null; setNote(c, ''); return; }
+  const tg = poTargetFor(W), tick = poTick(a.id), pc = v => fmtNum(v, 2) + '%', x1 = v => fmtNum(v, 1) + '%';
+  const tin = el('input', { type: 'number', class: 'po-tin', min: 0.1, max: 30, step: 0.1, value: String(tg.T), 'aria-label': 'Target tracking error, % a year' });
+  tin.addEventListener('change', () => { const v = Math.round(+tin.value * 10) / 10; if (!(v > 0 && v <= 30)) { tin.value = String(tg.T); return; } poEdit(q => { q.target = v; }); });
+  let msg, useX = null;
+  if (tg.dir === 'at') msg = `The portfolio is at ${pc(tg.te0)} already.`;
+  else if (tg.dir === 'down' && tg.xr != null) { msg = `${x1(tg.xr)} of ${tick} brings it down to ${pc(tg.teR)}.`; useX = tg.xr; }
+  else if (tg.dir === 'down') { msg = `${tick} cannot bring it down to ${pc(tg.T)}: the lowest is ${pc(tg.lo[1])}, at ${x1(tg.loX)}.`; useX = tg.loX; }
+  else if (tg.xr != null) { msg = `Up to ${x1(tg.xr)} of ${tick} keeps it within ${pc(tg.T)} (${pc(tg.teR)}).`; useX = tg.xr; }
+  else msg = `Even 100% of ${tick} keeps it within ${pc(tg.T)} (at most ${pc(tg.hi[1])}).`;
+  b.append(el('div', { class: 'po-target' }, el('label', {}, 'Target tracking error ', tin, '%'), el('span', { class: 'po-tmsg', text: msg }),
+    useX != null && Math.abs(useX - a.x) > 1e-9 ? el('button', { type: 'button', class: 'ghost', text: `Use ${x1(useX)}`, title: 'Set the weight above to this', onclick: () => { a.x = useX; PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); } }) : ''));
   const { st0, st1 } = W, row = (k, v0, v1, d) => el('div', {}, el('span', { class: 'k', text: k }), el('span', { class: 'v' }, v0, el('span', { class: 'arr', text: ' → ' }), el('b', { text: v1 })), el('span', { class: 'd', text: d || '' }));
   const f2 = v => v == null ? '–' : fmtNum(v, 2), dte = st1.te - st0.te;
   b.append(el('div', { class: 'po-ba' },
@@ -378,32 +403,43 @@ function renderPoWhatIf(c) {
         goSub('alloc', 'Portfolio'); } }))));
   setCount(c, `vs ${poBenchName(p)}`);
   c.csv = [['Measure', 'Before', 'After'], ['Tracking error %', st0.te, st1.te], ['Beta', st0.beta, st1.beta], ['Correlation', st0.corr, st1.corr], ['Volatility %', st0.volP, st1.volP], ['Return a year %', st0.retP, st1.retP],
-    [], ['Holding', 'Weight before %', 'Weight after %'], ...W.ids.map(id => [poLabel(id), (PM.pmVec(W.ids, W.R.wObj)[W.ids.indexOf(id)] * 100).toFixed(2), (W.w1[id] || 0).toFixed(2)])];
+    [], ['Holding', 'Weight before %', 'Weight after %'], ...W.ids.map(id => [poLabel(id), (PM.pmVec(W.ids, W.R.wObj)[W.ids.indexOf(id)] * 100).toFixed(2), (W.w1[id] || 0).toFixed(2)]),
+    [], ['Target tracking error %', tg.T], [tg.dir === 'up' ? `Largest weight of ${tick} within the target %` : `Weight of ${tick} that reaches the target %`, tg.xr ?? ''], ['Tracking error at that weight %', tg.teR ?? '']];
   setNote(c, `Adding ${a.x}% of ${poTick(a.id)}, paid for by ${poHowLab[a.how]}, ${dte < -0.005 ? 'would have lowered' : dte > 0.005 ? 'would have raised' : 'would have left'} the tracking error ${Math.abs(dte) > 0.005 ? `by ${fmtNum(Math.abs(dte), 2)} points ` : 'unchanged '}over ${st0.weeks} weeks to ${nice(st0.to)}, in ${p.ccy}.`
-    + (W.A.n < (W.R.A ? W.R.A.n : 0) ? ` The window is shorter than on Portfolio because ${poTick(a.id)}'s history starts in ${monthLab(W.A.dates[0])}.` : '') + poThinNote([a.id]));
+    + (W.A.n < (W.R.A ? W.R.A.n : 0) ? ` The window is shorter than on Portfolio because ${poTick(a.id)}'s history starts in ${monthLab(W.A.dates[0])}.` : '') + poThinNote([a.id])
+    + ` Target: kept with each portfolio. The weight that reaches it is found by trying every 0.1 point of ${tick} from 0 to 100% of the portfolio, paid for as chosen above, and narrowing down where the tracking error first crosses the target; it is rounded to 0.1 point on the safe side (up when bringing the tracking error down, down when keeping it within) and the figure shown is worked out again at that weight. “Use” sets the weight above to it.`);
   setSource(c, PO_SRC); poAsOf(c, st1.to);
 }
 function renderPoCurve(c) {
   if (poWait(c)) return;
   const W = poWhatIf(); if (!W.st1) return poEmpty(c, W.reason || 'Waiting for data.');
-  const a = state.poAdd, xs = [...new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, a.x])].sort((p, q) => p - q);
-  const C = PM.pmCurve(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, xs), lo = C.reduce((m, q) => q[1] < m[1] ? q : m), at = C.find(q => q[0] === a.x);
+  const a = state.poAdd, tg = poTargetFor(W), tX = tg.dir === 'at' ? null : tg.xr;
+  const xEnd = a.x > 50 || tX > 50 || (tg.dir === 'down' && tX == null && tg.loX > 50) ? 100 : 50;   // 0–100% only when the answer lies beyond 50%
+  const xs = [...new Set([...Array.from({ length: xEnd / 5 + 1 }, (_, i) => i * 5), a.x, ...[tX, tg.loX].filter(v => v != null && v <= xEnd)])].sort((p, q) => p - q);
+  const C = PM.pmCurve(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, xs), lo = C.reduce((m, q) => q[1] < m[1] ? q : m), at = C.find(q => q[0] === a.x), tq = tX == null ? null : C.find(q => q[0] === tX);
   c.titleEl.textContent = 'Tracking error by weight added';
   const o = baseOpt(); o.legend.show = false;
   o.grid = { left: 8, right: 18, top: 26, bottom: 24, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => `${poTick(a.id)} +${ps[0].value[0]}%: tracking error <b>${fmtNum(ps[0].value[1], 2)}%</b>` };
-  o.xAxis = { type: 'value', min: 0, max: 50, interval: 10, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false }, name: 'weight added', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tok('--muted'), fontSize: 11 } };
+  o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => { const q = ps.find(x => x.seriesIndex === 0) || ps[0]; return `${poTick(a.id)} +${fmtNum(q.value[0], q.value[0] % 1 ? 1 : 0)}%: tracking error <b>${fmtNum(q.value[1], 2)}%</b>`; } };
+  o.xAxis = { type: 'value', min: 0, max: xEnd, interval: xEnd / 5, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false }, name: 'weight added', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tok('--muted'), fontSize: 11 } };
   o.yAxis = valAxis(v => fmtNum(v, 1) + '%', { scale: true });
-  const mk = (q, lab, filled) => ({ coord: q, value: lab, symbol: 'circle', symbolSize: 9, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
-    label: { show: true, formatter: lab, position: q[0] <= 5 ? 'right' : q[0] >= 45 ? 'left' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
+  const xl = v => fmtNum(v, v % 1 ? 1 : 0) + '%', ys = C.map(q => q[1]), pad = Math.max(0.05, (Math.max(...ys, tg.T) - Math.min(...ys, tg.T)) * 0.06);
+  const mk = (q, lab, filled, shape = 'circle', below = false) => ({ coord: q, value: lab, symbol: shape, symbolSize: shape === 'circle' ? 9 : 11, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
+    label: { show: true, formatter: lab, position: q[0] <= xEnd * 0.1 ? 'right' : q[0] >= xEnd * 0.9 ? 'left' : below ? 'bottom' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
   o.series = [{ type: 'line', data: C, symbol: 'none', lineStyle: { width: 2, color: tok('--s1') }, itemStyle: { color: tok('--s1') },
-    markPoint: { data: [mk(at, `+${a.x}% → ${fmtNum(at[1], 2)}%`, true), ...(lo[0] !== a.x ? [mk(lo, `lowest at ${lo[0]}%: ${fmtNum(lo[1], 2)}%`, false)] : [])] } }];
+    markPoint: { data: [mk(at, `+${xl(a.x)} → ${fmtNum(at[1], 2)}%`, true), ...(lo[0] !== a.x && lo[0] !== tX ? [mk(lo, `lowest at ${xl(lo[0])}: ${fmtNum(lo[1], 2)}%`, false)] : []),
+      ...(tq && tX !== a.x ? [mk(tq, `target at ${xl(tX)}`, false, 'diamond', tq[1] > at[1])] : [])] } },
+    // the target: a dashed rule; the hidden points just above and below it keep it inside the axis, clear of the edges
+    { type: 'line', name: 'Target', data: [[0, tg.T - pad], [0, tg.T + pad]], symbol: 'none', silent: true, tooltip: { show: false }, lineStyle: { opacity: 0 }, z: 1,
+      markLine: { silent: true, symbol: 'none', lineStyle: { width: 1, type: 'dashed', color: tok('--muted') }, data: [{ yAxis: tg.T }],
+        label: { formatter: `target ${fmtNum(tg.T, 1)}%`, position: 'insideEndTop', color: tok('--muted'), fontSize: 10.5 } } }];
   const ch = inst(c); ch.resize(); ch.setOption(o, true);
-  c.csv = [['Weight added %', 'Tracking error %'], ...C.map(([x, v]) => [x, v.toFixed(3)])];
+  c.csv = [['Weight added %', 'Tracking error %'], ...C.map(([x, v]) => [x, v.toFixed(3)]), [], ['Target tracking error %', tg.T]];
   setCount(c, poLabel(a.id));
-  setNote(c, lo[0] === 0 ? `Any amount of ${poTick(a.id)} would have raised the tracking error: it moves away from what the benchmark holds.`
-    : lo[0] >= 50 ? `More ${poTick(a.id)} lowered the tracking error all the way to 50% (${fmtNum(lo[1], 2)}%).`
-    : `Adding ${poTick(a.id)} lowered the tracking error until about ${lo[0]}% of the portfolio (${fmtNum(lo[1], 2)}%); beyond that it rises again.`);
+  setNote(c, (lo[0] === 0 ? `Any amount of ${poTick(a.id)} would have raised the tracking error: it moves away from what the benchmark holds.`
+    : lo[0] >= xEnd ? `More ${poTick(a.id)} lowered the tracking error all the way to ${xEnd}% (${fmtNum(lo[1], 2)}%).`
+    : `Adding ${poTick(a.id)} lowered the tracking error until about ${xl(lo[0])} of the portfolio (${fmtNum(lo[1], 2)}%); beyond that it rises again.`)
+    + ` Dashed line: the portfolio's target (${fmtNum(tg.T, 1)}%), set in the card beside this one.`);
   setSource(c, PO_SRC); poAsOf(c, W.st1.to);
 }
 function poRankRows(x) {   // every fund added at x%, paid for in proportion; cached per portfolio state
