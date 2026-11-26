@@ -14,7 +14,7 @@ import pandas as pd
 
 from fetch import EPOCH, OUT, write
 
-FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json", "leads.json", "events.json", "funds.json"]
+FILES = ["yahoo.json", "fred.json", "derived.json", "asia.json", "cbwatch.json", "korea.json", "ramp.json", "gpu.json", "taiwan.json", "oilcurve.json", "gpr.json", "structured.json", "etfs.json", "banks.json", "leads.json", "events.json", "funds.json", "cnprop.json"]
 # (max median gap in days, allowed age in days, label)
 FREQ = [(4, 10, "daily"), (10, 21, "weekly"), (40, 130, "monthly"), (100, 260, "quarterly"), (10_000, 500, "annual")]
 # slow publishers: allowed age in days (data dated at period start + long publication lags)
@@ -34,6 +34,7 @@ SLOW.update({"KR_CHIP_EXP": 420, "KR_MEM_EXP": 420})
 SLOW.update({k: 500 for k in ("CN_CREDIT", "CN_CREDIT_GDP", "LD_CN_FLOW", "LD_CN_IMPULSE")})
 SLOW.update({k: 200 for k in ("MY_ELEC_COM", "MY_ELEC_TOT")})
 SLOW["MARGIN_Z1"] = 300   # Fed Financial Accounts: a quarter is published about ten weeks after it ends (stamped at its start)
+SLOW.update({"CN_HPI_BIS": 330, "CN_HPI_BIS_REAL": 330})   # BIS property prices reach FRED about two quarters after the quarter (Design plan 5)
 SLOW["INDEED"] = 21   # Indeed's daily postings index reaches FRED once a week, about a week late   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")

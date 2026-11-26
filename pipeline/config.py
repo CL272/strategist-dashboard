@@ -222,6 +222,8 @@ FRED = [
     ("USD_BROAD",   "DTWEXBGS",    "US dollar, broad trade-weighted (Fed)", "Valuation · FX", "level", "idx"),   # daily, from 2006; a free stand-in for the Bloomberg dollar index
     ("REER_EUR",    "RBXMBIS",     "Euro REER",                   "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_JPY",    "RBJPBIS",     "Japanese yen REER",           "Valuation · FX", "level", "idx", MACRO_START),
+    ("CN_HPI_BIS",  "QCNN628BIS",  "China residential property prices (BIS, 70 cities)", "Macro · China", "level", "idx", "2005-01-01"),   # Design plan 5: long history for China → Property
+    ("CN_HPI_BIS_REAL", "QCNR628BIS", "China residential property prices after inflation (BIS)", "Macro · China", "level", "idx", "2005-01-01"),
     ("REER_CNY",    "RBCNBIS",     "Chinese yuan REER",           "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_GBP",    "RBGBBIS",     "British pound REER",          "Valuation · FX", "level", "idx", MACRO_START),
     ("REER_SGD",    "RBSGBIS",     "Singapore dollar REER",       "Valuation · FX", "level", "idx", MACRO_START),
