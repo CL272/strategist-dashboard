@@ -1,6 +1,7 @@
 # Design plan 5: four charts the owner sent, and China property
 
-**Status (26 Nov 2026): waiting for the owner's decisions (four, at the end). Nothing is built.**
+**Status (26 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end).
+Nothing is built yet. Build Steps 1 to 5 in order, one step per commit.**
 Written after the owner sent four charts (Robinhood retail flows, Bloomberg's "G10 excess liquidity" against the S&P 500,
 the Conference Board's consumer confidence with its split by party, the Redbook index) and asked: "Are you able to
 replicate these chart properly? Also can you find details about China property health (eg: sales, prices, tier 123) in
@@ -153,7 +154,7 @@ Files: `pipeline/sentiment.py` (`umich_party()`), `pipeline/config.py` (`CARTS`,
 Acceptance: the three party series end within one month of Michigan's latest final reading; `CARTS` year on year for
 the week to 28 October 2026 is +9.6% (against the week to 28 October 2025); the sub-tab stays within the height budget.
 
-## Step 4. Excess liquidity (only if decision 2 says build)
+## Step 4. Excess liquidity (decision 2: approved, build it)
 
 Files: `pipeline/leads.py` (`money()`: add industrial production `PRVM`, activity `BTE`, to the OECD call; a new derived
 series), `pipeline/config.py` (`DEXUSUK`, `DEXCAUS` beside the two FRED exchange rates already fetched), `docs/leads.js`
@@ -210,15 +211,16 @@ One step per commit; run the design check before each push.
 - The vault, the allocator, the Evidence board, signals wording: untouched by this plan.
 - "Public data only": nothing in this plan reads a page that forbids reuse.
 
-## Decisions (for the owner)
+## Decisions (answered by the owner, 26 Nov 2026: "go with the defaults")
 
-Defaults are in brackets; "go with the defaults" approves all four.
+Every default in brackets below is approved. The alternatives were not chosen: do not build them.
 
 1. **China property.** [Build the Property sub-tab from the bureau's releases: tiers and cities for prices, national
    sales and building, five years of monthly history plus the BIS quarterly index from 2005.]
-   Alternative: prices only, without sales and building.
+   Alternative: prices only, without sales and building. **Approved as the default: the full sub-tab.**
 2. **Excess liquidity.** [Build it, labelled as a reconstruction, in US dollars, showing the weak link it measures.]
    Alternative: do not build it, since it is not Bloomberg's series and the test does not support the chart's claim.
+   **Approved as the default: build it, labelled, with the measured link (expected "context") shown as it is.**
 3. **The two US cards.** [Build both: Michigan sentiment by party, and the Chicago Fed's weekly retail sales.]
-   Alternative: either one alone.
-4. **Robinhood retail flows.** [Build nothing: no public data.] Tell me if a paid source is ever available to you.
+   Alternative: either one alone. **Approved as the default: both.**
+4. **Robinhood retail flows.** [Build nothing: no public data.] **Approved as the default: nothing is built.**
