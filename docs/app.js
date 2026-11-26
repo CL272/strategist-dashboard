@@ -6482,7 +6482,7 @@ const SUBTABS = {
     ['Indicators', ['lei', 'leidrv', 'leadlag', 'cli'], 'Leading'], ['Global business cycle', ['bc_all', 'bc_table', 'bc_cn', 'bc_my', 'bc_ea'], 'Leading'], ['Market signals', ['cugold', 'cycdef'], 'Leading']],
   us: [['Equities', ['#sig_us', 'us_eq', 'br_hl_US', 'br_trend_US', 'br_table_US', 'us_margin']], ['Sectors & styles', ['sty_ratio', 'sty_sect', 'sty_style']], ['Rates & bonds', ['#sa_us_rates', 'us_rates', 'us_be', 'us_fed']], ['Currency', ['#sa_us_fx', 'us_usd_drv']],
     ['Growth & jobs', ['us_jobs', 'us_retail', 'gdpnow', 'claims'], 'Economy'], ['Inflation', ['infl'], 'Economy'], ['ISM', ['ism_main', 'ism_ip', 'ism_sv', 'bc_mkt', 'ism_rule'], 'Economy'],
-    ['Housing & consumer', ['us_starts', 'us_hpi', 'us_mort', 'us_sent'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
+    ['Housing & consumer', ['us_starts', 'us_hpi', 'us_sent', 'us_party', 'us_mort', 'us_carts'], 'Economy'], ['Recession watch', ['sahm', 'recprob'], 'Economy']],
   europe: [['Equities', ['#sig_europe', 'eu_eq']], ['Rates & bonds', ['#sa_europe_rates', 'eu_yields', 'eu_spread', 'eu_hy', 'eu_ecb']], ['Currency', ['#sa_europe_fx', 'eu_fx']], ['Economy', ['eu_infl', 'eu_unemp', 'eu_gdp', 'eu_bci', 'eu_m3']], ['Countries compared', ['#sa_eu_cmp', 'eu_cmp']]],
   de: [['Equities', ['#sig_de', 'eq_de', 'lead_de']], ['Rates & bonds', ['#sa_de_rates', 'y10_de', 'de_ecb']], ['Economy', ['infl_de', 'jobs_de', 'gdp_de', 'act_de', 'conf_de']]],
   fr: [['Equities', ['#sig_fr', 'eq_fr', 'lead_fr']], ['Rates & bonds', ['#sa_fr_rates', 'y10_fr', 'spr_fr']], ['Economy', ['infl_fr', 'jobs_fr', 'gdp_fr', 'act_fr', 'conf_fr']]],
@@ -6755,6 +6755,11 @@ function buildRegions() {
     setSource(c, 'Freddie Mac via FRED (MORTGAGE30US); FRED (DGS10)'); } });
   makeCard(us, { key: 'us_sent', title: 'Consumer sentiment', defaultRange: '10Y', render: c => {
     lines(c, ['UMCSENT'], v => fmtNum(v, 1), v => fmtNum(v, 0), { areas: recessionAreas(state.from, state.to) }); setSource(c, 'University of Michigan via FRED (UMCSENT)'); } });
+  // Design plan 5, Step 3: Michigan sentiment by party (sentiment.json) and the Chicago Fed's weekly retail sales (FRED CARTS)
+  makeCard(us, { key: 'us_party', title: 'Consumer sentiment by party', defaultRange: 'MAX', earliest: Date.UTC(2017, 0, 1),
+    seg: { key: 'usParty', options: [['S', 'Sentiment'], ['E', 'Expectations'], ['C', 'Current conditions']] }, render: renderUsParty });
+  makeCard(us, { key: 'us_carts', title: 'Weekly retail sales', defaultRange: '3Y', earliest: Date.UTC(2019, 0, 1),
+    seg: { key: 'usCarts', options: [['nom', 'Value'], ['real', 'After inflation']] }, render: renderUsCarts });
   makeCard(us, { key: 'us_rates', title: 'Treasury yields', defaultRange: '3Y', render: c => {
     lines(c, ['UST2Y', 'UST10Y', 'UST30Y', 'REAL10Y'], v => fmtNum(v, 2) + '%', v => fmtNum(v, 1) + '%'); setSource(c, 'US Treasury via FRED'); } });
   state.usMarginSrc = 'finra';
@@ -7115,6 +7120,34 @@ function regionTiles(tab) {
 }
 // Margin debt as a share of money (owner's request, 22 Nov 2026), from FRED: the Fed's Financial Accounts (broker-dealers'
 // receivables from customers, quarterly) against M2 and currency in circulation in the quarter's last month
+state.usParty = 'S'; state.usCarts = 'nom';
+const UM_PARTY = [['REP', 'Republicans', '--s2'], ['IND', 'Independents', '--s10'], ['DEM', 'Democrats', '--s1']];
+function renderUsParty(c) {   // University of Michigan, Table 5b: the index for each party (sentiment.json)
+  const k = state.usParty, what = { S: 'consumer sentiment', E: 'the expectations index', C: 'the current-conditions index' }[k];
+  if (!has(`UM${k}_REP`)) return setEmpty(c, 'Michigan’s table by party arrives with the next data run.');
+  drawLines(c, UM_PARTY.map(([p, lab, tk]) => ({ name: lab, data: pts(S[`UM${k}_${p}`], state.from, state.to), color: tok(tk) })),
+    { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0) });
+  const [r, i, d] = UM_PARTY.map(([p]) => asOf(S[`UM${k}_${p}`], state.latest)), gap = r.v - d.v;
+  setNote(c, `In ${monthLab(r.t)} ${what} was ${fmtNum(r.v, 1)} among Republicans, ${fmtNum(i.v, 1)} among Independents and ${fmtNum(d.v, 1)} among Democrats: `
+    + `${Math.abs(gap) < 0.5 ? 'no gap' : `a gap of ${fmtNum(Math.abs(gap), 0)} points`} between the two parties.`
+    + ' The University of Michigan asks every respondent which party they usually think of themselves as belonging to. Readings swing with the party in the White House, so the level of each line says as much about politics as about spending; the Independents and the change in the gap are the cleaner reads. Final monthly readings (the mid-month preliminary figure is not in the table); every month since February 2017. The index for all households is in “Consumer sentiment”.');
+  setSource(c, 'University of Michigan, Surveys of Consumers, Table 5b (by political party)');
+}
+function renderUsCarts(c) {   // Chicago Fed Advance Retail Trade Summary: weekly, seasonally adjusted, 48 weeks a year
+  const id = state.usCarts === 'real' ? 'CARTS_REAL' : 'CARTS';
+  if (!has(id)) return setEmpty(c, 'The Chicago Fed’s weekly retail series arrives with the next data run.');
+  const y = yoyOf(id, 48), d = pts(y, state.from, state.to), name = `Retail sales excluding autos${id === 'CARTS_REAL' ? ', after inflation' : ''}, % on a year`;
+  const o = baseOpt(); o.legend.show = false; o.grid.top = 14;
+  o.xAxis = timeAxis(); o.yAxis = valAxis(v => fmtNum(v, 0) + '%');
+  o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => `Week to ${nice(ps[0].value[0])}<br>${name}: <b>${pctF1(ps[0].value[1])}</b>` };
+  o.series = [{ type: 'bar', name, data: d, barMaxWidth: 7, itemStyle: { color: tok('--s1') } }];
+  setZoomable(c, o);
+  c.csv = toCSV([{ name, data: d }]);
+  const a = asOf(y, state.latest), i = idxLE(y, a.t), b = i >= 4 ? { t: y.t[i - 4], v: y.v[i - 4] } : null;
+  setNote(c, `In the week to ${nice(a.t)} retail sales excluding autos${id === 'CARTS_REAL' ? ', after inflation,' : ''} were ${pctF1(a.v)} on a year` + (b ? ` (four weeks earlier: ${pctF1(b.v)}).` : '.')
+    + ' The Federal Reserve Bank of Chicago’s weekly estimate (CARTS) of the Census Bureau’s monthly retail sales, built from card spending and other private data, seasonally adjusted. It is published twice a month, so it runs two to four weeks behind. Its calendar has four weeks a month (48 a year), so “a year earlier” is 48 weeks back. After inflation: divided by the Chicago Fed’s own weekly index of retail prices.');
+  setSource(c, `Federal Reserve Bank of Chicago, Advance Retail Trade Summary, via FRED (${id === 'CARTS_REAL' ? 'CARTSR' : 'CARTS'}); % on a year calculated`);
+}
 function marginRatios(src = 'z1') {   // 'finra': FINRA debit balances, monthly (leads.json); 'z1': Fed Financial Accounts, quarterly (FRED)
   const id = src === 'finra' ? 'FINRA_DEBIT' : 'MARGIN_Z1';
   if (!has(id, 'M2')) return null;

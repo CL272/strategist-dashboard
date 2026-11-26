@@ -47,7 +47,7 @@ REGION = {"TWSE": ["Taiwan", "US"], "KOSPI": ["Korea", "US"], "JCI": [], "NIFTY"
 # BIS China credit about a year; regional Fed surveys, canary ratios and online payments none
 LAG2 = ("QUITS", "JOLTS", "LD_CLI_DIFF", "LD_RNM6", "LD_RBM6", "MY_CARS", "MY_ARR", "MY_ELEC", "MY_EXP_EE", "MY_EXP_VOL",
         "AU_TRIM_YOY", "AU_LOANS", "AU_HOUSE_PX", "AU_WPI_YOY")   # Australian quarterly data: published about 4 to 8 weeks after the quarter
-LAG1 = ("FINRA_", "PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
+LAG1 = ("FINRA_", "CARTS", "UMS_", "UMC_", "UME_", "CNP_", "CNR_", "PERMIT1", "HSN1F", "MSACSR", "TEMPHELPS", "AWOTMAN", "FT_EMP", "RES_JOBS", "LD_BASKET", "ZORI_US", "GSCPI", "WAGE_ATL", "LD_ASIA_PULSE",
         "IMPORT_PX", "PPI_FD", "CPI_SHELTER", "CPI_GOODS", "STICKY_CPI", "AU_UNEMP", "AU_HSI", "AU_CPI_M")
 
 

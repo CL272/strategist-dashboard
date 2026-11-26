@@ -6,6 +6,10 @@ without notice; each source is isolated and a failure keeps the previously publi
                         (also its put/call component: 5-day average of the CBOE put/call ratio)
   AAII Sentiment Survey www.aaii.com/sentimentsurvey/sent_results   HTML table, weekly, last ~6 months only
   NAAIM Exposure Index  index.naaim.org/embeddable/chart and /table (embedded in naaim.org)   weekly
+  UMich by party        data.sca.isr.umich.edu/tables.php -> Table 5b "RB" (.xls, monthly readings): the Index of Consumer
+                        Sentiment, current conditions and expectations for Democrats, Independents and Republicans; every
+                        month since Feb 2017, scattered months back to 1980 (Design plan 5, Step 3). The link carries a key
+                        that changes, so the tables page is read first. Final readings only (the preliminary one is a PDF).
 
 Every reading is also appended to archive/<id>.csv (committed by the workflow), so history keeps growing even
 where the source only shows recent weeks. Writes docs/data/sentiment.json:
@@ -32,6 +36,8 @@ CNN_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/{start
 AAII_URL = "https://www.aaii.com/sentimentsurvey/sent_results"
 NAAIM_CHART = "https://index.naaim.org/embeddable/chart"
 NAAIM_TABLE = "https://index.naaim.org/embeddable/table"
+UMICH_TABLES = "https://data.sca.isr.umich.edu/tables.php"
+PARTY = (("DEM", "Democrats"), ("IND", "Independents"), ("REP", "Republicans"))
 MONTHS = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 
 META = {
@@ -41,6 +47,8 @@ META = {
     "AAII_NEUT":  ("AAII neutral", "%", "AAII Sentiment Survey (aaii.com)"),
     "AAII_BEAR":  ("AAII bears", "%", "AAII Sentiment Survey (aaii.com)"),
     "NAAIM":      ("NAAIM Exposure Index", "% exposure", "NAAIM Exposure Index (naaim.org)"),
+    **{f"UM{k}_{p}": (f"Michigan {what}: {who}", "idx", "University of Michigan, Surveys of Consumers, Table 5b (by political party)")
+       for k, what in (("S", "consumer sentiment"), ("C", "current conditions"), ("E", "consumer expectations")) for p, who in PARTY},
 }
 
 
@@ -124,13 +132,42 @@ def naaim() -> dict[str, pd.Series]:
     return {"NAAIM": pd.Series(s, dtype="float64").sort_index()}
 
 
+def umich_party() -> dict[str, pd.Series]:
+    """Table 5b, monthly readings: columns = month, year, then sentiment, current conditions and expectations, each for
+    Democrats, Independents, Republicans. Months in which the party question was not asked are not in the table."""
+    page = _get(UMICH_TABLES).text
+    links = [html.unescape(x) for x in re.findall(r'href="(get-table\.php\?c=RB[^"]*?n=5b&(?:amp;)?f=xls[^"]*)"', page)]
+    if not links:
+        raise RuntimeError("Table 5b link not found")
+    raw = pd.read_excel(__import__("io").BytesIO(_get("https://data.sca.isr.umich.edu/" + links[0]).content), header=None)
+    names = {m: i for i, m in enumerate(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+                                          "November", "December"], 1)}
+    rows = {}
+    for _, r in raw.iterrows():
+        m = str(r[0]).strip()
+        if m in names and pd.notna(r[1]):
+            try:
+                rows[pd.Timestamp(int(float(r[1])), names[m], 1)] = [float(r[c]) for c in range(2, 11)]
+            except (TypeError, ValueError):
+                continue
+    if len(rows) < 100:
+        raise RuntimeError(f"Table 5b: only {len(rows)} months")
+    df = pd.DataFrame.from_dict(rows, orient="index").sort_index()
+    out = {}
+    for j, k in enumerate(("S", "C", "E")):
+        for i, (p, _) in enumerate(PARTY):
+            out[f"UM{k}_{p}"] = df[j * 3 + i].dropna()
+    return out
+
+
 def build(status: dict) -> None:
     print("Sentiment gauges")
     old_all = load_existing("sentiment.json")
     old, old_meta = old_all.get("series", {}), old_all.get("meta", {})
     series, meta = {}, {}
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    for src, fn, ids in (("CNN", cnn, ["FG", "FG_PUTCALL"]), ("AAII", aaii, ["AAII_BULL", "AAII_NEUT", "AAII_BEAR"]), ("NAAIM", naaim, ["NAAIM"])):
+    for src, fn, ids in (("CNN", cnn, ["FG", "FG_PUTCALL"]), ("AAII", aaii, ["AAII_BULL", "AAII_NEUT", "AAII_BEAR"]), ("NAAIM", naaim, ["NAAIM"]),
+                         ("UMICH", umich_party, [f"UM{k}_{p}" for k in "SCE" for p, _ in PARTY])):
         try:
             got, err = fn(), None
         except Exception as e:   # each scraper on its own: one breaking never affects the others

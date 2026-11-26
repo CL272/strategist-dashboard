@@ -193,6 +193,8 @@ FRED = [
     ("INDPRO",      "INDPRO",      "Industrial production",       "Macro · Growth", "level", "idx", MACRO_START),
     ("PAYEMS",      "PAYEMS",      "Nonfarm payrolls",            "Macro · Growth", "level", "k", MACRO_START),
     ("RETAIL_REAL", "RRSFS",       "Real retail sales",           "Macro · Growth", "level", "USD mn", MACRO_START),
+    ("CARTS",       "CARTS",       "Retail sales excluding autos, weekly (Chicago Fed CARTS)", "Macro · Growth", "level", "USD mn", "2017-01-01"),   # Design plan 5
+    ("CARTS_REAL",  "CARTSR",      "Real retail sales excluding autos, weekly (Chicago Fed CARTS)", "Macro · Growth", "level", "USD mn", "2017-01-01"),
     ("CLAIMS",      "ICSA",        "Initial jobless claims",      "Macro · Growth", "level", "persons", MACRO_START),
     ("UNRATE",      "UNRATE",      "Unemployment rate",           "Macro · Growth", "level", "%", MACRO_START),
     # Inflation
