@@ -7292,7 +7292,7 @@ const TILE_SETS = {
     '*': ['Malaysia OPR', 'USD/MYR', 'FBM KLCI', 'Malaysia leading index'],
   },
   sg: { 'Equities': ['STI', 'Singapore: above 200-day', 'USD/SGD', 'SGS 10Y yield', '3M compounded SORA'], '*': ['3M compounded SORA', 'SGS 10Y yield', 'USD/SGD', 'S$NEER proxy pace', 'MAS core inflation'] },
-  cn: { '*': ['CSI 300', 'USD/CNY', 'China 10Y yield', 'China CPI YoY', 'China exports YoY'] },
+  cn: { '*': ['CSI 300', 'USD/CNY', 'China 10Y yield', 'China CPI YoY', 'China exports YoY'], 'Property': ['Tier 1 new homes', 'Tier 2 new homes', 'Tier 3 new homes', 'Cities with rising prices', 'New-home floor space sold'] },
   kr: { '*': ['KOSPI', 'USD/KRW', 'Korea 10Y yield', 'Korea CPI', 'Korea exports'] },
   tw: { '*': ['Taiwan Weighted', 'USD/TWD', 'Taiwan exports', 'Taiwan CPI', 'Taiwan GDP'] },
   in: { '*': ['Nifty 50', 'USD/INR', 'India 10Y yield', 'India CPI', 'India GDP'] },
@@ -7472,6 +7472,7 @@ async function init() {
   SUBTABS.markets.push(['Watchlist', ['idea_watch', 'idea_chart']]);   // Design plan 3, Step 2: moved from the Idea log, the last sub-tab
   if (typeof PF_SUB !== 'undefined') SUBTABS.us.push(PF_SUB);   // Design plan 3, Step 6: US → Economy → Profits, last so older links keep their place
   if (typeof MYF_SUB !== 'undefined') SUBTABS.my.push(MYF_SUB);   // Design plan 3, Step 7: Malaysia → Flows & finances, last for the same reason
+  if (typeof CNP_SUB !== 'undefined') { SUBTABS.cn.push(CNP_SUB); (EXTRA_HOOKS.cn = EXTRA_HOOKS.cn || []).push(cnpTiles); }   // Design plan 5, Step 2: China → Property, last
   mergeMarkets();   // Design plan 2, Step 4: the indexes below are the merged ones
   if (['ideas', 'notebook'].includes(h.get('tab'))) {   // Design plan 3, Step 2: the Idea log and the Notebook were removed
     const s = h.get('tab') === 'ideas' ? +h.get('sub') || 0 : -1, to = s === 1 ? ['markets', 'Watchlist'] : s === 5 ? ['alloc', 'Model portfolio'] : ['overview', ''];
@@ -7491,7 +7492,7 @@ async function init() {
   if (h.get('tab') === 'fedpath') { h.set('tab', 'cbwatch'); h.set('sub', String(1 + (+h.get('sub') || 0))); }
   const nSub = t => (SUBTABS[t] || (t === 'calendar' ? CAL_VIEWS : [])).length;
   if (h.get('tab') && +h.get('sub') > 0 && +h.get('sub') < nSub(h.get('tab'))) state.sub[h.get('tab')] = +h.get('sub');
-  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildProfits === 'function') buildProfits(); if (typeof buildMyFlows === 'function') buildMyFlows(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
+  buildRegions(); buildEuroCountries(); buildGapCards(); buildSP(); buildMore(); if (typeof buildProfits === 'function') buildProfits(); if (typeof buildMyFlows === 'function') buildMyFlows(); if (typeof buildCnProp === 'function') buildCnProp(); if (typeof buildLeads === 'function') buildLeads(); if (typeof buildSavings === 'function') buildSavings(); if (typeof buildVixEvents === 'function') buildVixEvents(); if (typeof buildPmi === 'function') buildPmi(); if (typeof buildAu === 'function') buildAu(); if (typeof buildShell === 'function') buildShell(); if (typeof buildVault === 'function') buildVault(); buildWatch(); buildAlloc(); moveRegionCards(); buildSeeAlso(); mergeSeeAlso(); labelAssetCards();
   buildSubtabs();
   buildSearch();
   buildCalendar(); buildWeekly();

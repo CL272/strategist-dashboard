@@ -507,3 +507,169 @@ function buildMyFlows() {
   makeCard(g, { key: 'my_resv', title: 'International reserves', defaultRange: '10Y', earliest: Date.UTC(2000, 0, 1), render: renderMyResv });
   makeCard(g, { key: 'my_budget', title: 'Federal budget balance', defaultRange: '10Y', earliest: Date.UTC(2005, 0, 1), render: renderMyBudget });
 }
+
+// ------------------------------------------------------------------ CHINA → PROPERTY (Design plan 5, Step 2; owner's approval 26 Nov 2026)
+// Home prices by city tier, the cities whose prices rose, home sales, building, and the 70-city table, from the National
+// Bureau of Statistics' two monthly releases (data/cnprop.json, pipeline/cnprop.py), plus the BIS quarterly index from 2005
+// (FRED). Loaded when the sub-tab opens. Tier averages are simple averages of the city indices over the bureau's own lists.
+// Sales and building figures are year to date with growth as published (the bureau's "comparable basis").
+const CNP_SUB = ['Property', ['cnp_tiers', 'cnp_up', 'cnp_sales', 'cnp_build', 'cnp_cities']];   // pushed last on China in init
+const CNP_SRC_P = 'National Bureau of Statistics of China, 70-city home price release; tier averages calculated as the bureau does (simple averages)';
+const CNP_SRC_R = 'National Bureau of Statistics of China, national real-estate release (year to date)';
+let CNP = null, cnpLoading = null;
+state.cnpView = 'new'; state.cnpSales = 'g'; state.cnpCity = 'movers';
+function loadCnProp() {
+  if (!cnpLoading) cnpLoading = loadJSON('data/cnprop.json').then(d => { CNP = d;
+    for (const [id, x] of Object.entries(d)) if (!id.startsWith('_') && x && x.d) { S[id] = { id, ...x, t: x.d.map(v => v * DAY), v: x.v }; delete S[id].d; }
+    return d; }).catch(() => { CNP = { _meta: {} }; return CNP; });
+  return cnpLoading;
+}
+const cnpWait = c => { if (CNP) return false; loadCnProp().then(() => c.render()); setEmpty(c, 'Loading…'); return true; };
+const cnpPct = (v, d = 1) => { const r = Math.round(v * 10 ** d) / 10 ** d; return (r > 0 ? '+' : r < 0 ? '−' : '') + fmtNum(Math.abs(r), d) + '%'; };
+const CNP_HOW_TIERS = ' Tiers are the bureau’s own: tier 1 = Beijing, Shanghai, Guangzhou, Shenzhen; tier 2 = 31 provincial capitals and large cities; tier 3 = the other 35 of the 70. Each tier figure is the simple average of its cities’ indices, as the bureau computes it (from the rounded city figures here, so it can differ from the bureau’s by up to 0.1 point).';
+const CNP_HOW_YTD = ' Year to date: the bureau publishes cumulative figures from January; January is never published alone, so January and February are one reading, dated February. Growth is as published, on the bureau’s “comparable basis” (last year’s base is restated), so it is not recomputed from the levels.';
+function cnpLast(id) { return has(id) ? asOf(S[id], state.latest) : null; }
+
+function renderCnpTiers(c) {
+  if (cnpWait(c)) return;
+  const v = state.cnpView;
+  if (c.cnpLast !== v) {   // the long history opens at its full length; the monthly views at five years
+    const was = c.cnpLast; c.cnpLast = v;
+    if (v === 'bis' && (!c.range || c.range.preset === '5Y')) { c.range = { preset: 'MAX' }; return c.render(); }
+    if (was === 'bis' && c.range && c.range.preset === 'MAX') { c.range = { preset: '5Y' }; return c.render(); }
+  }
+  const T = [['T1', 'Tier 1 (4 cities)'], ['T2', 'Tier 2 (31)'], ['T3', 'Tier 3 (35)']];
+  if (v === 'bis') {
+    if (!has('CN_HPI_BIS')) return setEmpty(c, 'The BIS index arrives with the next data run.');
+    drawLines(c, [{ name: 'Residential property prices (BIS, 70 cities), 2010 = 100', data: pts(S.CN_HPI_BIS, state.from, state.to) },
+      ...(has('CN_HPI_BIS_REAL') ? [{ name: 'The same after consumer-price inflation, 2010 = 100', data: pts(S.CN_HPI_BIS_REAL, state.from, state.to) }] : [])],
+      { fmt: v2 => fmtNum(v2, 1), axisFmt: v2 => fmtNum(v2, 0), hlines: [{ y: 100 }] });
+    const a = asOf(S.CN_HPI_BIS, state.latest), pk = S.CN_HPI_BIS.v.reduce((m, x, i) => x > m.v ? { v: x, t: S.CN_HPI_BIS.t[i] } : m, { v: -Infinity, t: 0 });
+    setNote(c, `The BIS index stood at ${fmtNum(a.v, 1)} in ${myfQ(a.t)}, ${cnpPct((a.v / pk.v - 1) * 100)} from its peak in ${myfQ(pk.t)}.`
+      + ' Quarterly, from the Bank for International Settlements: new homes in 70 cities until 2015, existing homes from 2016 (the bureau’s own series), so it runs about two quarters behind the monthly release.');
+    setSource(c, 'Bank for International Settlements, residential property prices, via FRED (QCNN628BIS, QCNR628BIS)');
+    return;
+  }
+  if (v === 'lvl') {
+    if (!has('CNP_NEW_T1_IDX')) return setEmpty(c, 'No data yet.');
+    const list = [];
+    T.forEach(([t, lab], i) => {
+      list.push({ name: `${lab.split(' (')[0]}, new homes`, data: pts(S[`CNP_NEW_${t}_IDX`], state.from, state.to), color: col(i) });
+      list.push({ name: `${lab.split(' (')[0]}, second-hand`, data: pts(S[`CNP_OLD_${t}_IDX`], state.from, state.to), color: col(i), extra: { lineStyle: { type: 'dashed', width: 1.5 } } });
+    });
+    drawLines(c, list, { fmt: v2 => fmtNum(v2, 1), axisFmt: v2 => fmtNum(v2, 0), hlines: [{ y: 100 }], endLabels: false });
+    const base = S.CNP_NEW_T1_IDX.unit || '', a = T.map(([t]) => cnpLast(`CNP_OLD_${t}_IDX`)), n = T.map(([t]) => cnpLast(`CNP_NEW_${t}_IDX`));
+    setNote(c, `Since ${base.replace(' = 100', '')}, new-home prices have moved ${n.map((x, i) => `${cnpPct(x.v - 100)} in tier ${i + 1}`).join(', ')}; second-hand homes ${a.map((x, i) => `${cnpPct(x.v - 100)} in tier ${i + 1}`).join(', ')}.`
+      + ' Each line chains the tier’s average monthly change from the first month the dashboard holds (= 100); dashed lines are second-hand homes.' + CNP_HOW_TIERS);
+    setSource(c, CNP_SRC_P + '; levels chained from the monthly changes');
+    return;
+  }
+  const k = v === 'old' ? 'OLD' : 'NEW', what = v === 'old' ? 'second-hand' : 'new-home';
+  if (!has(`CNP_${k}_T1_YOY`)) return setEmpty(c, 'No data yet.');
+  drawLines(c, T.map(([t, lab]) => ({ name: lab, data: pts(S[`CNP_${k}_${t}_YOY`], state.from, state.to) })), { fmt: v2 => cnpPct(v2), axisFmt: v2 => fmtNum(v2, 0) + '%', zero: true });
+  const L = T.map(([t]) => cnpLast(`CNP_${k}_${t}_YOY`)), M = T.map(([t]) => cnpLast(`CNP_${k}_${t}_MOM`));
+  setNote(c, `In ${monthLab(L[0].t)} ${what} prices were ${cnpPct(L[0].v)} on a year in tier-1 cities, ${cnpPct(L[1].v)} in tier 2 and ${cnpPct(L[2].v)} in tier 3 (on the month: ${M.map(x => cnpPct(x.v)).join(', ')}).`
+    + ' Price change on a year (same month last year = 100), averaged over each tier’s cities.' + CNP_HOW_TIERS);
+  setSource(c, CNP_SRC_P);
+}
+function renderCnpUp(c) {
+  if (cnpWait(c)) return;
+  if (!has('CNP_NEW_UP')) return setEmpty(c, 'No data yet.');
+  drawLines(c, [{ name: 'New homes', data: pts(S.CNP_NEW_UP, state.from, state.to) }, { name: 'Second-hand homes', data: pts(S.CNP_OLD_UP, state.from, state.to) }],
+    { fmt: v => fmtNum(v, 0) + ' of 70', axisFmt: v => fmtNum(v, 0), yExtra: { min: 0, max: 70, scale: false } });
+  const a = cnpLast('CNP_NEW_UP'), b = cnpLast('CNP_OLD_UP'), pk = S.CNP_NEW_UP.v.reduce((m, x, i) => x > m.v ? { v: x, t: S.CNP_NEW_UP.t[i] } : m, { v: -1, t: 0 });
+  setNote(c, `${fmtNum(a.v, 0)} of 70 cities saw new-home prices rise in ${monthLab(a.t)}; ${fmtNum(b.v, 0)} of 70 for second-hand homes. The most in the period held: ${fmtNum(pk.v, 0)} (${monthLab(pk.t)}).`
+    + ' A count of cities whose price index rose on the month (last month = 100 above 100). Breadth turns before the averages do, but one month is noisy.');
+  setSource(c, CNP_SRC_P + '; calculated');
+}
+function renderCnpSales(c) {
+  if (cnpWait(c)) return;
+  const v = state.cnpSales;
+  if (!has('CNR_SOLD_R_G')) return setEmpty(c, 'No data yet.');
+  const a = cnpLast('CNR_SOLD_R'), mon = a ? monthLab(a.t) : '';
+  if (v === 'g') {
+    drawLines(c, [{ name: 'New homes: floor space sold', data: pts(S.CNR_SOLD_R_G, state.from, state.to) }, { name: 'New homes: sales value', data: pts(S.CNR_VAL_R_G, state.from, state.to) },
+      ...(has('CNR_RESALE_G') ? [{ name: 'Second-hand homes: floor space traded', data: pts(S.CNR_RESALE_G, state.from, state.to), extra: { lineStyle: { type: 'dashed', width: 1.5 } } }] : [])],
+      { fmt: x => cnpPct(x), axisFmt: x => fmtNum(x, 0) + '%', zero: true });
+    const f = cnpLast('CNR_SOLD_R_G'), g = cnpLast('CNR_VAL_R_G'), r = cnpLast('CNR_RESALE_G');
+    setNote(c, `From January to ${mon}, new-home floor space sold was ${cnpPct(f.v)} on a year and sales value ${cnpPct(g.v)}` + (r && r.t === f.t ? `; second-hand homes traded ${cnpPct(r.v)}.` : '.')
+      + ' Residential buildings only (the bureau’s headline also counts offices and shops).' + (has('CNR_RESALE_G') ? ` Second-hand transactions are online contract signings registered with the housing ministry; the bureau has published them since ${monthLab(S.CNR_RESALE_G.t[0])}.` : '') + CNP_HOW_YTD);
+  } else if (v === '12m') {
+    if (!has('CNR_SOLD_R_12M')) return setEmpty(c, 'Needs a year of history.');
+    drawPair(c, { name: 'New homes sold, floor space, last 12 months (mn sq m)', data: pts(S.CNR_SOLD_R_12M, state.from, state.to) },
+      { name: 'New homes sold, value, last 12 months (CNY bn)', data: pts(S.CNR_VAL_R_12M, state.from, state.to) },
+      { fmtA: x => fmtNum(x, 0) + ' mn sq m', fmtB: x => 'CNY ' + fmtNum(x, 0) + 'bn', axisA: x => fmtNum(x, 0), axisB: x => fmtNum(x, 0) });
+    const f = cnpLast('CNR_SOLD_R_12M'), y = f && asOf(S.CNR_SOLD_R_12M, addMonths(f.t, -12)), g = cnpLast('CNR_VAL_R_12M');
+    setNote(c, `In the 12 months to ${monthLab(f.t)}, ${fmtNum(f.v, 0)} million square metres of new homes were sold for CNY ${fmtNum(g.v / 1000, 2)} trillion` + (y && y.t < f.t ? `; a year earlier, ${fmtNum(y.v, 0)} million.` : '.')
+      + ' A running 12-month total: this year to date, plus last year’s total, minus last year to the same month. Levels are as published each month, so a restated base can shift it slightly.' + CNP_HOW_YTD);
+  } else if (v === 'price') {
+    if (!has('CNR_AVGP_R_12M')) return setEmpty(c, 'Needs a year of history.');
+    drawLines(c, [{ name: 'Average price of new homes sold, last 12 months (CNY per sq m)', data: pts(S.CNR_AVGP_R_12M, state.from, state.to) }], { fmt: x => 'CNY ' + fmtNum(x, 0), axisFmt: x => fmtNum(x, 0) });
+    const p = cnpLast('CNR_AVGP_R_12M'), y = asOf(S.CNR_AVGP_R_12M, addMonths(p.t, -12));
+    setNote(c, `New homes sold in the 12 months to ${monthLab(p.t)} went for CNY ${fmtNum(p.v, 0)} a square metre on average` + (y && y.t < p.t ? `, ${cnpPct((p.v / y.v - 1) * 100)} on a year.` : '.')
+      + ' Sales value ÷ floor space over 12 months. It moves with the mix of cities as well as with prices: when big-city sales hold up better, the average rises even if prices fall.');
+  } else {
+    if (!has('CNR_UNSOLD')) return setEmpty(c, 'No data yet.');
+    drawLines(c, [{ name: 'Unsold new floor space, all buildings (mn sq m)', data: pts(S.CNR_UNSOLD, state.from, state.to) }, { name: 'Of which residential (mn sq m)', data: pts(S.CNR_UNSOLD_R, state.from, state.to) }],
+      { fmt: x => fmtNum(x, 0) + ' mn sq m', axisFmt: x => fmtNum(x, 0) });
+    const u = cnpLast('CNR_UNSOLD_R'), ug = cnpLast('CNR_UNSOLD_R_G');
+    setNote(c, `At the end of ${monthLab(u.t)}, ${fmtNum(u.v, 0)} million square metres of new homes were unsold` + (ug ? `, ${cnpPct(ug.v)} on a year.` : '.')
+      + ' Completed floor space for sale held by developers (“商品房待售面积”), at the month’s end. It counts only finished, unsold space, not homes sold off-plan and still unbuilt.');
+  }
+  setSource(c, CNP_SRC_R + (v === 'g' ? '' : '; calculated'));
+}
+function renderCnpBuild(c) {
+  if (cnpWait(c)) return;
+  if (!has('CNR_STARTS_G')) return setEmpty(c, 'No data yet.');
+  drawLines(c, [{ name: 'New starts (floor space)', data: pts(S.CNR_STARTS_G, state.from, state.to) }, { name: 'Completions (floor space)', data: pts(S.CNR_DONE_G, state.from, state.to) },
+    { name: 'Real-estate investment', data: pts(S.CNR_INV_G, state.from, state.to) }], { fmt: x => cnpPct(x), axisFmt: x => fmtNum(x, 0) + '%', zero: true });
+  const s = cnpLast('CNR_STARTS_G'), d = cnpLast('CNR_DONE_G'), i = cnpLast('CNR_INV_G');
+  setNote(c, `From January to ${monthLab(s.t)}, new starts were ${cnpPct(s.v)} on a year, completions ${cnpPct(d.v)} and investment ${cnpPct(i.v)}.`
+    + ' All buildings by developers (homes, offices, shops); growth on a year, year to date. Homes started now are mostly finished two to three years later, so falling starts mean fewer completions ahead.' + CNP_HOW_YTD);
+  setSource(c, CNP_SRC_R);
+}
+function renderCnpCities(c) {
+  if (cnpWait(c)) return;
+  const T = CNP._cities;
+  if (!T || !T.rows) return setEmpty(c, 'No data yet.');
+  const b = htmlBody(c), v = state.cnpCity, rows = T.rows.map(r => ({ city: r[0], cn: r[1], tier: r[2], nm: r[3], ny: r[4], om: r[5], oy: r[6] }));
+  const chips = el('div', { class: 'seg-chips', role: 'group', 'aria-label': 'Cities' }, ...[['movers', 'Tier 1 and movers'], ['2', 'Tier 2 (31)'], ['3', 'Tier 3 (35)']].map(([k, lab]) =>
+    el('button', { type: 'button', text: lab, 'aria-selected': String(v === k), onclick: () => { state.cnpCity = k; c.render(); } })));
+  const cell = x => el('td', { class: 'num' + (x > 0.05 ? ' up' : x < -0.05 ? ' dn' : ''), text: cnpPct(x) });
+  const tr = r => el('tr', { class: 'row', title: r.cn }, el('td', { class: 'l', text: r.city }), cell(r.nm), cell(r.ny), cell(r.om), cell(r.oy));
+  const grp = t => el('tr', { class: 'grp' }, el('td', { colspan: 5, text: t }));
+  const tb = el('tbody'), by = (a, z) => a.ny - z.ny;
+  if (v === 'movers') {
+    const t2 = rows.filter(r => r.tier === 2).sort(by);
+    tb.append(grp('Tier 1'), ...rows.filter(r => r.tier === 1).map(tr), grp('Tier 2: the four weakest and the four strongest on a year (new homes)'), ...t2.slice(0, 4).map(tr), ...t2.slice(-4).map(tr));
+  } else tb.append(...rows.filter(r => r.tier === +v).sort(by).map(tr));
+  b.append(chips, el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' },
+    el('thead', {}, el('tr', {}, ...['City', 'New, month', 'New, year', 'Second-hand, month', 'Second-hand, year'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)));
+  if (v !== 'movers') capRows(tb, 'cnp_cities_' + v, 14);
+  const up = rows.filter(r => r.ny > 0).length, t = Date.UTC(+T.month.slice(0, 4), +T.month.slice(5) - 1, 1);
+  setCount(c, '70 cities');
+  setNote(c, `In ${monthLab(t)}, ${up} of 70 cities had higher new-home prices than a year earlier; the strongest was ${rows.reduce((m, r) => r.ny > m.ny ? r : m).city} (${cnpPct(rows.reduce((m, r) => r.ny > m.ny ? r : m).ny)}) and the weakest ${rows.reduce((m, r) => r.ny < m.ny ? r : m).city} (${cnpPct(rows.reduce((m, r) => r.ny < m.ny ? r : m).ny)}).`
+    + ' Change in each city’s price index, as published: on the month (last month = 100) and on a year (same month last year = 100), new and second-hand homes. Tier 2 and 3 views run from the weakest on a year; hover a city for its Chinese name.' + CNP_HOW_TIERS);
+  c.csv = [['City', 'Chinese name', 'Tier', 'New homes, on the month %', 'New homes, on a year %', 'Second-hand, on the month %', 'Second-hand, on a year %'], ...rows.map(r => [r.city, r.cn, r.tier, r.nm, r.ny, r.om, r.oy])];
+  setSource(c, CNP_SRC_P); setAsOf(c, t, 'm');
+}
+function cnpTiles() {   // EXTRA_HOOKS.cn: the five tiles of the Property sub-tab (TILE_SETS.cn.Property picks them)
+  if (((SUBTABS.cn[state.sub.cn || 0] || [])[0]) !== 'Property') return;
+  if (!CNP) { loadCnProp().then(() => state.tab === 'cn' && renderTab()); return; }
+  const box = $('#cnKpis'); if (!box) return;
+  const tile = (l, v, d, f) => box.append(el('div', { class: 'kpi' }, el('div', { class: 'k-label', text: l }), el('div', { class: 'k-value', text: v }), el('div', { class: 'k-delta', text: d }), el('div', { class: 'k-asof', text: f })));
+  for (const t of [1, 2, 3]) { const y = cnpLast(`CNP_NEW_T${t}_YOY`), m = cnpLast(`CNP_NEW_T${t}_MOM`); if (y) tile(`Tier ${t} new homes`, cnpPct(y.v), `on a year · month ${cnpPct(m.v)}`, 'NBS 70 cities · ' + monthLab(y.t)); }
+  const u = cnpLast('CNP_NEW_UP'), o = cnpLast('CNP_OLD_UP');
+  if (u) tile('Cities with rising prices', `${fmtNum(u.v, 0)} of 70`, `second-hand: ${fmtNum(o.v, 0)}`, 'NBS 70 cities · ' + monthLab(u.t));
+  const f = cnpLast('CNR_SOLD_R_G'), g = cnpLast('CNR_VAL_R_G');
+  if (f) tile('New-home floor space sold', cnpPct(f.v), `value ${cnpPct(g.v)}`, 'NBS · Jan to ' + monthLab(f.t));
+}
+function buildCnProp() {
+  const g = $('#cnGrid'); if (!g) return;
+  makeCard(g, { key: 'cnp_tiers', title: 'Home prices by city tier', defaultRange: '5Y', earliest: Date.UTC(2005, 0, 1),
+    seg: { key: 'cnpView', options: [['new', 'New'], ['old', 'Second-hand'], ['lvl', 'Since Dec 2021'], ['bis', 'Long history']] }, render: renderCnpTiers });
+  makeCard(g, { key: 'cnp_up', title: 'Cities where prices rose', defaultRange: '5Y', render: renderCnpUp });
+  makeCard(g, { key: 'cnp_sales', title: 'Home sales', defaultRange: '5Y', seg: { key: 'cnpSales', options: [['g', 'Growth'], ['12m', '12-month total'], ['price', 'Average price'], ['stock', 'Unsold stock']] }, render: renderCnpSales });
+  makeCard(g, { key: 'cnp_build', title: 'Starts, completions, investment', defaultRange: '5Y', render: renderCnpBuild });
+  makeCard(g, { key: 'cnp_cities', title: 'Prices by city', wide: true, range: false, render: renderCnpCities });
+}
