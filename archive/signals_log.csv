@@ -27,6 +27,7 @@ since,signal,target,dir,kind,tier,best_h,level,logged
 2026-06-30,fed_hikes_priced,SPX,-1,ret,Thin evidence,12,7499.36,2026-11-11
 2026-06-30,tw_orders_accel_twse,TWSE,1,ret,Context only,3,46125.9,2026-11-20
 2026-07-31,can_xhb_below,SPX,-1,ret,Context only,6,7489.72,2026-11-13
+2026-07-31,regime_2,COPPER,1,ret,Context only,3,6.436,2026-11-26
 2026-08-31,can_kbe_below,SPX,-1,ret,Context only,6,7686.14,2026-11-13
 2026-08-31,can_kre_below,SPX,-1,ret,Context only,12,7686.14,2026-11-13
 2026-08-31,cli_deu_up_dax,DAX,1,ret,Context only,12,26258.1,2026-11-12
