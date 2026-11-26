@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_5.md` (approved by the owner 26 Nov 2026, all four decisions as recommended; Steps 1 to 3 built, Step 4 next): a China →
+**Open design work:** `DESIGN_PLAN_5.md` (approved by the owner 26 Nov 2026, all four decisions as recommended; Steps 1 to 4 built, Step 5 next): a China →
 Property sub-tab from the statistics bureau's monthly releases (prices by city tier, sales, building), University of
 Michigan sentiment by party, the Chicago Fed's weekly retail sales, and a reconstructed "excess liquidity" card.
 Mockup: `design/plan5.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.

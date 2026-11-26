@@ -78,6 +78,7 @@ const LB_ROWS = [
   // Global & Asia
   { id: 'LD_CLI_DIFF', mode: 'level', name: 'Leading indices rising (17 economies)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: 'breadth turns before industry', home: ['regime', 'Global breadth & money'] },
   { id: 'LD_CLI_DIFF_XSP', mode: 'level', name: 'Leading indices rising, without share prices', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: 'breadth turns before industry', home: ['regime', 'Global breadth & money'] },
+  { id: 'LD_EL_G10', mode: 'level', name: 'G10 excess liquidity (a reconstruction)', group: 'Global & Asia', lead: ['SPX', 'yoy', 'S&P 500', true], claim: 'stocks follow by 3–6 m (a Bloomberg chart)', home: ['regime', 'Global breadth & money'] },
   { id: 'LD_RNM6', mode: 'level', name: 'Global real narrow money (ex-China)', group: 'Global & Asia', lead: ['BCI_G7', 'level', 'G7 business confidence', true], claim: '6–9 m (Simon Ward)', home: ['regime', 'Global breadth & money'] },
   { id: 'CLI_USA', mode: 'chg6', name: 'US leading index (OECD)', group: 'Global & Asia', lead: IPY, claim: '6 m', home: ['regime', 'Indicators'] },
   { id: 'CLI_CHN', mode: 'chg6', name: 'China leading index (OECD)', group: 'Global & Asia', lead: ['COPPER', 'yoy', 'copper', true], claim: '6 m', home: ['asia', 'What leads'] },
@@ -455,6 +456,20 @@ function renderGlMoney(c) {
     + 'It excludes China, which publishes no money series to the OECD; the weights are GDP shares (US, euro area, Japan, India, UK, Canada, Brazil, Korea, Australia).');
   setSource(c, 'OECD key indicators (narrow and broad money, CPI), FRED (euro-area HICP), Japan CPI via e-Stat; calculated');
   ldLeadLabel(c, st);
+}
+function renderGlEl(c) {   // Design plan 5, Step 4: a reconstruction of "G10 excess liquidity" (pipeline/leads.py, excess_liquidity)
+  if (ldWait(c)) return; if (!has('LD_EL_G10')) return setEmpty(c, 'Waiting for data.');
+  const a = asOf(S.LD_EL_G10, state.latest), m = has('LD_EL_MONEY') ? asOf(S.LD_EL_MONEY, a.t) : null, p = has('LD_EL_IP') ? asOf(S.LD_EL_IP, a.t) : null;
+  const pk = S.LD_EL_G10.t.reduce((best, t, i) => t >= addMonths(a.t, -12) && S.LD_EL_G10.v[i] > best.v ? { t, v: S.LD_EL_G10.v[i] } : best, { t: 0, v: -Infinity });
+  const pf = v => `${v < 0 ? '−' : '+'}${fmtNum(Math.abs(v), 1)}`;
+  const st = ldLeadPair(c, ['LD_EL_G10', 'level', 'G10 excess liquidity (reconstruction), points'], ['SPX', 'yoy', 'S&P 500, % on a year'], state.elLead === '1' ? 'best' : false,
+    `Excess liquidity was ${pf(a.v)} points in ${monthLab(a.t)}` + (m && p && m.t === a.t ? ` (real money in dollars ${pctF1(m.v)} on a year, industrial production ${pctF1(p.v)})` : '')
+    + (pk.t && pk.t < a.t && pk.v - a.v > 1 ? `, down from ${pf(pk.v)} in ${monthLab(pk.t)}.` : '.'),
+    { fmtA: v => pf(v) + ' pts', axisA: v => fmtNum(v, 0), fmtB: pctF1, axisB: v => fmtNum(v, 0) + '%' },
+    'Excess liquidity = growth in real narrow money minus growth in output: money the economy does not need for production is taken to flow into assets. This is a reconstruction on public data of a measure shown in a Bloomberg chart, not that series: GDP-weighted narrow money for the US, euro area, Japan, UK and Canada (the G10 members the OECD still carries, 97% of G10 GDP), converted to dollars at monthly average rates and deflated by US consumer prices, minus their industrial production growth. The chart claims stocks follow it by three to six months; the dashboard’s own test (above) gives what the public data show. OECD money data run about two months behind.');
+  setSource(c, 'OECD key indicators (narrow money, industrial production); FRED and Yahoo exchange rates; US CPI (FRED); S&P 500 (Yahoo); calculated');
+  const b = c.root.querySelectorAll('.card-tools .seg button')[1];   // the lead button carries the months found, as ldLeadLabel does for a second toggle
+  if (b) { b.textContent = st && st.k ? (st.ok ? `Lead +${st.k}m` : `Best fit +${st.k}m`) : 'Lead'; b.title = st && st.k && !st.ok ? 'Drawn at its best-fitting shift: this link does not pass the dashboard’s lead test' : 'Draw it at its measured lead'; }
 }
 function renderGlTable(c) {
   const b = htmlBody(c), ids = Object.keys(S).filter(k => /^CLI_/.test(k) && has(k)), heads = ['Economy', 'Level', '1M', '6M change', 'Phase'], tb = el('tbody'), csv = [heads];
@@ -844,7 +859,7 @@ LL_PAIRS.push(['PERMIT1', 'yoy', 'PAYEMS', 'yoy', 'Single-family permits → pay
 ASIA_LL.push(['LD_CLI_DIFF', 'level', 'EEM', 'yoy', 3], ['LB_KRW', 'yoy', 'KR_EXP_YOY', 'level', 2], ['LD_ASIA_PULSE', 'level', 'MY_EXPORTS_YOY', 'level', 2], ['MY_EXP_EE', 'yoy', 'KLCI', 'yoy', 3]);
 Object.assign(SHORT, { LD_CLI_DIFF: 'Leading-index breadth', LB_KRW: 'Korean won', LD_ASIA_PULSE: 'Asian trade pulse', MY_EXP_EE: 'Malaysia electronics exports', EEM: 'EM equities' });
 { const R = SUBTABS.regime, i = R.findIndex(x => x[0] === 'Indicators'); R.splice(i < 0 ? R.length : i, 0, ['Leading board', ['lb_table', 'lb_breadth', 'lb_changes'], 'Leading']);
-  const g = R.findIndex(x => x[0] === 'Global business cycle'); R.splice(g + 1, 0, ['Global breadth & money', ['gl_diff', 'gl_money', 'gl_table'], 'Leading']);
+  const g = R.findIndex(x => x[0] === 'Global business cycle'); R.splice(g + 1, 0, ['Global breadth & money', ['gl_diff', 'gl_money', 'gl_el', 'gl_table'], 'Leading']);
   R.find(x => x[0] === 'Market signals')[1].push('can_table', 'can_chart'); }
 SUBTABS.asia.push(['Trade pulse', ['#sa_asia_pulse', 'ax_pulse', 'ax_pulse_table', 'ax_krw']]);
 SUBTABS.cn.find(x => x[0] === 'Economy')[1].push('cn_credit');
@@ -902,6 +917,7 @@ function buildLeads() {
     seg2: { key: 'glDiffLead', options: [['0', 'As measured'], ['1', 'Lead']] }, render: renderGlDiff });
   makeCard(rg, { key: 'gl_money', title: 'Global real money (ex-China)', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), seg: { key: 'glMoney', options: [['LD_RNM6', 'Narrow'], ['LD_RBM6', 'Broad']] },
     seg2: { key: 'glMoneyLead', options: [['0', 'As measured'], ['1', 'Best fit']] }, render: renderGlMoney });
+  makeCard(rg, { key: 'gl_el', title: 'Excess liquidity vs the S&P 500', defaultRange: 'MAX', earliest: Date.UTC(2006, 0, 1), seg: LEAD_SEG('elLead'), render: renderGlEl });
   makeCard(rg, { key: 'gl_table', title: 'Leading indices by economy', range: false, render: renderGlTable });
   makeCard(rg, { key: 'can_table', title: 'Market canaries', wide: true, range: false, render: renderCanTable });
   makeCard(rg, { key: 'can_chart', title: 'Canary vs what it leads', defaultRange: '10Y', seg: LEAD_SEG('canLead'), render: renderCanChart });

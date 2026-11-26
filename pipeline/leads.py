@@ -356,6 +356,69 @@ def money(fred: dict, asia: dict) -> dict:
     return out
 
 
+# Design plan 5, Step 4 (owner's approval 26 Nov 2026): "excess liquidity" = real narrow-money growth minus economic growth,
+# the idea behind a Bloomberg chart the owner sent ("G10 excess liquidity" against the S&P 500), rebuilt on public data. It is
+# a reconstruction, not Bloomberg's series. The five G10 economies the OECD still carries narrow money for (97% of G10 GDP;
+# Sweden and Switzerland stopped reporting in 2018), GDP-weighted. Money is converted to US dollars at monthly average
+# exchange rates and deflated by US consumer prices, so a weaker dollar adds to it; growth = industrial production.
+EL_W = {"USA": 29.2, "EA20": 16.4, "JPN": 4.0, "GBR": 3.6, "CAN": 2.2}   # nominal GDP 2024, USD trillions (IMF)
+EL_FX = {"EA20": ("FX_USDEUR", "EURUSD", False), "JPN": ("FX_JPYUSD", "USDJPY", True), "GBR": ("FX_USDGBP", "GBPUSD", False),
+         "CAN": ("FX_CADUSD", None, True)}   # FRED id, Yahoo fallback, quoted as units per US dollar
+
+
+def excess_liquidity(fred: dict, yahoo: dict) -> dict:
+    df = _oecd("OECD.SDD.STES,DSD_KEI@DF_KEI,", f"{'+'.join(EL_W)}.M.MANM+PRVM....", "1990-01")
+
+    def ser(a, meas, **kw):
+        g = df[(df["REF_AREA"] == a) & (df["MEASURE"] == meas) & (df["UNIT_MEASURE"] == "IX")]
+        for k, v in kw.items():
+            g = g[g[k] == v]
+        s = pd.Series(g["OBS_VALUE"].astype(float).values, index=g["t"]).sort_index()
+        return s[~s.index.duplicated(keep="last")]
+
+    if "CPI" not in fred:
+        raise RuntimeError("US CPI not loaded")
+    cpi = _month(unpack(fred["CPI"]))
+    us_infl = ((cpi / cpi.shift(12) - 1) * 100).dropna()
+    usd_per = {}
+    for a, (fid, yid, per_usd) in EL_FX.items():   # monthly average exchange rate, as US dollars per unit of the currency
+        s = unpack(fred[fid]) if fid in fred else unpack(yahoo[yid]) if yid and yid in yahoo else None
+        if s is not None and len(s):
+            m = s.groupby(s.index.to_period("M")).mean()
+            m.index = m.index.to_timestamp()
+            usd_per[a] = 1 / m if per_usd else m
+    rm, ip = {}, {}
+    for a in EL_W:
+        m = ser(a, "MANM")
+        mom = m / m.shift(1)
+        for t in mom[(mom > 1.4) | (mom < 0.7)].index:   # definition breaks (US M1, May 2020): spliced as in money()
+            m.loc[m.index < t] *= mom[t]
+        if a != "USA":
+            if a not in usd_per:
+                continue
+            m = (m * usd_per[a].reindex(m.index)).dropna()
+        g = (m / m.shift(12) - 1) * 100
+        rm[a] = (g - us_infl.reindex(g.index)).dropna()
+        p = ser(a, "PRVM", ACTIVITY="BTE", ADJUSTMENT="Y")
+        ip[a] = ((p / p.shift(12) - 1) * 100).dropna()
+
+    def wavg(d):
+        x = pd.DataFrame(d).sort_index()
+        w = pd.Series(EL_W)[x.columns]
+        have = x.notna()
+        return ((x.fillna(0) * w).sum(axis=1) / (have * w).sum(axis=1))[have.sum(axis=1) >= 4]
+
+    RM, IP = wavg(rm), wavg(ip)
+    EL = (RM - IP).dropna()
+    if len(EL) < 120:
+        raise RuntimeError("excess liquidity: too short")
+    src = (f"OECD key indicators (narrow money MANM, industrial production PRVM) for {', '.join(rm)}; exchange rates (FRED, Yahoo); "
+           "US CPI (FRED); GDP-weighted; calculated. A reconstruction on public data of the excess-liquidity idea, not Bloomberg's series")
+    return {"LD_EL_G10": _ser(EL, "G10 excess liquidity (a reconstruction): real money growth minus production growth", "pts", src),
+            "LD_EL_MONEY": _ser(RM.reindex(EL.index), "G10 real narrow money in US dollars, % on a year", "%", src),
+            "LD_EL_IP": _ser(IP.dropna(), "G10 industrial production, % on a year", "%", src)}
+
+
 def _dgm(dataset: str, filt: str | None = None) -> pd.DataFrame:
     params = {"id": dataset, "limit": 100000}
     if filt:
@@ -487,6 +550,7 @@ def build(status: dict) -> None:
     steps = (("GSCPI", gscpi, ("GSCPI",)), ("Zillow rents", zori, ("ZORI_",)), ("OECD leading-index diffusion", cli_diffusion, ("LD_CLI_DIFF",)),
              ("OECD breadth without share prices", cli_diffusion_xsp, ("LD_CLI_DIFF_XSP",)),
              ("OECD money", lambda: money(fred, asia), ("LD_RNM6", "LD_RBM6")), ("Malaysia pulse", malaysia, ("MY_",)),
+             ("G10 excess liquidity", lambda: excess_liquidity(fred, yahoo), ("LD_EL_",)),
              ("OECD household saving", savings_oecd, ("SAVQ_USA", "SAVQ_CAN", "SAVQ_GBR", "SAVQ_DEU", "SAVQ_FRA", "SAVQ_ITA", "SAVQ_ESP", "SAVQ_AUS", "SAVQ_JPN", "SAVQ_KOR", "SAVA_")),
              ("China household saving (NBS)", savings_china, ("SAVQ_CHN",)),
              ("Japan household saving (OECD sector accounts)", savings_japan, ("SAVQN_JPN",)),

@@ -160,6 +160,8 @@ FRED = [
     ("BOJ_ASSETS",  "JPNASSETS",   "BoJ total assets",            "Global CBs", "level", "JPY 100mn"),
     ("FX_USDEUR",   "DEXUSEU",     "USD per EUR (FRED)",          "Global CBs", "price", ""),
     ("FX_JPYUSD",   "DEXJPUS",     "JPY per USD (FRED)",          "Global CBs", "price", ""),
+    ("FX_USDGBP",   "DEXUSUK",     "USD per GBP (FRED)",          "Global CBs", "price", ""),   # Design plan 5: excess liquidity in US dollars
+    ("FX_CADUSD",   "DEXCAUS",     "CAD per USD (FRED)",          "Global CBs", "price", ""),
     # Rates
     ("UST3M",       "DGS3MO",      "UST 3M yield",                "Rates · US", "yield", "%"),
     ("UST2Y",       "DGS2",        "UST 2Y yield",                "Rates · US", "yield", "%"),

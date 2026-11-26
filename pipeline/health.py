@@ -36,6 +36,7 @@ SLOW.update({k: 200 for k in ("MY_ELEC_COM", "MY_ELEC_TOT")})
 SLOW["MARGIN_Z1"] = 300   # Fed Financial Accounts: a quarter is published about ten weeks after it ends (stamped at its start)
 SLOW.update({"CN_HPI_BIS": 330, "CN_HPI_BIS_REAL": 330})   # BIS property prices reach FRED about two quarters after the quarter (Design plan 5)
 SLOW.update({"CARTS": 45, "CARTS_REAL": 45})   # Chicago Fed CARTS: published twice a month, two to four weeks behind
+SLOW.update({k: 165 for k in ("LD_EL_G10", "LD_EL_MONEY", "LD_EL_IP")})   # OECD production figures for Europe arrive about three months late
 SLOW["INDEED"] = 21   # Indeed's daily postings index reaches FRED once a week, about a week late   # weekly, but the Fed publishes it about a month late (H.6)
 # series that are expected to be old or irregular: reports, monthly-lagged reference data
 IGNORE_PREFIX = ("LEIC_", "REG_Q_", "RZG_", "RZI_")
