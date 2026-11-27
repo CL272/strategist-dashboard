@@ -89,6 +89,13 @@ if (fs.existsSync(path.join(D, 'funds.json')) && fs.existsSync(path.join(D, 'yah
   ok(close(m.te, u.te, 0.05), `in ringgit and in dollars the tracking error differs by under 0.05 point (${m.te.toFixed(3)}% vs ${u.te.toFixed(3)}%)`);
   ok(m.volP !== u.volP, `…while volatility does change with the currency (${m.volP.toFixed(2)}% in ringgit, ${u.volP.toFixed(2)}% in dollars)`);
   ok(m.te > 2 && m.te < 10, `a balanced portfolio against a 60/40: tracking error in a sensible range (${m.te.toFixed(2)}%)`);
+  // Design plan 6, Step 1: every block says what it tracks, its group and where it is listed
+  const G = (JSON.parse(fs.readFileSync(path.join(D, 'funds.json')))._meta || {}).groups || [];
+  const bad = Object.entries(F).filter(([, x]) => !x.short || !x.place || !G.includes(x.grp));
+  ok(G.length === 10 && !bad.length, `every fund has a label, a place of listing and one of the ${G.length} groups (${Object.keys(F).length} funds${bad.length ? '; not: ' + bad.map(b => b[0]).join(', ') : ''})`);
+  const byIdx = {}; for (const [k, x] of Object.entries(F)) if (x.src === 'core') (byIdx[x.short + ' | ' + x.place] = byIdx[x.short + ' | ' + x.place] || []).push(k);
+  const twice = Object.entries(byIdx).filter(([, v]) => v.length > 1).map(([k, v]) => `${k}: ${v.join(', ')}`);
+  ok(twice.length <= 2, `one fund per index per place of listing (two Singapore STI funds are kept: ${twice.join('; ') || 'none'})`);
 } else console.log('Portfolio maths: funds.json not on disk; real-data checks skipped');
 
 if (fails.length) { console.log(`\nPortfolio check: ${fails.length} failure(s).`); process.exit(1); }

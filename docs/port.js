@@ -21,8 +21,11 @@ const PO_BENCH = [
 const PO_START = [['blank', 'Blank'], ['mybal', 'Malaysian balanced', [['IX:KLCI', 35], ['AAXJ', 15], ['ACWI', 15], ['IEF', 20], ['IX:GOLD', 5], ['CASH', 10]]],
   ['6040', '60/40 world', [['ACWI', 60], ['AGGU.L', 40]]], ['copy', 'A copy of the open portfolio']];
 // the dashboard's own series the old model portfolio used (index levels, no dividends)
-const PO_INDEX = [['IX:SPX', 'SPX', 'S&P 500 index (no dividends)', 'Equities'], ['IX:KLCI', 'KLCI', 'FBM KLCI index (no dividends)', 'Equities'],
-  ['IX:STI', 'STI', 'Straits Times index (no dividends)', 'Equities'], ['IX:GOLD', 'GOLD', 'Gold (spot price)', 'Gold'], ['IX:BTC', 'BTC', 'Bitcoin', 'Other']];
+const PO_INDEX = [['IX:SPX', 'SPX', 'S&P 500 index (no dividends)', 'Equities', 'United States', 'us usa america spx'],
+  ['IX:KLCI', 'KLCI', 'FBM KLCI index (no dividends)', 'Equities', 'Asia Pacific', 'malaysia my klci'], ['IX:STI', 'STI', 'Straits Times index (no dividends)', 'Equities', 'Asia Pacific', 'singapore sti sg'],
+  ['IX:GOLD', 'GOLD', 'Gold (spot price)', 'Gold', 'Gold, cash and property', 'gold bullion'], ['IX:BTC', 'BTC', 'Bitcoin', 'Other', 'Other', 'crypto btc']];
+// Design plan 6, Step 1: the browse groups, in order (funds.json carries each fund's group; pipeline/funds.py GROUPS is the source)
+const PO_GROUPS = ['World', 'Regions', 'United States', 'US sectors', 'Asia Pacific', 'Europe', 'Americas, Middle East and Africa', 'Bonds', 'Gold, cash and property', 'Other'];
 const PO_FROM_MODEL = { ACWI: 'ACWI', SPX: 'IX:SPX', AAXJ: 'AAXJ', EEM: 'EEM', KLCI: 'IX:KLCI', STI: 'IX:STI', IEF: 'IEF', TLT: 'TLT', LQD: 'LQD',
   HYG: 'HYG', EMB: 'EMB', GOLD: 'IX:GOLD', BTC: 'IX:BTC', CASH: 'CASH' };
 const PO_CARDS = ['idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress'];
@@ -41,14 +44,24 @@ function poBlocks() {   // every building block: id -> { id, label, name, cls, c
   if (poBlocksMemo) return poBlocksMemo;
   const B = {};
   for (const [id, x] of Object.entries((FUNDS && FUNDS.funds) || {}))
-    B[id] = { id, label: x.short || x.name || id, name: x.name || '', cls: x.cls || 'Other', ccy: x.ccy, kind: 'fund', thin: x.thin || 0, src: x.src, s: { id: 'F_' + id, label: x.short || id, t: x.d.map(d => d * DAY), v: x.v } };
-  for (const [id, sid, label, cls] of PO_INDEX) if (has(sid)) B[id] = { id, label, name: S[sid].label, cls, ccy: LOCAL_CCY[sid] || 'USD', kind: 'index', thin: 0, s: S[sid] };
-  B.CASH = { id: 'CASH', label: 'Cash (short rate in the portfolio currency)', name: '', cls: 'Cash', ccy: null, kind: 'cash', thin: 0 };
+    B[id] = { id, label: x.short || x.name || id, name: x.name || '', cls: x.cls || 'Other', grp: x.grp || 'Other', place: x.place || '', alias: x.alias || '', ccy: x.ccy, kind: 'fund',
+      thin: x.thin || 0, src: x.src, s: { id: 'F_' + id, label: x.short || id, t: x.d.map(d => d * DAY), v: x.v } };
+  for (const [id, sid, label, cls, grp, alias] of PO_INDEX) if (has(sid)) B[id] = { id, label, name: S[sid].label, cls, grp, alias, place: '', ccy: LOCAL_CCY[sid] || 'USD', kind: 'index', thin: 0, s: S[sid] };
+  B.CASH = { id: 'CASH', label: 'Cash (short rate in the portfolio currency)', name: '', cls: 'Cash', grp: 'Gold, cash and property', alias: 'cash deposit money market', place: '', ccy: null, kind: 'cash', thin: 0 };
   if (FUNDS) poBlocksMemo = B;
   return B;
 }
 const poLabel = id => { const b = poBlocks()[id]; return b ? b.label : id.replace(/^IX:/, '') + ' (no data)'; };
 const poTick = id => id === 'CASH' ? 'cash' : id.replace(/^IX:/, '');
+// the line under a block's name: the fund (shortened), ticker, currency and place of listing; an index or cash says what it is
+const poFundName = n => (n || '').replace(/ETF Series - |iShares VII PLC - |iShares Asia Trust - |State Street |SPDR ETFs Australia - /g, '').replace(/\s+(UCITS\s+)?ETF\b.*$/i, '').replace(/\s+Index Fund$/i, '').trim();
+function poSub(id) {
+  const b = poBlocks()[id]; if (!b) return poTick(id);
+  if (b.kind === 'cash') return 'interest at the short rate';
+  if (b.kind === 'index') return `index, no dividends · ${b.ccy}`;
+  const nm = poFundName(b.name);
+  return [nm && nm.toLowerCase() !== b.label.toLowerCase() ? nm : '', poTick(id), b.ccy, b.place].filter(Boolean).join(' · ');
+}
 const poClass = id => { const c = (poBlocks()[id] || {}).cls || 'Other'; return c === 'Cash-like' ? 'Cash' : PO_CLASSES.includes(c) ? c : 'Other'; };
 const poCache = new Map();
 function poSeries(id, base) {   // the block's price in the portfolio currency ({t, v}); cash accrues the short rate week by week
@@ -124,13 +137,20 @@ const poThinNote = ids => { const t = poThinIds(ids); return t.length ? ` ⚑ ${
 const PO_SRC = 'Prices: Yahoo Finance (weekly closes with dividends; index levels without); cash: Bank Negara, MAS, US Treasury short rates; calculated';
 
 // ---- a search box for adding a building block (the list floats under the box)
+// search order: the ticker typed, then a label that starts with (or has a word starting with) the query, then the label anywhere,
+// then the fund's name, then the search words
+function poRankHit(b, q) {
+  const l = b.label.toLowerCase();
+  return poTick(b.id).toLowerCase().startsWith(q) ? 0 : l.startsWith(q) || l.includes(' ' + q) ? 1 : l.includes(q) ? 2 : (b.name || '').toLowerCase().includes(q) ? 3 : 4;
+}
 function poSearch(placeholder, onPick, exclude = []) {
   const wrap = el('div', { class: 'po-find' }), inp = el('input', { type: 'search', class: 'perf-search', placeholder, 'aria-label': placeholder }), list = el('div', { class: 'po-sugg', hidden: true });
   const find = q => { q = q.trim().toLowerCase(); if (!q) return [];
-    return Object.values(poBlocks()).filter(b => !exclude.includes(b.id) && [b.id, b.label, b.name, b.cls].join(' ').toLowerCase().includes(q))
-      .sort((a, b) => (poTick(a.id).toLowerCase().startsWith(q) ? 0 : 1) - (poTick(b.id).toLowerCase().startsWith(q) ? 0 : 1) || a.label.localeCompare(b.label)).slice(0, 8); };
+    const words = q.split(/\s+/);   // every word must match somewhere: "msci em" or "japan hedged"
+    return Object.values(poBlocks()).filter(b => !exclude.includes(b.id) && (hay => words.every(w => hay.includes(w)))([b.id, b.label, b.name, b.cls, b.grp, b.place, b.alias].join(' ').toLowerCase()))
+      .sort((a, b) => poRankHit(a, q) - poRankHit(b, q) || a.label.localeCompare(b.label)).slice(0, 8); };
   const show = () => { const L = find(inp.value);
-    list.replaceChildren(...L.map(b => el('button', { type: 'button', onmousedown: e => { e.preventDefault(); onPick(b.id); } }, el('b', { text: poTick(b.id) }), ' ' + b.label, el('span', { class: 'muted', text: ' · ' + b.cls }))));
+    list.replaceChildren(...L.map(b => el('button', { type: 'button', onmousedown: e => { e.preventDefault(); onPick(b.id); } }, el('b', { text: b.label }), el('span', { class: 'muted', text: ' · ' + poSub(b.id) }))));
     if (!L.length && inp.value.trim()) list.append(el('div', { class: 'muted small', text: 'No fund matches. Add its ticker to watchlist.txt; it appears after the next daily refresh.' }));
     list.hidden = !inp.value.trim(); };
   inp.addEventListener('input', show);
@@ -156,7 +176,7 @@ function renderPbHold(c) {   // key idea_model (kept from the old Model portfoli
     const thin = (poBlocks()[id] || {}).thin > PO_THIN, act = sw(id) - sb(id), inp = poWeightInput(w, v => poEdit(q => { const r = q.rows.find(x => x[0] === id); if (r) r[1] = v; }), `Weight of ${poLabel(id)}`);
     inp.dataset.id = id;
     tb.append(el('tr', { class: 'row' },
-      el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub' }, `${poTick(id)} · ${(poBlocks()[id] || {}).cls || '–'}`, thin ? el('span', { class: 'po-thin', title: `Price unchanged in ${fmtNum(poBlocks()[id].thin * 100, 0)}% of the last three years' weeks`, text: 'thinly traded' }) : '')),
+      el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub' }, poSub(id), thin ? el('span', { class: 'po-thin', title: `Price unchanged in ${fmtNum(poBlocks()[id].thin * 100, 0)}% of the last three years' weeks`, text: 'thinly traded' }) : '')),
       el('td', { class: 'num' }, inp, amounts ? el('span', { class: 'po-scaled muted', text: poPct(sw(id), 0) }) : ''),
       el('td', { class: 'num muted', text: sb(id) ? fmtNum(sb(id), 0) : '–' }),
       el('td', { class: 'num ' + (act > 0.05 ? 'up' : act < -0.05 ? 'dn' : 'muted'), text: poPts(act) }),
@@ -169,7 +189,7 @@ function renderPbHold(c) {   // key idea_model (kept from the old Model portfoli
     el('div', { class: 'card-foot' }, el('span', { text: amounts ? `Weights or amounts: scaled to 100% (shown beside each).` : 'Weights or amounts: scaled to 100%.' }),
       el('a', { href: `https://github.com/${REPO_PATH}/edit/main/watchlist.txt`, target: '_blank', rel: 'noopener', text: 'Not listed? Add it to watchlist.txt →' })));
   setCount(c, `${p.rows.length} holding${p.rows.length === 1 ? '' : 's'}`);
-  c.csv = [['Holding', 'Ticker', 'Class', 'Weight entered', 'Weight %', 'Benchmark %', 'Active pts'], ...p.rows.map(([id, w]) => [poLabel(id), poTick(id), poClass(id), w, sw(id).toFixed(2), sb(id).toFixed(2), (sw(id) - sb(id)).toFixed(2)])];
+  c.csv = [['Holding', 'Fund', 'Ticker', 'Place', 'Class', 'Weight entered', 'Weight %', 'Benchmark %', 'Active pts'], ...p.rows.map(([id, w]) => [poLabel(id), (poBlocks()[id] || {}).name || '', poTick(id), (poBlocks()[id] || {}).place || '', poClass(id), w, sw(id).toFixed(2), sb(id).toFixed(2), (sw(id) - sb(id)).toFixed(2)])];
   const thin = poThinNote(p.rows.map(r => r[0]));
   setNote(c, (R.missing && R.missing.length ? `No prices for ${R.missing.map(poTick).join(', ')}: left out of the figures. ` : '') + `Active = the portfolio's weight minus the benchmark's, in points.${thin}`);
   setSource(c, 'Your weights, kept in your private vault once it is set up'); poAsOf(c, R.st ? R.st.to : null);
@@ -183,7 +203,7 @@ function renderPbBench(c) {
   const tb = el('tbody');
   for (const [id, w] of p.bench.rows) {
     const inp = poWeightInput(w, v => poEdit(q => { const r = q.bench.rows.find(x => x[0] === id); if (r) r[1] = v; q.bench.preset = 'custom'; }), `Benchmark weight of ${poLabel(id)}`); inp.dataset.id = id;
-    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub', text: `${poTick(id)} · ${(poBlocks()[id] || {}).cls || '–'}` })), el('td', { class: 'num' }, inp),
+    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub', text: poSub(id) })), el('td', { class: 'num' }, inp),
       el('td', {}, el('button', { type: 'button', class: 'ghost', text: '✕', title: `Remove ${poLabel(id)} from the benchmark`, onclick: () => poEdit(q => { q.bench.rows = q.bench.rows.filter(r => r[0] !== id); q.bench.preset = 'custom'; }) }))));
   }
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...['Benchmark holding', 'Weight', ''].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
@@ -375,7 +395,7 @@ function renderPoWhatIf(c) {
   how.value = a.how === 'one' && a.from ? 'one:' + a.from : a.how; if (!how.value) how.value = 'all';
   how.onchange = () => { const v = how.value; if (v.startsWith('one:')) { a.how = 'one'; a.from = v.slice(4); } else { a.how = v; a.from = null; } PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); };
   b.append(el('div', { class: 'po-what' }, el('label', {}, 'Portfolio ', portSel), el('label', {}, 'Weight ', slider, xLab), el('label', {}, 'Paid for by ', how)),
-    el('div', { class: 'po-pick' }, el('span', { class: 'muted small', text: 'Fund: ' }), el('b', { text: poLabel(a.id) }), el('span', { class: 'muted small', text: ` · ${poTick(a.id)} · ${(poBlocks()[a.id] || {}).cls || ''}` }),
+    el('div', { class: 'po-pick' }, el('span', { class: 'muted small', text: 'Fund: ' }), el('b', { text: poLabel(a.id) }), el('span', { class: 'muted small', text: ' · ' + poSub(a.id) }),
       poSearch('Change fund: name or ticker', id => { a.id = id; if (a.from === id) { a.how = 'all'; a.from = null; } PO_CARDS_ADD.forEach(k => cards[k].render()); }, [a.id])));
   const W = poWhatIf();
   if (!W.st1) { b.append(el('div', { class: 'empty', text: W.reason || 'Waiting for data.' })); setCount(c, ''); c.csv = null; setNote(c, ''); return; }
@@ -467,7 +487,7 @@ function renderPoRank(c) {
     const thin = (poBlocks()[r.id] || {}).thin > PO_THIN;
     tb.append(el('tr', { class: 'row' + (r.id === state.poAdd.id ? ' sel' : ''), style: 'cursor:pointer', title: `Try ${poTick(r.id)} in “What if I add a fund?”`,
       onclick: () => { state.poAdd.id = r.id; PO_CARDS_ADD.forEach(k => cards[k].render()); cards.po_whatif.root.scrollIntoView({ block: 'center', behavior: 'smooth' }); } },
-      el('td', { class: 'l' }, poLabel(r.id), el('span', { class: 'cell-sub' }, poTick(r.id), thin ? el('span', { class: 'po-thin', text: 'thinly traded' }) : '')),
+      el('td', { class: 'l' }, poLabel(r.id), el('span', { class: 'cell-sub' }, poSub(r.id), thin ? el('span', { class: 'po-thin', text: 'thinly traded' }) : '')),
       el('td', { class: 'num', text: poPct(r.te, 2) }), el('td', { class: 'num strong', text: d2(r.d) }), el('td', { class: 'num', text: poPct(r.vol) }), el('td', { class: 'num', text: f2(r.beta) }), el('td', { class: 'num', text: f2(r.corr) })));
   }
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...[`Fund, at ${x}% of the portfolio`, 'Tracking error', 'Change, pts', 'Volatility', 'Beta', 'Correlation'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
