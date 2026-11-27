@@ -28,7 +28,7 @@ const PO_INDEX = [['IX:SPX', 'SPX', 'S&P 500 index (no dividends)', 'Equities', 
 const PO_GROUPS = ['World', 'Regions', 'United States', 'US sectors', 'Asia Pacific', 'Europe', 'Americas, Middle East and Africa', 'Bonds', 'Gold, cash and property', 'Other'];
 const PO_FROM_MODEL = { ACWI: 'ACWI', SPX: 'IX:SPX', AAXJ: 'AAXJ', EEM: 'EEM', KLCI: 'IX:KLCI', STI: 'IX:STI', IEF: 'IEF', TLT: 'TLT', LQD: 'LQD',
   HYG: 'HYG', EMB: 'EMB', GOLD: 'IX:GOLD', BTC: 'IX:BTC', CASH: 'CASH' };
-const PO_CARDS = ['idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress'];
+const PO_CARDS = ['idea_model', 'po_side', 'idea_modelchart', 'po_src', 'idea_stress'];
 const PO_EPISODES = [['Global financial crisis', '2007-10-09', '2009-03-09'], ['Taper tantrum', '2013-05-21', '2013-06-24'], ['China devaluation', '2015-08-10', '2016-02-11'],
   ['Late-2018 sell-off', '2018-09-20', '2018-12-24'], ['Covid crash', '2020-02-19', '2020-03-23'], ['2022 rates shock', '2022-01-03', '2022-10-12']];
 state.poView = 'value';
@@ -109,7 +109,6 @@ function poEdit(fn) { poMutate(o => { const p = o.ports.find(x => x.id === o.sel
 function poRefresh() {
   state.poRes = null;
   PO_CARDS.forEach(k => cards[k] && cards[k].render());
-  if (typeof PO_CARDS_ADD !== 'undefined') PO_CARDS_ADD.forEach(k => cards[k] && cards[k].render());
   poHook(); fitTiles('alloc');
 }
 const poWhenLoaded = () => { if (state.tab === 'alloc') poRefresh(); };
@@ -142,6 +141,7 @@ function poDraftWrite(p, rows, step) {   // keep the undo snapshot, write the dr
   p.draft = poSameRows(rows, poScaledRows(p.rows)) ? null : { rows, steps };
 }
 function poChange(id, to) {   // set one holding's weight in the draft; the others follow the rule; locked holdings stay
+  if (state.poSide) state.poSide.adj = id;   // "Adjust a weight" opens on the holding touched last
   poEdit(p => {
     const base = p.draft ? p.draft.rows : poRound2Rows(poScaledRows(p.rows)), rule = p.rule === 'cash' ? 'cash' : 'all';
     const w = Object.fromEntries(base.map(([k, v]) => [k, v])), before = w[id] || 0, out = PM.pmSet(w, id, to, rule, p.locks || []);
@@ -184,7 +184,7 @@ function poCompute() {
   const reason = st ? null : `Only ${A.n} weeks that every holding and the benchmark share${limit ? ` (${poLabel(limit.id)} starts in ${monthLab(limit.t)})` : ''}; at least 52 are needed. Try a longer window or another fund.`;
   return (state.poRes = { ...R, A, st, st0, limit, shorter, reason });
 }
-const poBenchName = p => p.bench.preset === 'custom' ? 'Custom benchmark' : ((PO_BENCH.find(b => b[0] === p.bench.preset) || [])[1] || 'Benchmark');
+const poBenchName = p => p.bench.preset === 'custom' ? (p.bench.rows.length === 1 ? poLabel(p.bench.rows[0][0]) : 'Custom benchmark') : ((PO_BENCH.find(b => b[0] === p.bench.preset) || [])[1] || 'Benchmark');
 const poScaled = (rows) => { const t = rows.reduce((s, [, w]) => s + Math.max(0, +w || 0), 0); return id => { const r = rows.find(x => x[0] === id); return t > 0 && r ? Math.max(0, +r[1] || 0) / t * 100 : 0; }; };
 const poPct = (v, d = 1) => { if (v == null) return '–'; const r = Math.round(Math.abs(v) * 10 ** d) / 10 ** d; return `${v < 0 && r > 0 ? '−' : ''}${fmtNum(r, d)}%`; };
 const poPts = v => { const r = Math.round(Math.abs(v) * 10) / 10; return `${r && v > 0 ? '+' : r && v < 0 ? '−' : ''}${fmtNum(r, r % 1 ? 1 : 0)}`; };   // points, one decimal only when needed
@@ -195,9 +195,9 @@ const PO_SRC = 'Prices: Yahoo Finance (weekly closes with dividends; index level
 // ---- a search box for adding a building block (the list floats under the box)
 // search order: the ticker typed, then a label that starts with (or has a word starting with) the query, then the label anywhere,
 // then the fund's name, then the search words
-function poRankHit(b, q) {
+function poRankHit(b, q) {   // "japan": MSCI Japan before MSCI Asia ex Japan
   const l = b.label.toLowerCase();
-  return poTick(b.id).toLowerCase().startsWith(q) ? 0 : l.startsWith(q) || l.includes(' ' + q) ? 1 : l.includes(q) ? 2 : (b.name || '').toLowerCase().includes(q) ? 3 : 4;
+  return poTick(b.id).toLowerCase().startsWith(q) ? 0 : l === q || l === 'msci ' + q || l.startsWith(q) ? 1 : l.includes(' ' + q) && !l.includes('ex ' + q) ? 2 : l.includes(q) ? 3 : (b.name || '').toLowerCase().includes(q) ? 4 : 5;
 }
 function poSearch(placeholder, onPick, exclude = []) {
   const wrap = el('div', { class: 'po-find' }), inp = el('input', { type: 'search', class: 'perf-search', placeholder, 'aria-label': placeholder }), list = el('div', { class: 'po-sugg', hidden: true });
@@ -264,7 +264,8 @@ function renderPbHold(c) {   // key idea_model (kept from the old Model portfoli
   rule.value = p.rule === 'cash' ? 'cash' : 'all'; rule.onchange = () => poEdit(q => { q.rule = rule.value; });
   b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table po-hold' }, el('thead', {}, el('tr', {}, ...[['Holding'], ['Weight %'], ['Active', 'The portfolio\'s weight minus the benchmark\'s, in points; beneath it, the benchmark\'s weight'], ['']].map(([h, t], i) => el('th', { class: i ? '' : 'l', text: h, title: t || null })))), tb)),
     el('div', { class: 'po-rule' }, el('label', {}, 'When I change a weight, take it from ', rule), el('span', { class: 'muted small', text: 'The total always stays 100%. A locked holding is left alone.' })),
-    poSearch(`＋ Add a holding at ${PO_ADD_AT}%: a country, an index or a ticker (Japan, MSCI EM, CSPX…)`, id => { poChange(id, Math.max(w1(id), PO_ADD_AT)); poFocus(c, id); }, work.filter(r => r[1] > 0.005).map(r => r[0])),
+    el('div', { class: 'po-addrow' }, el('button', { type: 'button', class: 'ghost', text: '＋ Add a holding', title: 'Search every building block in the card beside this one',
+      onclick: () => { poOpenSide('add'); setTimeout(() => { const i = cards.po_side.root.querySelector('.po-q'); if (i) i.focus(); }, 60); } })),
     el('div', { class: 'card-foot' }, el('span', { text: p.draft ? 'Not saved yet: Save or Discard in the bar above.' : '' }),
       el('a', { href: `https://github.com/${REPO_PATH}/edit/main/watchlist.txt`, target: '_blank', rel: 'noopener', text: 'Not listed? Add it to watchlist.txt →' })));
   const n = work.filter(r => r[1] > 0.005).length;
@@ -277,29 +278,6 @@ function renderPbHold(c) {   // key idea_model (kept from the old Model portfoli
     + `− and + move a weight one point; type a weight to one decimal (Enter keeps it, Esc cancels). The difference comes from the other holdings as chosen under the table, so the total stays 100%; a locked holding is left alone. Every change is a draft, shown as was → now, until you press Save. Active = the portfolio's weight minus the benchmark's, in points, with the benchmark's weight beneath ("of 60").${thin}`);
   setSource(c, 'Your weights, kept in your private vault once it is set up'); poAsOf(c, st ? st.to : null);
 }
-function renderPbBench(c) {
-  if (poWait(c)) return;
-  const R = poCompute(), p = R.p, b = htmlBody(c), sb = poScaled(p.bench.rows), work = poWorkRows(p), sw = poScaled(work);
-  b.append(el('div', { class: 'seg-chips po-presets' }, ...PO_BENCH.map(([k, lab, rows]) => el('button', { type: 'button', 'aria-selected': String(p.bench.preset === k), text: lab,
-    onclick: () => poEdit(q => { q.bench = { preset: k, rows: rows.map(r => r.slice()) }; }) })),
-    el('button', { type: 'button', 'aria-selected': String(p.bench.preset === 'custom'), text: 'Custom…', title: 'Edit the rows below', onclick: () => poEdit(q => { q.bench.preset = 'custom'; }) })));
-  const tb = el('tbody');
-  for (const [id, w] of p.bench.rows) {
-    const inp = poWeightInput(w, v => poEdit(q => { const r = q.bench.rows.find(x => x[0] === id); if (r) r[1] = v; q.bench.preset = 'custom'; }), `Benchmark weight of ${poLabel(id)}`); inp.dataset.id = id;
-    tb.append(el('tr', { class: 'row' }, el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub', text: poSub(id) })), el('td', { class: 'num' }, inp),
-      el('td', {}, el('button', { type: 'button', class: 'ghost', text: '✕', title: `Remove ${poLabel(id)} from the benchmark`, onclick: () => poEdit(q => { q.bench.rows = q.bench.rows.filter(r => r[0] !== id); q.bench.preset = 'custom'; }) }))));
-  }
-  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...['Benchmark holding', 'Weight', ''].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
-    poSearch('＋ Add to the benchmark', id => poEdit(q => { if (!q.bench.rows.some(r => r[0] === id)) q.bench.rows.push([id, 0]); q.bench.preset = 'custom'; }) || poFocus(c, id), p.bench.rows.map(r => r[0])));
-  const mix = PO_CLASSES.map(cl => [cl, work.filter(([id]) => poClass(id) === cl).reduce((s, [id]) => s + sw(id), 0), p.bench.rows.filter(([id]) => poClass(id) === cl).reduce((s, [id]) => s + sb(id), 0)]).filter(([, x, y]) => x > 0.05 || y > 0.05);
-  b.append(el('h3', { class: 'po-h', text: `Mix by asset class: portfolio${p.draft ? ' (with your changes)' : ''} vs benchmark` }), ...mix.map(([cl, x, y]) => el('div', { class: 'po-mix' }, el('span', { class: 'nm', text: cl }),
-    el('span', { class: 'bar', title: `Portfolio ${fmtNum(x, 1)}% (bar) · benchmark ${fmtNum(y, 1)}% (line)` }, el('i', { style: `width:${Math.min(100, x)}%` }), el('b', { style: `width:${Math.min(100, y)}%` })),
-    el('span', { class: 'v' }, `${fmtNum(x, 0)}% `, el('span', { class: 'muted', text: `vs ${fmtNum(y, 0)}%` })))));
-  setCount(c, poBenchName(p));
-  c.csv = [['Benchmark holding', 'Ticker', 'Weight %'], ...p.bench.rows.map(([id]) => [poLabel(id), poTick(id), sb(id).toFixed(2)]), [], ['Asset class', 'Portfolio %', 'Benchmark %'], ...mix.map(([cl, x, y]) => [cl, x.toFixed(2), y.toFixed(2)])];
-  setNote(c, 'The world mixes hold world equities (iShares MSCI ACWI) and global bonds hedged to the dollar (iShares Global Aggregate, AGGU); pick a preset or edit the rows. A benchmark change applies at once. Bar = the portfolio, line = the benchmark.');
-  setSource(c, 'Your choice of benchmark'); poAsOf(c, R.st ? R.st.to : null);
-}
 function renderPbChart(c) {   // key idea_modelchart; with a draft, the saved portfolio is the dashed line
   if (poWait(c)) return;
   const R = poCompute(), p = R.p; if (!R.st) return poEmpty(c, R.reason || 'Waiting for data.');
@@ -308,7 +286,7 @@ function renderPbChart(c) {   // key idea_modelchart; with a draft, the saved po
   const lim = R.limit ? ` From ${monthLab(st.from)}: ${poTick(R.limit.id)}'s history starts then.` : '', was = s0 ? ' Dashed: the portfolio as saved, on the same weeks.' : '';
   const gapOf = x => d.map((t, i) => [t, (x.cumP[i] / x.cumB[i] - 1) * 100]), endGap = x => x.cumP[x.cumP.length - 1] / x.cumB[x.cumB.length - 1] - 1;
   if (view === 'gap') {
-    drawLines(c, [{ name: `${p.name}${s0 ? ' with your changes' : ''} vs ${poBenchName(p)}, cumulative gap`, data: gapOf(st) }, ...(s0 ? [{ name: `${p.name} as saved, cumulative gap`, data: gapOf(s0), color: col(0), extra: dash }] : [])],
+    drawLines(c, [{ name: s0 ? 'With your changes, gap' : `${p.name} vs ${poBenchName(p)}, cumulative gap`, data: gapOf(st) }, ...(s0 ? [{ name: 'As saved, gap', data: gapOf(s0), color: col(0), extra: dash }] : [])],
       { fmt: v => poPct(v, 1), axisFmt: v => fmtNum(v, 0) + '%', zero: true, endLabels: false });
     setNote(c, `Over the window the portfolio${s0 ? ' with your changes' : ''} ${endGap(st) >= 0 ? 'gained' : 'lost'} ${fmtNum(Math.abs(endGap(st)) * 100, 1)}% against the benchmark in ${p.ccy}${s0 ? ` (as saved: ${endGap(s0) >= 0 ? 'gained' : 'lost'} ${fmtNum(Math.abs(endGap(s0)) * 100, 1)}%)` : ''}.${lim}${was} The line is the portfolio's value divided by the benchmark's, minus one.`);
   } else if (view === 'te') {
@@ -320,8 +298,8 @@ function renderPbChart(c) {   // key idea_modelchart; with a draft, the saved po
     const lo = roll.reduce((m, x) => x[1] < m[1] ? x : m), hi = roll.reduce((m, x) => x[1] > m[1] ? x : m);
     setNote(c, `Over the 52 weeks to ${nice(roll[roll.length - 1][0])} the tracking error was ${fmtNum(roll[roll.length - 1][1], 1)}%${s0 && roll0.length ? ` (as saved: ${fmtNum(roll0[roll0.length - 1][1], 1)}%)` : ''}; within the window it ranged from ${fmtNum(lo[1], 1)}% (${monthLab(lo[0])}) to ${fmtNum(hi[1], 1)}% (${monthLab(hi[0])}).${lim}${was}`);
   } else {
-    drawLines(c, [{ name: p.name + (s0 ? ' with your changes' : ''), data: d.map((t, i) => [t, st.cumP[i]]) }, { name: poBenchName(p), data: d.map((t, i) => [t, st.cumB[i]]) },
-      ...(s0 ? [{ name: `${p.name} as saved`, data: d.map((t, i) => [t, s0.cumP[i]]), color: col(0), extra: dash }] : [])], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
+    drawLines(c, [{ name: s0 ? 'With your changes' : p.name, data: d.map((t, i) => [t, st.cumP[i]]) }, { name: poBenchName(p), data: d.map((t, i) => [t, st.cumB[i]]) },
+      ...(s0 ? [{ name: 'As saved', data: d.map((t, i) => [t, s0.cumP[i]]), color: col(0), extra: dash }] : [])], { fmt: v => fmtNum(v, 1), axisFmt: v => fmtNum(v, 0), hlines: [{ y: 100 }], endLabels: false });
     setNote(c, `The portfolio${s0 ? ' with your changes' : ''} returned ${poPct(st.retP)} a year in ${p.ccy} against ${poPct(st.retB)} for the benchmark${s0 ? ` (as saved: ${poPct(s0.retP)})` : ''}, with ${fmtNum(st.volP / st.volB * 100, 0)}% of its volatility.${lim}${was} All lines = 100 at the start and held at their weights (rebalanced weekly), dividends included.`);
   }
   c.csv = [['Week to', 'Portfolio (= 100 at start)', 'Benchmark (= 100 at start)', ...(s0 ? ['Portfolio as saved (= 100 at start)'] : [])], ...d.map((t, i) => [iso(t), st.cumP[i].toFixed(3), st.cumB[i].toFixed(3), ...(s0 ? [s0.cumP[i].toFixed(3)] : [])])];
@@ -394,11 +372,13 @@ function poBar() {   // Portfolio [picker] against [benchmark] in [currency] ove
   const sel = el('select', { class: 'mini-select', 'aria-label': 'Portfolio', title: typeof vaultOn === 'function' && vaultOn() ? 'Kept in your private vault' : 'Kept in this browser (set up the vault to encrypt it); a dot marks changes not saved yet' }, ...o.ports.map(x => el('option', { value: x.id, text: x.name + (x.draft ? ' •' : ''), title: x.draft ? 'Has changes not saved yet' : '' }))); sel.value = o.sel;
   sel.onchange = () => poMutate(q => { q.sel = sel.value; });
   const btn = (text, title, fn) => el('button', { type: 'button', class: 'ghost', text, title, onclick: fn });
-  const bench = el('select', { class: 'mini-select', 'aria-label': 'Benchmark' }, ...PO_BENCH.map(([k, lab]) => el('option', { value: k, text: lab })), el('option', { value: 'custom', text: p.bench.preset === 'custom' ? 'Custom benchmark' : 'Custom…' }));
-  bench.value = p.bench.preset === 'custom' ? 'custom' : p.bench.preset;
+  const one = p.bench.preset === 'custom' && p.bench.rows.length === 1, cus = p.bench.preset === 'custom' && !one;
+  const bench = el('select', { class: 'mini-select', 'aria-label': 'Benchmark' }, ...PO_BENCH.map(([k, lab]) => el('option', { value: k, text: lab })),
+    el('option', { value: 'one', text: one ? poLabel(p.bench.rows[0][0]) : 'One block…' }), el('option', { value: 'custom', text: cus ? 'Custom benchmark' : 'Custom…' }));
+  bench.value = one ? 'one' : cus ? 'custom' : p.bench.preset;
   bench.onchange = () => { const v = bench.value, pre = PO_BENCH.find(x => x[0] === v);
-    if (pre) poEdit(q => { q.bench = { preset: v, rows: pre[2].map(r => r.slice()) }; });
-    else { if (p.bench.preset !== 'custom') poEdit(q => { q.bench.preset = 'custom'; }); const bc = cards.po_bench; if (bc) bc.root.scrollIntoView({ block: 'start', behavior: 'smooth' }); } };
+    if (pre) { state.poSide.bmode = null; poEdit(q => { q.bench = { preset: v, rows: pre[2].map(r => r.slice()) }; }); }
+    else { bench.value = one ? 'one' : cus ? 'custom' : p.bench.preset; poOpenSide('bench', v); } };
   const ccy = el('select', { class: 'mini-select', 'aria-label': 'Currency' }, ...PO_CCY.map(x => el('option', { value: x, text: x }))); ccy.value = p.ccy;
   ccy.onchange = () => poEdit(q => { q.ccy = ccy.value; });
   bar.append(el('label', {}, 'Portfolio ', sel), el('label', {}, 'against ', bench), el('label', {}, 'in ', ccy),
@@ -448,177 +428,220 @@ function poHook() {   // only while a portfolio sub-tab is open: nothing to load
 }
 function buildPortfolio(g) {
   makeCard(g, { key: 'idea_model', title: 'Holdings', range: false, render: renderPbHold });
-  makeCard(g, { key: 'po_bench', title: 'Benchmark', range: false, render: renderPbBench });
+  makeCard(g, { key: 'po_side', title: 'Change the portfolio', range: false, render: renderPoSide });
   makeCard(g, { key: 'idea_modelchart', title: 'Portfolio vs benchmark', range: false, seg: { key: 'poView', options: [['value', 'Value'], ['gap', 'Gap'], ['te', 'Rolling TE']] }, render: renderPbChart });
   makeCard(g, { key: 'po_src', title: 'Where the tracking error comes from', range: false, render: renderPbSrc });
   makeCard(g, { key: 'idea_stress', title: 'Stress test and risk', wide: true, range: false, render: renderPbStress });
-  for (const k of ['idea_model', 'po_bench', 'po_src', 'idea_stress']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
-  buildAddFund(g);   // Step 4
+  for (const k of ['idea_model', 'po_side', 'po_src', 'idea_stress']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
 }
-SUB_ALIAS.alloc = { ...(SUB_ALIAS.alloc || {}), 'Model portfolio': 'Portfolio' };   // old links and the Idea log mapping
+SUB_ALIAS.alloc = { ...(SUB_ALIAS.alloc || {}), 'Model portfolio': 'Portfolio', 'Add a fund': 'Portfolio' };   // old links, the Idea log mapping, and Add a fund (folded into Portfolio, Design plan 6)
 TILE_SETS.alloc.Portfolio = ['Tracking error', 'Active return', 'Beta to benchmark', 'Volatility', 'Worst fall'];
 EXTRA_HOOKS.alloc.push(poHook);
 
-// ------------------------------------------------------------------ ALLOCATION → ADD A FUND (Design plan 4, Step 4)
-// What adding a fund would have done to the open portfolio's tracking error: one fund at a chosen weight (before → after),
-// the curve as its weight rises, and every fund at 5, 10 or 20%. The added weight is paid for by every other holding in
-// proportion, by cash, or by one holding. Arithmetic on past returns, never a recommendation; numbers stay in plain ink.
-const PO_CARDS_ADD = ['po_whatif', 'po_curve', 'po_rank'];
-state.poAdd = { id: 'ACWI', x: 10, how: 'all', from: null }; state.poRankW = '10'; state.poRankAll = false;
-const poHowLab = { all: 'every other holding, in proportion', cash: 'cash first', one: 'one holding first' };
-function poWhatIf(k = state.poAdd.id, x = state.poAdd.x) {   // before and after on the same weeks (the window, cut by the added fund's history if needed)
-  const R = poCompute(); if (!R.st) return { R, reason: R.reason };
-  const p = R.p, a = state.poAdd, how = a.how === 'one' && a.from ? 'one:' + a.from : a.how === 'one' ? 'all' : a.how;
-  if (!poSeries(k, p.ccy)) return { R, reason: `No prices for ${poTick(k)} in ${p.ccy}.` };
-  const ids = [...new Set([...R.ids, k])], A = PM.pmAlign(ids.map(id => poSeries(id, p.ccy)), R.from);
-  if (A.n < 52) return { R, reason: `${poLabel(k)} shares only ${A.n} weeks with the portfolio and the benchmark; at least 52 are needed.` };
-  const w1 = poRound2(PM.pmAdd(R.wObj, k, x, how)), B = PM.pmVec(ids, R.bObj);   // rounded as they will be saved, so 'after' is what Apply gives
-  return { R, A, ids, how, w1, st0: PM.pmStats(A, PM.pmVec(ids, R.wObj), B), st1: PM.pmStats(A, PM.pmVec(ids, w1), B) };
-}
+// ------------------------------------------------------------------ ALLOCATION → PORTFOLIO: "CHANGE THE PORTFOLIO" (Design plan 6, Step 4)
+// One card beside Holdings with three tabs; it replaced the "Add a fund" sub-tab (Design plan 4, Step 4) and the Benchmark card.
+// Add a holding: every building block with the tracking error it would have given at the chosen weight. Adjust a weight: one
+// holding's curve of tracking error by weight, with the target. Benchmark: presets, one block, a two-part mix or custom rows.
+// Every figure is worked out with the weights a change would store (PM.pmSet through the rule and the locks, rounded to 0.01),
+// so the figure on a row is the Tracking error tile after pressing its button. Arithmetic on past returns, never advice.
 const poAsOf = (c, t) => { setAsOf(c, t); c.read && c.read.clear(); c.used && c.used.clear(); };   // date = the last week analysed, not the exchange rates read on the way
-// Target a tracking error (DESIGN_PLAN_4, "Later" item 1; owner's request 26 Nov 2026): the weight of the chosen fund at which
-// the tracking error reaches the portfolio's target (PM.pmTarget, searched every 0.1 point from 0 to 100%, paid for as chosen).
-// The weight is rounded to 0.1 point on the safe side (up when bringing it down, down when keeping it within) and the figure
-// shown is worked out again at that weight with the weights as they would be saved, like every 'after' figure.
 const PO_TARGET = 3;   // % a year, until the owner sets a target for a portfolio (kept with the portfolio in the vault)
 const poTgtOf = p => p && +p.target > 0 ? +p.target : PO_TARGET;
-function poTargetFor(W) {
-  const a = state.poAdd, T = poTgtOf(W.R.p), key = [W.R.key, a.id, W.how, T].join('|');
-  if (state.poTgt && state.poTgt.key === key) return state.poTgt;
-  const t = PM.pmTarget(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, T);
-  const xr = t.x == null ? null : Math.min(100, t.dir === 'down' ? Math.ceil(t.x * 10 - 1e-6) / 10 : Math.floor(t.x * 10 + 1e-6) / 10);
-  const W2 = xr == null || t.dir === 'at' ? null : poWhatIf(a.id, xr);
-  return (state.poTgt = { ...t, key, T, xr, teR: t.dir === 'at' ? t.te0 : W2 && W2.st1 ? W2.st1.te : null, loX: Math.round(t.lo[0] * 10) / 10 });
-}
-const poRound2 = w => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, +v.toFixed(2)]));
-const poRowsFrom = (p, w1) => { const out = [...new Set(poWorkRows(p).map(r => r[0]))].filter(id => (w1[id] || 0) > 1e-4).map(id => [id, +w1[id].toFixed(2)]);
-  for (const [id, v] of Object.entries(w1)) if (v > 1e-4 && !out.some(r => r[0] === id)) out.push([id, +v.toFixed(2)]); return out; };
-function renderPoWhatIf(c) {
-  if (poWait(c)) return;
-  const o = poStore(), R = poCompute(), p = R.p, a = state.poAdd, b = htmlBody(c);
-  if (!poBlocks()[a.id]) a.id = poBlocks().ACWI ? 'ACWI' : Object.keys(poBlocks()).find(k => poBlocks()[k].kind === 'fund');
-  const portSel = el('select', { class: 'mini-select', 'aria-label': 'Portfolio' }, ...o.ports.map(x => el('option', { value: x.id, text: x.name }))); portSel.value = o.sel;
-  portSel.onchange = () => poMutate(q => { q.sel = portSel.value; });
-  const slider = el('input', { type: 'range', min: 0, max: a.x > 50 ? 100 : 50, step: 0.1, value: a.x, 'aria-label': 'Weight to add' }), xLab = el('b', { text: a.x + '%' });
-  slider.addEventListener('input', () => { xLab.textContent = slider.value + '%'; });
-  slider.addEventListener('change', () => { a.x = +slider.value; PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); });
-  const how = el('select', { class: 'mini-select', 'aria-label': 'Paid for by' }, el('option', { value: 'all', text: 'all holdings, in proportion' }), el('option', { value: 'cash', text: 'cash first' }),
-    ...p.rows.filter(([id, w]) => +w > 0 && id !== a.id).map(([id]) => el('option', { value: 'one:' + id, text: 'from ' + poTick(id) + ' first' })));
-  how.value = a.how === 'one' && a.from ? 'one:' + a.from : a.how; if (!how.value) how.value = 'all';
-  how.onchange = () => { const v = how.value; if (v.startsWith('one:')) { a.how = 'one'; a.from = v.slice(4); } else { a.how = v; a.from = null; } PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); };
-  b.append(el('div', { class: 'po-what' }, el('label', {}, 'Portfolio ', portSel), el('label', {}, 'Weight ', slider, xLab), el('label', {}, 'Paid for by ', how)),
-    el('div', { class: 'po-pick' }, el('span', { class: 'muted small', text: 'Fund: ' }), el('b', { text: poLabel(a.id) }), el('span', { class: 'muted small', text: ' · ' + poSub(a.id) }),
-      poSearch('Change fund: name or ticker', id => { a.id = id; if (a.from === id) { a.how = 'all'; a.from = null; } PO_CARDS_ADD.forEach(k => cards[k].render()); }, [a.id])));
-  const W = poWhatIf();
-  if (!W.st1) { b.append(el('div', { class: 'empty', text: W.reason || 'Waiting for data.' })); setCount(c, ''); c.csv = null; setNote(c, ''); return; }
-  const tg = poTargetFor(W), tick = poTick(a.id), pc = v => fmtNum(v, 2) + '%', x1 = v => fmtNum(v, 1) + '%';
-  const tin = el('input', { type: 'number', class: 'po-tin', min: 0.1, max: 30, step: 0.1, value: String(tg.T), 'aria-label': 'Target tracking error, % a year' });
-  tin.addEventListener('change', () => { const v = Math.round(+tin.value * 10) / 10; if (!(v > 0 && v <= 30)) { tin.value = String(tg.T); return; } poEdit(q => { q.target = v; }); });
-  let msg, useX = null;
-  if (tg.dir === 'at') msg = `The portfolio is at ${pc(tg.te0)} already.`;
-  else if (tg.dir === 'down' && tg.xr != null) { msg = `${x1(tg.xr)} of ${tick} brings it down to ${pc(tg.teR)}.`; useX = tg.xr; }
-  else if (tg.dir === 'down') { msg = `${tick} cannot bring it down to ${pc(tg.T)}: the lowest is ${pc(tg.lo[1])}, at ${x1(tg.loX)}.`; useX = tg.loX; }
-  else if (tg.xr != null) { msg = `Up to ${x1(tg.xr)} of ${tick} keeps it within ${pc(tg.T)} (${pc(tg.teR)}).`; useX = tg.xr; }
-  else msg = `Even 100% of ${tick} keeps it within ${pc(tg.T)} (at most ${pc(tg.hi[1])}).`;
-  b.append(el('div', { class: 'po-target' }, el('label', {}, 'Target tracking error ', tin, '%'), el('span', { class: 'po-tmsg', text: msg }),
-    useX != null && Math.abs(useX - a.x) > 1e-9 ? el('button', { type: 'button', class: 'ghost', text: `Use ${x1(useX)}`, title: 'Set the weight above to this', onclick: () => { a.x = useX; PO_CARDS_ADD.slice(0, 2).forEach(k => cards[k].render()); } }) : ''));
-  const { st0, st1 } = W, row = (k, v0, v1, d) => el('div', {}, el('span', { class: 'k', text: k }), el('span', { class: 'v' }, v0, el('span', { class: 'arr', text: ' → ' }), el('b', { text: v1 })), el('span', { class: 'd', text: d || '' }));
-  const f2 = v => v == null ? '–' : fmtNum(v, 2), dte = st1.te - st0.te;
-  b.append(el('div', { class: 'po-ba' },
-    row('Tracking error', poPct(st0.te, 2), poPct(st1.te, 2), `${dte > 0.005 ? '+' : dte < -0.005 ? '−' : ''}${fmtNum(Math.abs(dte), 2)} pts`),
-    row('Beta to benchmark', f2(st0.beta), f2(st1.beta)), row('Correlation', f2(st0.corr), f2(st1.corr)),
-    row('Volatility', poPct(st0.volP), poPct(st1.volP), `benchmark ${poPct(st0.volB)}`), row('Return a year', poPct(st0.retP), poPct(st1.retP), `benchmark ${poPct(st0.retB)}`)),
-    el('div', { class: 'card-foot po-foot' }, el('span', { text: 'History, not a forecast.' }), el('span', {},
-      el('button', { type: 'button', class: 'ghost', text: 'Apply to this portfolio', title: 'Put these weights in the open portfolio as a change, to Save or Discard on Portfolio', onclick: () => {
-        const cur = poCur(), had = (R.wObj[a.id] || 0) > 0.005, txt = had ? `${poLabel(a.id)} +${poW1(a.x)} points, taken from ${poHowLab[a.how]}` : `＋ ${poLabel(a.id)} ${poW1(a.x)}%, taken from ${poHowLab[a.how]}`;
-        if (cur) poEdit(q => poDraftWrite(q, poRowsFrom(q, W.w1), { id: null, from: 0, text: txt })); goSub('alloc', 'Portfolio'); } }), ' ',
-      el('button', { type: 'button', class: 'ghost', text: 'Save as new', title: 'Keep the open portfolio as it is and save these weights as a new one', onclick: () => {
-        poMutate(q => { const cur = q.ports.find(x => x.id === q.sel), n = { ...JSON.parse(JSON.stringify(cur)), id: poId(), name: `${cur.name} + ${a.x}% ${poTick(a.id)}`, rows: poRowsFrom(cur, W.w1), updated: new Date().toISOString() }; delete n.draft; q.ports.push(n); q.sel = n.id; });
-        goSub('alloc', 'Portfolio'); } }))));
-  setCount(c, `vs ${poBenchName(p)}`);
-  c.csv = [['Measure', 'Before', 'After'], ['Tracking error %', st0.te, st1.te], ['Beta', st0.beta, st1.beta], ['Correlation', st0.corr, st1.corr], ['Volatility %', st0.volP, st1.volP], ['Return a year %', st0.retP, st1.retP],
-    [], ['Holding', 'Weight before %', 'Weight after %'], ...W.ids.map(id => [poLabel(id), (PM.pmVec(W.ids, W.R.wObj)[W.ids.indexOf(id)] * 100).toFixed(2), (W.w1[id] || 0).toFixed(2)]),
-    [], ['Target tracking error %', tg.T], [tg.dir === 'up' ? `Largest weight of ${tick} within the target %` : `Weight of ${tick} that reaches the target %`, tg.xr ?? ''], ['Tracking error at that weight %', tg.teR ?? '']];
-  setNote(c, `Adding ${a.x}% of ${poTick(a.id)}, paid for by ${poHowLab[a.how]}, ${dte < -0.005 ? 'would have lowered' : dte > 0.005 ? 'would have raised' : 'would have left'} the tracking error ${Math.abs(dte) > 0.005 ? `by ${fmtNum(Math.abs(dte), 2)} points ` : 'unchanged '}over ${st0.weeks} weeks to ${nice(st0.to)}, in ${p.ccy}.`
-    + (W.A.n < (W.R.A ? W.R.A.n : 0) ? ` The window is shorter than on Portfolio because ${poTick(a.id)}'s history starts in ${monthLab(W.A.dates[0])}.` : '') + poThinNote([a.id])
-    + ` Target: kept with each portfolio. The weight that reaches it is found by trying every 0.1 point of ${tick} from 0 to 100% of the portfolio, paid for as chosen above, and narrowing down where the tracking error first crosses the target; it is rounded to 0.1 point on the safe side (up when bringing the tracking error down, down when keeping it within) and the figure shown is worked out again at that weight. “Use” sets the weight above to it.`);
-  setSource(c, PO_SRC); poAsOf(c, st1.to);
-}
-function renderPoCurve(c) {
-  if (poWait(c)) return;
-  const W = poWhatIf(); if (!W.st1) return poEmpty(c, W.reason || 'Waiting for data.');
-  const a = state.poAdd, tg = poTargetFor(W), tX = tg.dir === 'at' ? null : tg.xr;
-  const xEnd = a.x > 50 || tX > 50 || (tg.dir === 'down' && tX == null && tg.loX > 50) ? 100 : 50;   // 0–100% only when the answer lies beyond 50%
-  const xs = [...new Set([...Array.from({ length: xEnd / 5 + 1 }, (_, i) => i * 5), a.x, ...[tX, tg.loX].filter(v => v != null && v <= xEnd)])].sort((p, q) => p - q);
-  const C = PM.pmCurve(W.A, W.ids, W.R.wObj, W.R.bObj, a.id, W.how, xs), lo = C.reduce((m, q) => q[1] < m[1] ? q : m), at = C.find(q => q[0] === a.x), tq = tX == null ? null : C.find(q => q[0] === tX);
-  c.titleEl.textContent = 'Tracking error by weight added';
-  const o = baseOpt(); o.legend.show = false;
-  o.grid = { left: 8, right: 18, top: 26, bottom: 24, containLabel: true };
-  o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => { const q = ps.find(x => x.seriesIndex === 0) || ps[0]; return `${poTick(a.id)} +${fmtNum(q.value[0], q.value[0] % 1 ? 1 : 0)}%: tracking error <b>${fmtNum(q.value[1], 2)}%</b>`; } };
-  o.xAxis = { type: 'value', min: 0, max: xEnd, interval: xEnd / 5, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false }, name: 'weight added', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: tok('--muted'), fontSize: 11 } };
-  o.yAxis = valAxis(v => fmtNum(v, 1) + '%', { scale: true });
-  const xl = v => fmtNum(v, v % 1 ? 1 : 0) + '%', ys = C.map(q => q[1]), pad = Math.max(0.05, (Math.max(...ys, tg.T) - Math.min(...ys, tg.T)) * 0.06);
-  const mk = (q, lab, filled, shape = 'circle', below = false) => ({ coord: q, value: lab, symbol: shape, symbolSize: shape === 'circle' ? 9 : 11, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
-    label: { show: true, formatter: lab, position: q[0] <= xEnd * 0.1 ? 'right' : q[0] >= xEnd * 0.9 ? 'left' : below ? 'bottom' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
-  o.series = [{ type: 'line', data: C, symbol: 'none', lineStyle: { width: 2, color: tok('--s1') }, itemStyle: { color: tok('--s1') },
-    markPoint: { data: [mk(at, `+${xl(a.x)} → ${fmtNum(at[1], 2)}%`, true), ...(lo[0] !== a.x && lo[0] !== tX ? [mk(lo, `lowest at ${xl(lo[0])}: ${fmtNum(lo[1], 2)}%`, false)] : []),
-      ...(tq && tX !== a.x ? [mk(tq, `target at ${xl(tX)}`, false, 'diamond', tq[1] > at[1])] : [])] } },
-    // the target: a dashed rule; the hidden points just above and below it keep it inside the axis, clear of the edges
-    { type: 'line', name: 'Target', data: [[0, tg.T - pad], [0, tg.T + pad]], symbol: 'none', silent: true, tooltip: { show: false }, lineStyle: { opacity: 0 }, z: 1,
-      markLine: { silent: true, symbol: 'none', lineStyle: { width: 1, type: 'dashed', color: tok('--muted') }, data: [{ yAxis: tg.T }],
-        label: { formatter: `target ${fmtNum(tg.T, 1)}%`, position: 'insideEndTop', color: tok('--muted'), fontSize: 10.5 } } }];
-  const ch = inst(c); ch.resize(); ch.setOption(o, true);
-  c.csv = [['Weight added %', 'Tracking error %'], ...C.map(([x, v]) => [x, v.toFixed(3)]), [], ['Target tracking error %', tg.T]];
-  setCount(c, poLabel(a.id));
-  setNote(c, (lo[0] === 0 ? `Any amount of ${poTick(a.id)} would have raised the tracking error: it moves away from what the benchmark holds.`
-    : lo[0] >= xEnd ? `More ${poTick(a.id)} lowered the tracking error all the way to ${xEnd}% (${fmtNum(lo[1], 2)}%).`
-    : `Adding ${poTick(a.id)} lowered the tracking error until about ${xl(lo[0])} of the portfolio (${fmtNum(lo[1], 2)}%); beyond that it rises again.`)
-    + ` Dashed line: the portfolio's target (${fmtNum(tg.T, 1)}%), set in the card beside this one.`);
-  setSource(c, PO_SRC); poAsOf(c, W.st1.to);
-}
-function poRankRows(x) {   // every fund added at x%, paid for in proportion; cached per portfolio state
+const PO_PICK_N = 8;   // rows of the picker at rest (the plan allows up to 10; 8 keeps the sub-tab within the height budget at 1280)
+state.poSide = { tab: 'add', grp: 'All', q: '', at: PO_ADD_AT, sort: 'az', all: false, adj: null, bmode: null };
+const poRuleLab = p => p.rule === 'cash' ? 'cash first' : 'every other holding, in proportion';
+const poBaseObj = p => Object.fromEntries((p.draft ? p.draft.rows : poRound2Rows(poScaledRows(p.rows))).map(([k, v]) => [k, v]));   // what poChange starts from
+const poSetW = (p, k, x) => PM.pmSet(poBaseObj(p), k, x, p.rule === 'cash' ? 'cash' : 'all', p.locks || []);   // the weights poChange(k, x) would store
+const poMatch = (b, words) => (hay => words.every(w => hay.includes(w)))([b.id, b.label, b.name, b.cls, b.grp, b.place, b.alias].join(' ').toLowerCase());
+const poStart = id => { const s = poSeries(id, (poCur() || {}).ccy || 'USD'); return s && s.t.length ? s.t[0] : null; };
+function poPickRows(x) {   // every block at x% of the portfolio (as poChange would set it): tracking error, change; cached per state
   const R = poCompute(); if (!R.st) return null;
-  const key = R.key + '|' + x; if (state.poRank && state.poRank.key === key) return state.poRank;
-  const rows = []; let skipped = 0;
+  const p = R.p, key = [R.key, x, p.rule, (p.locks || []).join(',')].join('|');
+  if (state.poPick && state.poPick.key === key) return state.poPick;
+  const out = {}, base = poBaseObj(p);
   for (const bk of Object.values(poBlocks())) {
-    if (bk.kind !== 'fund') continue;
-    const ids = [...new Set([...R.ids, bk.id])], ser = ids.map(id => poSeries(id, R.p.ccy)); if (ser.some(s => !s)) { skipped++; continue; }
-    const A = PM.pmAlign(ser, R.from); if (A.n < 52) { skipped++; continue; }
-    const B = PM.pmVec(ids, R.bObj), s0 = PM.pmStats(A, PM.pmVec(ids, R.wObj), B), s1 = PM.pmStats(A, PM.pmVec(ids, PM.pmAdd(R.wObj, bk.id, x, 'all')), B);
-    rows.push({ id: bk.id, te: s1.te, d: s1.te - s0.te, vol: s1.volP, beta: s1.beta, corr: s1.corr, weeks: A.n });
+    const held = (base[bk.id] || 0) > 0.005, ids = R.ids.includes(bk.id) ? R.ids : [...R.ids, bk.id], ser = ids.map(id => poSeries(id, p.ccy));
+    if (held) { out[bk.id] = { held: true }; continue; }
+    if (ser.some(s => !s)) { out[bk.id] = { why: `No prices in ${p.ccy}` }; continue; }
+    const A = ids === R.ids ? R.A : PM.pmAlign(ser, R.from);
+    if (A.n < 52) { out[bk.id] = { why: `Only ${A.n} weeks in common` }; continue; }
+    const st = PM.pmStats(A, PM.pmVec(ids, poSetW(p, bk.id, x)), PM.pmVec(ids, R.bObj));
+    out[bk.id] = { te: st.te, d: st.te - R.st.te, short: A.n < R.A.n ? R.A.n - A.n : 0 };
   }
-  rows.sort((p, q) => p.d - q.d);
-  return (state.poRank = { key, rows, skipped });
+  return (state.poPick = { key, out });
 }
-function renderPoRank(c) {
+function poSideTabs(c) {
+  const S = state.poSide, tabs = [['add', '＋ Add a holding'], ['adjust', 'Adjust a weight'], ['bench', 'Benchmark']];
+  return el('div', { class: 'po-tabs', role: 'tablist', 'aria-label': 'Change the portfolio' }, ...tabs.map(([k, t]) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), text: t,
+    onclick: () => { S.tab = k; c.render(); } })));
+}
+function renderPoSide(c) {   // key po_side
+  if (c.poCh) { c.poCh.dispose(); c.poCh = null; }
   if (poWait(c)) return;
-  const x = +state.poRankW, RR = poRankRows(x); if (!RR) return poEmpty(c, poCompute().reason || 'Waiting for data.');
-  c.titleEl.textContent = `What ${x}% of each fund would do`;
-  const rows = RR.rows, b = htmlBody(c), tb = el('tbody'), cut = !state.poRankAll && rows.length > 16, shown = cut ? [...rows.slice(0, 8), null, ...rows.slice(-6)] : rows;
-  const f2 = v => v == null ? '–' : fmtNum(v, 2), d2 = v => `${v > 0.005 ? '+' : v < -0.005 ? '−' : ''}${fmtNum(Math.abs(v), 2)}`;
-  for (const r of shown) {
-    if (!r) { tb.append(el('tr', { class: 'grp' }, el('td', { colspan: 6 }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${rows.length} (${rows.length - 14} more in the middle)`, onclick: () => { state.poRankAll = true; c.render(); } })))); continue; }
-    const thin = (poBlocks()[r.id] || {}).thin > PO_THIN;
-    tb.append(el('tr', { class: 'row' + (r.id === state.poAdd.id ? ' sel' : ''), style: 'cursor:pointer', title: `Try ${poTick(r.id)} in “What if I add a fund?”`,
-      onclick: () => { state.poAdd.id = r.id; PO_CARDS_ADD.forEach(k => cards[k].render()); cards.po_whatif.root.scrollIntoView({ block: 'center', behavior: 'smooth' }); } },
-      el('td', { class: 'l' }, poLabel(r.id), el('span', { class: 'cell-sub' }, poSub(r.id), thin ? el('span', { class: 'po-thin', text: 'thinly traded' }) : '')),
-      el('td', { class: 'num', text: poPct(r.te, 2) }), el('td', { class: 'num strong', text: d2(r.d) }), el('td', { class: 'num', text: poPct(r.vol) }), el('td', { class: 'num', text: f2(r.beta) }), el('td', { class: 'num', text: f2(r.corr) })));
-  }
-  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...[`Fund, at ${x}% of the portfolio`, 'Tracking error', 'Change, pts', 'Volatility', 'Beta', 'Correlation'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
-    el('div', { class: 'card-foot' }, el('span', { text: 'Arithmetic on past returns, not a recommendation.' })));
-  if (state.poRankAll && rows.length > 16) b.append(el('button', { type: 'button', class: 'ghost more-btn', text: 'Show fewer', onclick: () => { state.poRankAll = false; c.render(); } }));
-  setCount(c, `${rows.length} funds`);
-  c.csv = [['Fund', 'Ticker', `Tracking error with ${x}% added %`, 'Change pts', 'Volatility %', 'Beta', 'Correlation', 'Weeks'], ...rows.map(r => [poLabel(r.id), poTick(r.id), r.te.toFixed(3), r.d.toFixed(3), r.vol.toFixed(2), r.beta, r.corr, r.weeks])];
-  const R = poCompute();
-  setNote(c, (cut ? `The eight funds that would have lowered the tracking error most and the six that would have raised it most, of ${rows.length}. ` : '')
-    + `Each fund added at ${x}% of ${R.p.name}, paid for by every other holding in proportion, against ${poBenchName(R.p)}, over the same window as Portfolio (or shorter where a fund's history is). Click a row to try it above.`
-    + (RR.skipped ? ` ${RR.skipped} fund${RR.skipped > 1 ? 's are' : ' is'} left out: fewer than 52 weeks in common.` : ''));
+  const R = poCompute(), b = htmlBody(c), S = state.poSide;
+  b.append(poSideTabs(c));
+  c.csv = null;
+  if (S.tab === 'bench') return poSideBench(c, b, R);
+  if (!R.st) { b.append(el('div', { class: 'empty', text: R.reason || 'Waiting for data.' })); setCount(c, ''); setNote(c, ''); setSource(c, PO_SRC); return; }
+  if (S.tab === 'adjust') return poSideAdjust(c, b, R);
+  return poSideAdd(c, b, R);
+}
+
+// ---- Add a holding
+function poSideAdd(c, b, R) {
+  const S = state.poSide, p = R.p, all = Object.values(poBlocks());
+  const q = el('input', { type: 'search', class: 'perf-search po-q', placeholder: 'Search: a country, an index or a ticker (Japan, MSCI EM, CSPX…)', 'aria-label': 'Search the building blocks', value: S.q });
+  const chips = el('div', { class: 'seg-chips po-groups', role: 'group', 'aria-label': 'Groups' });
+  const at = el('input', { type: 'number', class: 'mp-w', min: 0.1, max: 100, step: 0.1, value: String(S.at), 'aria-label': 'Weight to add, %' });
+  const sortB = el('button', { type: 'button', class: 'linkish' }), box = el('div', {});
+  const drawChips = () => chips.replaceChildren(...['All', ...PO_GROUPS].map(g => { const n = g === 'All' ? all.length : all.filter(x => x.grp === g).length; return n ? el('button', { type: 'button', 'aria-selected': String(S.grp === g), text: `${g.replace(', Middle East and Africa', ', Middle East, Africa').replace('Gold, cash and property', 'Gold, cash, property')} ${n}`,
+    onclick: () => { S.grp = g; S.all = false; drawChips(); draw(); } }) : null; }).filter(Boolean));
+  const draw = () => {
+    const P = poPickRows(S.at), words = S.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let L = all.filter(x => (S.grp === 'All' || x.grp === S.grp) && (!words.length || poMatch(x, words)));
+    const qq = S.q.trim().toLowerCase();
+    L.sort(S.sort === 'te' ? (x, y) => ((P.out[x.id] || {}).d ?? 1e9) - ((P.out[y.id] || {}).d ?? 1e9) || x.label.localeCompare(y.label)
+      : words.length ? (x, y) => poRankHit(x, qq) - poRankHit(y, qq) || x.label.localeCompare(y.label) : (x, y) => x.label.localeCompare(y.label));
+    const n = L.length, cut = !S.all && n > PO_PICK_N, shown = cut ? L.slice(0, PO_PICK_N) : L, tb = el('tbody'), x1 = v => fmtNum(v, v % 1 ? 1 : 0);
+    sortB.textContent = S.sort === 'te' ? 'Sorted by effect on tracking error · sort A to Z' : 'Sorted A to Z · sort by effect on tracking error';
+    for (const bk of shown) {
+      const r = P.out[bk.id] || {}, thin = bk.thin > PO_THIN, t0 = r.short ? poStart(bk.id) : null;
+      const tags = [thin ? el('span', { class: 'po-thin', text: 'thinly traded', title: `Price unchanged in ${fmtNum(bk.thin * 100, 0)}% of the last three years' weeks` }) : null,
+        r.short ? el('span', { class: 'po-thin po-short', text: 'short history', title: `Prices from ${t0 ? monthLab(t0) : '–'}: the figures would cover ${r.short} fewer weeks` }) : null].filter(Boolean);
+      tb.append(el('tr', { class: 'row' + (r.held ? ' po-held' : '') },
+        el('td', { class: 'l' }, el('span', { class: 'po-nm', text: bk.label }), el('span', { class: 'cell-sub', title: poSub(bk.id) }, poSub(bk.id), ...tags)),
+        el('td', { class: 'num', title: r.why || '', text: r.te != null ? poPct(r.te, 1) : '–' }),
+        el('td', { class: 'num muted', text: r.d != null ? poPts(r.d) : '' }),
+        el('td', { class: 'po-acts' }, r.held ? el('span', { class: 'muted small', text: 'in the portfolio' })
+          : el('button', { type: 'button', class: 'ghost', text: '＋ Add', title: `Add ${bk.label} at ${x1(S.at)}%, taken from ${poRuleLab(p)}`, 'aria-label': `Add ${bk.label}`, onclick: () => { poChange(bk.id, S.at); } }))));
+    }
+    if (!n) tb.append(el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'Nothing matches. ', el('a', { href: `https://github.com/${REPO_PATH}/edit/main/watchlist.txt`, target: '_blank', rel: 'noopener', text: 'Add a ticker to watchlist.txt →' }), el('span', { text: ' It appears after the next daily refresh.' }))));
+    if (cut) tb.append(el('tr', { class: 'grp cap-row' }, el('td', { colspan: 4 }, el('button', { type: 'button', class: 'ghost more-btn', text: `Show all ${n}`, onclick: () => { S.all = true; draw(); } }))));
+    else if (S.all && n > PO_PICK_N) tb.append(el('tr', { class: 'grp cap-row' }, el('td', { colspan: 4 }, el('button', { type: 'button', class: 'ghost more-btn', text: 'Show fewer', onclick: () => { S.all = false; draw(); } }))));
+    box.replaceChildren(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table po-pick-t' },
+      el('thead', {}, el('tr', {}, ...[`What it tracks`, `Tracking error with ${x1(S.at)}%`, 'Change', ''].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)));
+    const gl = S.grp === 'All' ? 'every group' : S.grp;
+    setCount(c, `${n} building block${n === 1 ? '' : 's'}`);
+    setNote(c, `${n} building block${n === 1 ? '' : 's'}${words.length ? ` matching “${S.q.trim()}”` : ''} in ${gl}. Each figure is what the tracking error would have been with ${x1(S.at)}% of that block, taken from ${poRuleLab(p)} (the rule under Holdings; locked holdings stay), against ${poBenchName(p)} over ${R.yrs ? 'the past ' + R.yrs + ' year' + (R.yrs > 1 ? 's' : '') : 'the whole shared history'}, in ${p.ccy}; Change is against ${poPct(R.st.te)} now. “＋ Add” makes it a change to Save or Discard. A block tagged “short history” would shorten the window; “index, no dividends” follows an index level rather than a fund. Arithmetic on past returns, not a forecast.`);
+    c.csv = [['What it tracks', 'Fund', 'Ticker', 'Group', `Tracking error with ${S.at}% %`, 'Change pts', 'Note'], ...L.map(bk => { const r = P.out[bk.id] || {}; return [bk.label, bk.name || '', poTick(bk.id), bk.grp || '', r.te != null ? r.te.toFixed(3) : '', r.d != null ? r.d.toFixed(3) : '', r.held ? 'in the portfolio' : r.why || (r.short ? `short history (${r.short} weeks fewer)` : '')]; })];
+  };
+  q.addEventListener('input', () => { S.q = q.value; S.all = false; if (S.q.trim() && S.grp !== 'All') { S.grp = 'All'; drawChips(); } draw(); });
+  q.addEventListener('keydown', e => { if (e.key === 'Escape') { q.value = ''; S.q = ''; draw(); } });
+  at.addEventListener('change', () => { const v = Math.round(+at.value * 10) / 10; if (!(v > 0 && v <= 100)) { at.value = String(S.at); return; } S.at = v; draw(); });
+  sortB.onclick = () => { S.sort = S.sort === 'te' ? 'az' : 'te'; draw(); };
+  drawChips();
+  b.append(q, chips, el('div', { class: 'po-addat' }, el('label', {}, 'Add at ', at, ' %'), sortB), box);
+  draw();
   setSource(c, PO_SRC); poAsOf(c, R.st.to);
 }
-function buildAddFund(g) {
-  makeCard(g, { key: 'po_whatif', title: 'What if I add a fund?', range: false, render: renderPoWhatIf });
-  makeCard(g, { key: 'po_curve', title: 'Tracking error by weight added', range: false, render: renderPoCurve });
-  makeCard(g, { key: 'po_rank', title: 'What 10% of each fund would do', wide: true, range: false, seg: { key: 'poRankW', options: [['5', '5%'], ['10', '10%'], ['20', '20%']] }, render: renderPoRank });
-  for (const k of ['po_whatif', 'po_rank']) { const r = cards[k].root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
+
+// ---- Adjust a weight
+function poSideAdjust(c, b, R) {
+  const S = state.poSide, p = R.p, base = poBaseObj(p), held = Object.keys(base).filter(k => base[k] > 0.005);
+  if (!held.length) { b.append(el('div', { class: 'empty', text: 'Add a holding first.' })); return; }
+  const k = held.includes(S.adj) ? S.adj : held[0], now = base[k], rule = p.rule === 'cash' ? 'cash' : 'all', locks = p.locks || [];
+  const T = poTgtOf(p), tkey = [R.key, k, rule, locks.join(','), T].join('|');
+  const tg = state.poTgt && state.poTgt.key === tkey ? state.poTgt : (state.poTgt = { key: tkey, ...PM.pmTarget(R.A, R.ids, base, R.bObj, k, rule, T, 100, 0.1, locks) });
+  const xr = tg.x == null || tg.dir === 'at' ? null : Math.min(100, tg.dir === 'down' ? Math.ceil(tg.x * 10 - 1e-6) / 10 : Math.floor(tg.x * 10 + 1e-6) / 10);
+  const teAt = x => PM.pmStats(R.A, PM.pmVec(R.ids, poSetW(p, k, x)), PM.pmVec(R.ids, R.bObj)).te;   // with the weights a change would store
+  const teR = xr == null ? null : teAt(xr), loX = Math.round(tg.lo[0] * 10) / 10, tick = poLabel(k), pc = v => fmtNum(v, 2) + '%', x1 = v => fmtNum(v, v % 1 ? 1 : 0) + '%';
+  const xEnd = now > 50 || xr > 50 || (tg.dir === 'down' && xr == null && loX > 50) ? 100 : 50;
+  const sel = el('select', { class: 'mini-select', 'aria-label': 'Holding' }, ...held.map(id => el('option', { value: id, text: `${poLabel(id)} (${poTick(id)})` }))); sel.value = k;
+  sel.onchange = () => { S.adj = sel.value; c.render(); };
+  const slider = el('input', { type: 'range', min: 0, max: xEnd, step: 0.1, value: now, 'aria-label': `Weight of ${tick}, %` }), xLab = el('b', { text: x1(Math.round(now * 10) / 10) });
+  slider.addEventListener('input', () => { xLab.textContent = x1(+slider.value); });
+  slider.addEventListener('change', () => { S.adj = k; poChange(k, Math.round(+slider.value * 10) / 10); });
+  b.append(el('div', { class: 'po-what' }, el('label', {}, 'Holding ', sel), el('label', {}, 'Weight ', slider, xLab)));
+  // the curve: tracking error by this holding's whole weight, the others making room by the rule; locked holdings stay
+  const xs = [...new Set([...Array.from({ length: xEnd / 2.5 + 1 }, (_, i) => i * 2.5), now, ...[xr, loX].filter(v => v != null && v <= xEnd)])].sort((a, z) => a - z);
+  const C = PM.pmCurve(R.A, R.ids, base, R.bObj, k, rule, xs, locks), lo = C.reduce((m, v) => v[1] < m[1] ? v : m), atQ = C.find(v => v[0] === now), tq = xr == null ? null : C.find(v => v[0] === xr);
+  const box = el('div', { class: 'po-curve', role: 'img', 'aria-label': `Tracking error by the weight of ${tick}` }); b.append(box);
+  let msg, useX = null;
+  if (tg.dir === 'at') msg = `With no ${tick} the portfolio is at ${pc(tg.te0)} already.`;
+  else if (tg.dir === 'down' && xr != null) { msg = `${x1(xr)} of ${tick} brings it down to ${pc(teR)}.`; useX = xr; }
+  else if (tg.dir === 'down') { msg = `${tick} cannot bring it down to ${pc(T)}: the lowest is ${pc(tg.lo[1])}, at ${x1(loX)}.`; useX = loX; }
+  else if (xr != null) { msg = `Up to ${x1(xr)} of ${tick} keeps it within ${pc(T)} (${pc(teR)}).`; useX = xr; }
+  else msg = `Any weight of ${tick} keeps it within ${pc(T)} (at most ${pc(tg.hi[1])}).`;
+  const tin = el('input', { type: 'number', class: 'po-tin', min: 0.1, max: 30, step: 0.1, value: String(T), 'aria-label': 'Target tracking error, % a year' });
+  tin.addEventListener('change', () => { const v = Math.round(+tin.value * 10) / 10; if (!(v > 0 && v <= 30)) { tin.value = String(T); return; } poEdit(q => { q.target = v; }); });
+  b.append(el('div', { class: 'po-target' }, el('label', {}, 'Target tracking error ', tin, '%'), el('span', { class: 'po-tmsg', text: msg }),
+    useX != null && Math.abs(useX - now) >= 0.05 ? el('button', { type: 'button', class: 'ghost', text: `Use ${x1(useX)}`, title: `Set ${tick} to ${x1(useX)} (a change to Save or Discard)`, onclick: () => { S.adj = k; poChange(k, useX); } }) : null));
+  setTimeout(() => {   // drawn once the box is in the page, so it has a width
+    if (!box.isConnected) return;
+    const ch = echarts.init(box, null, { renderer: 'canvas' }); c.poCh = ch;
+    const xl = v => fmtNum(v, v % 1 ? 1 : 0) + '%', ys = C.map(v => v[1]), pad = Math.max(0.05, (Math.max(...ys, T) - Math.min(...ys, T)) * 0.06);
+    const mk = (pt, lab, filled, shape = 'circle', below = false) => ({ coord: pt, value: lab, symbol: shape, symbolSize: shape === 'circle' ? 9 : 11, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
+      label: { show: true, formatter: lab, position: pt[0] <= xEnd * 0.12 ? 'right' : pt[0] >= xEnd * 0.88 ? 'left' : below ? 'bottom' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
+    const o = baseOpt(); o.legend.show = false;
+    o.grid = { left: 8, right: 18, top: 24, bottom: 22, containLabel: true };
+    o.tooltip = { ...o.tooltip, trigger: 'axis', formatter: ps => { const v = (ps.find(z => z.seriesIndex === 0) || ps[0]).value; return `${tick} at ${xl(v[0])}: tracking error <b>${fmtNum(v[1], 2)}%</b>`; } };
+    o.xAxis = { type: 'value', min: 0, max: xEnd, interval: xEnd / 5, axisLabel: { color: tok('--muted'), fontSize: 11, formatter: v => v + '%' }, splitLine: { show: false } };
+    o.yAxis = valAxis(v => fmtNum(v, 1) + '%', { scale: true });
+    o.series = [{ type: 'line', data: C, symbol: 'none', lineStyle: { width: 2, color: tok('--s1') }, itemStyle: { color: tok('--s1') },
+      markPoint: { data: [mk(atQ, `now ${xl(Math.round(now * 10) / 10)} → ${fmtNum(atQ[1], 2)}%`, true), ...(Math.abs(lo[0] - now) > 0.6 && lo[0] !== xr ? [mk(lo, `lowest at ${xl(lo[0])}: ${fmtNum(lo[1], 2)}%`, false, 'circle', true)] : []),
+        ...(tq && Math.abs(xr - now) > 0.6 ? [mk(tq, `target at ${xl(xr)}`, false, 'diamond', tq[1] > atQ[1])] : [])] } },
+      { type: 'line', name: 'Target', data: [[0, T - pad], [0, T + pad]], symbol: 'none', silent: true, tooltip: { show: false }, lineStyle: { opacity: 0 }, z: 1,
+        markLine: { silent: true, symbol: 'none', lineStyle: { width: 1, type: 'dashed', color: tok('--muted') }, data: [{ yAxis: T }], label: { formatter: `target ${fmtNum(T, 1)}%`, position: 'insideEndTop', color: tok('--muted'), fontSize: 10.5 } } }];
+    ch.setOption(o, true);
+  }, 0);
+  setCount(c, tick);
+  c.csv = [[`Weight of ${tick} %`, 'Tracking error %'], ...C.map(([x, v]) => [x, v.toFixed(3)]), [], ['Target tracking error %', T], [tg.dir === 'up' ? `Largest weight within the target %` : `Weight that reaches the target %`, xr ?? ''], ['Tracking error at that weight %', teR ?? '']];
+  setNote(c, (lo[0] <= 0.01 ? `Any amount of ${tick} raises the tracking error: it moves the portfolio away from what the benchmark holds.`
+    : lo[0] >= xEnd ? `More ${tick} lowers the tracking error all the way to ${xEnd}% (${fmtNum(lo[1], 2)}%).`
+    : `The tracking error is lowest with about ${fmtNum(lo[0], lo[0] % 1 ? 1 : 0)}% of ${tick} (${fmtNum(lo[1], 2)}%); it is ${fmtNum(atQ[1], 2)}% at ${fmtNum(Math.round(now * 10) / 10, 1)}% now.`)
+    + ` The curve sets ${tick}'s whole weight, the rest making room from ${poRuleLab(p)}; locked holdings stay. Moving the slider or pressing “Use” changes the holding on the left, as a change to Save or Discard.`
+    + ` Target: kept with each portfolio. The weight that reaches it is found by trying every 0.1 point from 0 to 100% and narrowing down where the tracking error first crosses the target; it is rounded to 0.1 point on the safe side (up when bringing the tracking error down, down when keeping it within), and the figure quoted is worked out again at that weight. Dashed line: the target. History, not a forecast.`);
+  setSource(c, PO_SRC); poAsOf(c, R.st.to);
 }
-SUBTABS.alloc.push(['Add a fund', ['po_whatif', 'po_curve', 'po_rank']]);
+
+// ---- Benchmark: presets, one block, a two-part mix, or custom rows; a change applies at once
+const poBenchMode = p => state.poSide.bmode || (p.bench.rows.length === 1 ? 'one' : p.bench.rows.length === 2 ? 'mix' : 'custom');
+const poPresetOf = rows => { const key = JSON.stringify(rows.map(([k, w]) => [k, +w]).sort()); const m = PO_BENCH.find(([, , r]) => JSON.stringify(r.map(([k, w]) => [k, +w]).sort()) === key); return m ? m[0] : 'custom'; };
+const poSetBench = rows => poEdit(q => { q.bench = { preset: poPresetOf(rows), rows }; });
+function poBlockSelect(v, label, onPick) {   // every block, by group
+  const s = el('select', { class: 'mini-select', 'aria-label': label });
+  for (const g of PO_GROUPS) { const L = Object.values(poBlocks()).filter(x => x.grp === g).sort((a, z) => a.label.localeCompare(z.label)); if (L.length) s.append(el('optgroup', { label: g }, ...L.map(x => el('option', { value: x.id, text: `${x.label} · ${poTick(x.id)}` })))); }
+  s.value = v; s.onchange = () => onPick(s.value); return s;
+}
+function poSideBench(c, b, R) {
+  const p = R.p, S = state.poSide, mode = poBenchMode(p), sb = poScaled(p.bench.rows), work = poWorkRows(p), sw = poScaled(work);
+  b.append(el('div', { class: 'seg-chips po-groups po-presets' }, ...PO_BENCH.map(([k, lab, rows]) => el('button', { type: 'button', 'aria-selected': String(p.bench.preset === k && !S.bmode), text: lab,
+    onclick: () => { S.bmode = null; poEdit(q => { q.bench = { preset: k, rows: rows.map(r => r.slice()) }; }); } })),
+    el('button', { type: 'button', 'aria-selected': String(p.bench.preset === 'custom' && mode === 'one'), text: 'One block…', title: 'Any building block alone', onclick: () => { S.bmode = 'one'; c.render(); } }),
+    el('button', { type: 'button', 'aria-selected': String(p.bench.preset === 'custom' && mode !== 'one' || S.bmode === 'custom'), text: 'Custom…', title: 'Edit the rows', onclick: () => { S.bmode = 'custom'; c.render(); } })));
+  if (mode === 'mix') {   // two parts: a percentage and a block on each side; the second percentage follows the first
+    const [[a, wa], [z]] = p.bench.rows, pa = Math.round(sb(a) * 10) / 10;
+    const pin = el('input', { type: 'number', class: 'mp-w', min: 0, max: 100, step: 1, value: String(pa), 'aria-label': 'Weight of the first part, %' });
+    pin.addEventListener('change', () => { const v = Math.round(Math.min(100, Math.max(0, +pin.value || 0)) * 10) / 10; poSetBench([[a, v], [z, Math.round((100 - v) * 10) / 10]]); });
+    b.append(el('div', { class: 'po-two' }, el('label', {}, pin, ' % ', poBlockSelect(a, 'First part', id => poSetBench([[id, pa], [z, Math.round((100 - pa) * 10) / 10]]))),
+      el('label', {}, el('span', { class: 'po-follow', text: fmtNum(Math.round((100 - pa) * 10) / 10, (100 - pa) % 1 ? 1 : 0) }), ' % ', poBlockSelect(z, 'Second part', id => poSetBench([[a, pa], [id, Math.round((100 - pa) * 10) / 10]])))),
+      el('p', { class: 'muted small po-hint', text: 'Any building block can stand on either side. “One block…” makes a single index the benchmark; “Custom…” opens rows like the holdings.' }));
+  } else if (mode === 'one') {
+    const cur = p.bench.rows.length === 1 ? p.bench.rows[0][0] : null;
+    b.append(el('div', { class: 'po-pick' }, el('span', { class: 'muted small', text: 'Benchmark: ' }), el('b', { text: cur ? poLabel(cur) : 'pick a block' }), cur ? el('span', { class: 'muted small', text: ' · ' + poSub(cur) }) : null,
+      poSearch('One block alone: a country, an index or a ticker', id => { S.bmode = null; poSetBench([[id, 100]]); }, cur ? [cur] : [])));
+  } else {
+    const tb = el('tbody');
+    for (const [id, w] of p.bench.rows) {
+      const inp = poWeightInput(w, v => poEdit(q => { const r = q.bench.rows.find(x => x[0] === id); if (r) r[1] = v; q.bench.preset = poPresetOf(q.bench.rows); }), `Benchmark weight of ${poLabel(id)}`); inp.dataset.id = id;
+      tb.append(el('tr', { class: 'row' }, el('td', { class: 'l' }, poLabel(id), el('span', { class: 'cell-sub', text: poSub(id) })), el('td', { class: 'num' }, inp),
+        el('td', {}, el('button', { type: 'button', class: 'ghost', text: '✕', title: `Remove ${poLabel(id)} from the benchmark`, onclick: () => poEdit(q => { q.bench.rows = q.bench.rows.filter(r => r[0] !== id); q.bench.preset = poPresetOf(q.bench.rows); }) }))));
+    }
+    b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table' }, el('thead', {}, el('tr', {}, ...['Benchmark holding', 'Weight', ''].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), tb)),
+      poSearch('＋ Add to the benchmark', id => poEdit(q => { if (!q.bench.rows.some(r => r[0] === id)) q.bench.rows.push([id, 0]); q.bench.preset = 'custom'; }) || poFocus(c, id), p.bench.rows.map(r => r[0])),
+      el('p', { class: 'muted small po-hint', text: 'Weights or amounts: scaled to 100%.' }));
+  }
+  const mix = PO_CLASSES.map(cl => [cl, work.filter(([id]) => poClass(id) === cl).reduce((s, [id]) => s + sw(id), 0), p.bench.rows.filter(([id]) => poClass(id) === cl).reduce((s, [id]) => s + sb(id), 0)]).filter(([, x, y]) => x > 0.05 || y > 0.05);
+  b.append(el('h3', { class: 'po-h', text: `Mix by asset class: portfolio${p.draft ? ' (with your changes)' : ''} vs benchmark` }), ...mix.map(([cl, x, y]) => el('div', { class: 'po-mix' }, el('span', { class: 'nm', text: cl }),
+    el('span', { class: 'bar', title: `Portfolio ${fmtNum(x, 1)}% (bar) · benchmark ${fmtNum(y, 1)}% (line)` }, el('i', { style: `width:${Math.min(100, x)}%` }), el('b', { style: `width:${Math.min(100, y)}%` })),
+    el('span', { class: 'v' }, `${fmtNum(x, 0)}% `, el('span', { class: 'muted', text: `vs ${fmtNum(y, 0)}%` })))));
+  const words = p.bench.rows.filter(([, w]) => +w > 0).map(([id]) => `${fmtNum(sb(id), sb(id) % 1 ? 1 : 0)}% ${poLabel(id)}`);
+  setCount(c, poBenchName(p));
+  c.csv = [['Benchmark holding', 'Ticker', 'Weight %'], ...p.bench.rows.map(([id]) => [poLabel(id), poTick(id), sb(id).toFixed(2)]), [], ['Asset class', 'Portfolio %', 'Benchmark %'], ...mix.map(([cl, x, y]) => [cl, x.toFixed(2), y.toFixed(2)])];
+  setNote(c, `The benchmark is ${words.length > 1 ? words.slice(0, -1).join(', ') + ' and ' + words.slice(-1) : words[0] || 'empty'}. A benchmark change applies at once (it is a setting, not a change to the holdings). The world mixes hold world equities (iShares MSCI ACWI) and global bonds hedged to the dollar (iShares Global Aggregate, AGGU). Bar = the portfolio, line = the benchmark.`);
+  setSource(c, 'Your choice of benchmark; prices as in the other cards'); poAsOf(c, R.st ? R.st.to : null);
+}
+function poOpenSide(tab, bmode) {   // from the bar: open a tab of the card and bring it into view
+  state.poSide.tab = tab; if (bmode !== undefined) state.poSide.bmode = bmode;
+  const c = cards.po_side; if (!c) return; c.render(); c.root.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}

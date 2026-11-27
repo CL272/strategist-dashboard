@@ -6473,7 +6473,7 @@ function renderCalNext(c) {   // Design plan 2: at most six key events in the ne
 const SUBTABS = {
   overview: [['Today', ['#ovLead', 'moved', 'changes', 'ov_signals', 'fragile', 'cal_next', 'headlines', 'points']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  alloc: [['Portfolio', ['#poBar', '#poKpis', '#poChanges', 'idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress']]],   // Design plan 4 (was "Model portfolio")
+  alloc: [['Portfolio', ['#poBar', '#poKpis', '#poChanges', 'idea_model', 'po_side', 'idea_modelchart', 'po_src', 'idea_stress']]],   // Design plan 4 (was "Model portfolio"); Design plan 6 folded "Add a fund" in
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],
@@ -7280,6 +7280,7 @@ const OLD_SUBS = {
   europe: [['europe', 'Economy'], ['europe', 'Rates & bonds'], ['europe', 'Equities']],
   japan: [['japan', 'Economy'], ['japan', 'Rates & bonds']], australia: [['australia', 'Economy'], ['australia', 'Rates & bonds']],
   markets: [['markets', 'Performance'], ['markets', 'Breadth'], ['us', 'Sectors & styles'], ['markets', 'Trend'], ['markets', 'Seasonality'], ['markets', 'Commodities']],
+  alloc: [['alloc', 'Evidence board'], ['alloc', 'In ringgit'], ['alloc', 'Drawdowns'], ['alloc', 'Portfolio'], ['alloc', 'Portfolio']],   // before Design plan 6: … Portfolio · Add a fund
 };
 // ---- tiles: at most 5 per sub-tab, chosen for that sub-tab (label prefixes, in order); no set = the first 5
 const TILE_MAX = 5;
@@ -7512,6 +7513,7 @@ async function init() {
     h.set('tab', to[0]); h.set('sub', String(to[1] ? Math.max(0, subIndexOf(to[0], to[1])) : 0)); h.set('v', '4');
   }
   if (h.get('tab') === 'cnjp') { if (+h.get('sub') === 1) { h.set('tab', 'japan'); h.set('sub', '0'); } else { h.set('tab', 'cn'); h.set('sub', String(subIndexOf('cn', 'Economy'))); } h.set('v', '4'); }
+  if (h.get('tab') === 'alloc' && +h.get('sub') === OLD_SUBS.alloc.length - 1) h.set('sub', String(subIndexOf('alloc', 'Portfolio')));   // Add a fund, folded into Portfolio (Design plan 6)
   if (OLD_SUBS[h.get('tab')] && +h.get('sub') > 0 && !h.has('v')) {   // links made before the pages were split by asset class
     const [t, lab] = OLD_SUBS[h.get('tab')][+h.get('sub')] || [h.get('tab')];
     h.set('tab', t); h.set('sub', String(Math.max(0, subIndexOf(t, lab)))); h.set('v', '4');

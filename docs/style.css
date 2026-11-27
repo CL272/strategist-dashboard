@@ -1248,3 +1248,41 @@ tr.po-locked .po-step { background: var(--wash); }
   .po-step button { width: 22px; }
   .po-step input { width: 44px; padding: 0 4px; }
 }
+/* Design plan 6, Step 4: the "Change the portfolio" card (tabs, group chips, the picker, the curve, the benchmark mix) */
+.po-tabs { display: flex; gap: 2px; margin: 0 0 10px; border-bottom: 1px solid var(--grid); overflow-x: auto; scrollbar-width: none; }
+.po-tabs button { border: 0; background: transparent; padding: 6px 11px; font: inherit; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; white-space: nowrap; }
+.po-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--sel); }
+.po-q { width: 100%; margin: 0 0 8px; }
+.po-groups { margin-bottom: 8px; flex-wrap: wrap; }
+.po-groups button { font-size: 12px; padding: 2px 9px; }
+.po-addat { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; margin: 0 0 6px; font-size: 12.5px; color: var(--ink-2); }
+.po-addat .mp-w { width: 58px; }
+button.linkish { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: var(--link, var(--accent)); cursor: pointer; text-align: right; }
+button.linkish:hover { text-decoration: underline; }
+tr.po-held td { color: var(--muted); }
+table.po-pick-t td.l .po-nm { color: var(--ink); }
+.po-short { border-color: var(--muted); color: var(--muted); }
+.po-two { display: grid; gap: 6px; font-size: 13px; margin-bottom: 4px; }
+.po-two label { display: flex; align-items: center; gap: 6px; }
+.po-two .mp-w { width: 58px; }
+.po-two .mini-select { max-width: 300px; min-width: 0; flex: 1 1 auto; font-size: 13px; padding: 3px 6px; }
+.po-follow { display: inline-block; width: 58px; text-align: right; padding-right: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.po-hint { margin: 6px 0 10px; }
+.po-curve { width: 100%; height: 220px; }
+.po-addrow { margin-top: 8px; }
+.po-addrow .ghost { font-size: 12.5px; padding: 4px 11px; border-radius: 7px; }
+table.po-pick-t td { padding-top: 5px; padding-bottom: 5px; }
+table.po-pick-t th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+table.po-pick-t th:nth-child(2) { min-width: 100px; }
+table.po-pick-t .po-acts .small { display: inline-block; max-width: 66px; white-space: normal; line-height: 1.2; text-align: right; }
+table.po-pick-t .po-acts .ghost { padding: 2px 8px; }
+@media (min-width: 641px) {
+  table.po-pick-t td.l { width: 100%; max-width: 0; }
+  table.po-pick-t td.l .cell-sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 640px) {   /* phones: the picker's names stay compact; the figures and "Add" scroll beside them */
+  table.po-pick-t td.l { min-width: 48vw; max-width: 48vw; }
+  table.po-pick-t td.l .cell-sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table.po-pick-t th:nth-child(2) { min-width: 72px; }
+  .po-addat button.linkish { text-align: left; }
+}
