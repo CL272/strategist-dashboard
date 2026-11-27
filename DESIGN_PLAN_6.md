@@ -1,6 +1,7 @@
 # Design plan 6: a clearer portfolio workspace, and many more building blocks
 
-**Status (26 Nov 2026): waiting for the owner's decisions (five, at the end). Nothing is built.**
+**Status (27 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
+Build Steps 1 to 5 in order, one step per commit.**
 Written after the owner said of Allocation → Portfolio: "can you plan to make it more easier to add and see the changes?
 It's abit confusing now", and asked for "more country building blocks, make it as extensive as possible, as well as
 enhanced of the region building blocks. Eg: MSCI USA, SP500, Europe, Japan, MSCI asia ex Japan, MSCI EM and etc".
@@ -247,17 +248,17 @@ One step per commit; design check before each push; `port-check.js` from Step 2;
 - The method (weekly returns, both sides rebalanced, tracking error and shares as defined in Design plan 4).
 - Evidence board, In ringgit, Drawdowns; fund ids (saved portfolios must open as they are).
 
-## Decisions (for the owner)
+## Decisions (answered by the owner, 27 Nov 2026: "go with the defaults")
 
-Defaults are in brackets; "go with the defaults" approves all five.
+Every default in brackets below is approved. The alternatives were not chosen: do not build them.
 
 1. **One workspace.** [Fold "Add a fund" into Portfolio: one sub-tab, one right-hand card with three tabs.]
-   Alternative: keep two sub-tabs and only tidy each.
+   **Approved as the default.**
 2. **Changes are a draft until you press Save.** [Yes: with the change bar, Undo, Discard and Save as new.]
-   Alternative: keep saving every edit at once, and add only Undo and the before → after figures.
+   **Approved as the default.**
 3. **When a weight changes, where the difference comes from.** [All other holdings in proportion, with "cash first" as
-   the other choice under the table, and a lock per holding.] Alternative: cash first as the default.
+   the other choice under the table, and a lock per holding.] **Approved as the default.**
 4. **How many blocks.** [All 133 tested: world and regions 25, United States 15, US sectors 12, countries 72, bonds 9.]
-   Alternative: countries and regions only (leave out the 12 US sectors and the 9 bond funds).
+   **Approved as the default.**
 5. **Names.** [Show what a block tracks first ("MSCI Japan"), the fund, ticker, currency and place second, for the
-   existing 50 too.] Alternative: keep fund names first.
+   existing 50 too.] **Approved as the default.**
