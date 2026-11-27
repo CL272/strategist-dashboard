@@ -428,7 +428,7 @@ function poHook() {   // only while a portfolio sub-tab is open: nothing to load
 }
 function buildPortfolio(g) {
   makeCard(g, { key: 'idea_model', title: 'Holdings', range: false, render: renderPbHold });
-  makeCard(g, { key: 'po_side', title: 'Change the portfolio', range: false, render: renderPoSide });
+  makeCard(g, { key: 'po_side', title: 'Change or compare', range: false, render: renderPoSide });
   makeCard(g, { key: 'idea_modelchart', title: 'Portfolio vs benchmark', range: false, seg: { key: 'poView', options: [['value', 'Value'], ['gap', 'Gap'], ['te', 'Rolling TE']] }, render: renderPbChart });
   makeCard(g, { key: 'po_src', title: 'Where the tracking error comes from', range: false, render: renderPbSrc });
   makeCard(g, { key: 'idea_stress', title: 'Stress test and risk', wide: true, range: false, render: renderPbStress });
@@ -471,11 +471,12 @@ function poPickRows(x) {   // every block at x% of the portfolio (as poChange wo
   return (state.poPick = { key, out });
 }
 function poSideTabs(c) {
-  const S = state.poSide, tabs = [['add', '＋ Add a holding'], ['adjust', 'Adjust a weight'], ['bench', 'Benchmark']];
-  return el('div', { class: 'po-tabs', role: 'tablist', 'aria-label': 'Change the portfolio' }, ...tabs.map(([k, t]) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), text: t,
+  const S = state.poSide, tabs = [['add', '＋ Add a holding'], ['adjust', 'Adjust a weight'], ['bench', 'Benchmark'], ['cmp', 'Compare']];
+  return el('div', { class: 'po-tabs', role: 'tablist', 'aria-label': 'Change or compare the portfolio' }, ...tabs.map(([k, t]) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === k), text: t,
     onclick: () => { S.tab = k; c.render(); } })));
 }
 function renderPoSide(c) {   // key po_side
+  if (c.poRo) { c.poRo.disconnect(); c.poRo = null; }
   if (c.poCh) { c.poCh.dispose(); c.poCh = null; }
   if (poWait(c)) return;
   const R = poCompute(), b = htmlBody(c), S = state.poSide;
@@ -484,6 +485,7 @@ function renderPoSide(c) {   // key po_side
   if (S.tab === 'bench') return poSideBench(c, b, R);
   if (!R.st) { b.append(el('div', { class: 'empty', text: R.reason || 'Waiting for data.' })); setCount(c, ''); setNote(c, ''); setSource(c, PO_SRC); return; }
   if (S.tab === 'adjust') return poSideAdjust(c, b, R);
+  if (S.tab === 'cmp') return poSideCmp(c, b, R);
   return poSideAdd(c, b, R);
 }
 
@@ -569,6 +571,7 @@ function poSideAdjust(c, b, R) {
   setTimeout(() => {   // drawn once the box is in the page, so it has a width
     if (!box.isConnected) return;
     const ch = echarts.init(box, null, { renderer: 'canvas' }); c.poCh = ch;
+    if (typeof ResizeObserver === 'function') { c.poRo = new ResizeObserver(() => ch.resize()); c.poRo.observe(box); }   // follows the card's width
     const xl = v => fmtNum(v, v % 1 ? 1 : 0) + '%', ys = C.map(v => v[1]), pad = Math.max(0.05, (Math.max(...ys, T) - Math.min(...ys, T)) * 0.06);
     const mk = (pt, lab, filled, shape = 'circle', below = false) => ({ coord: pt, value: lab, symbol: shape, symbolSize: shape === 'circle' ? 9 : 11, itemStyle: { color: filled ? tok('--s1') : tok('--surface'), borderColor: tok('--s1'), borderWidth: 2 },
       label: { show: true, formatter: lab, position: pt[0] <= xEnd * 0.12 ? 'right' : pt[0] >= xEnd * 0.88 ? 'left' : below ? 'bottom' : 'top', color: tok('--ink'), fontSize: 11, fontWeight: 600 } });
@@ -640,6 +643,86 @@ function poSideBench(c, b, R) {
   c.csv = [['Benchmark holding', 'Ticker', 'Weight %'], ...p.bench.rows.map(([id]) => [poLabel(id), poTick(id), sb(id).toFixed(2)]), [], ['Asset class', 'Portfolio %', 'Benchmark %'], ...mix.map(([cl, x, y]) => [cl, x.toFixed(2), y.toFixed(2)])];
   setNote(c, `The benchmark is ${words.length > 1 ? words.slice(0, -1).join(', ') + ' and ' + words.slice(-1) : words[0] || 'empty'}. A benchmark change applies at once (it is a setting, not a change to the holdings). The world mixes hold world equities (iShares MSCI ACWI) and global bonds hedged to the dollar (iShares Global Aggregate, AGGU). Bar = the portfolio, line = the benchmark.`);
   setSource(c, 'Your choice of benchmark; prices as in the other cards'); poAsOf(c, R.st ? R.st.to : null);
+}
+// ---- Compare (Design plan 6, "Later" item 1; owner's request 27 Nov 2026): the open portfolio (with its draft, as on the tiles)
+// beside another saved portfolio (as saved), on the same weeks, in the open portfolio's currency and window and against its
+// benchmark, so every figure is like for like. Which portfolio is compared is kept for the visit (state.poCmp), not stored.
+state.poCmp = null;
+function poCmpPick(o) {   // the one chosen before, else the most recently changed other portfolio
+  const others = o.ports.filter(x => x.id !== o.sel); if (!others.length) return null;
+  return others.find(x => x.id === state.poCmp) || others.slice().sort((a, z) => String(z.updated || '').localeCompare(String(a.updated || '')))[0];
+}
+function poCompare(R, q) {   // R = poCompute() for the open portfolio; q = the other portfolio's record
+  const key = [R.key, q.id, JSON.stringify(q.rows)].join('|'); if (state.poCmpRes && state.poCmpRes.key === key) return state.poCmpRes;
+  const p = R.p, wO = poObj(poScaledRows(q.rows)), all = [...new Set([...R.ids, ...Object.keys(wO)])];
+  const missing = all.filter(id => !poSeries(id, p.ccy)), ids = all.filter(id => !missing.includes(id)), out = { key, q, wO, missing };
+  if (!Object.keys(wO).length) return (state.poCmpRes = { ...out, reason: `“${q.name}” has no holdings yet.` });
+  const A = PM.pmAlign(ids.map(id => poSeries(id, p.ccy)), R.from);
+  let lim = null; A.first.forEach((t, i) => { if (t != null && !R.ids.includes(ids[i]) && (!lim || t > lim.t)) lim = { id: ids[i], t }; });   // the other's holding that starts last
+  if (A.n < 52) return (state.poCmpRes = { ...out, A, reason: `The two portfolios and the benchmark share only ${A.n} weeks${lim ? ` (${poLabel(lim.id)} starts in ${monthLab(lim.t)})` : ''}; at least 52 are needed. Try a longer window.` });
+  const W = PM.pmVec(ids, R.wObj), O = PM.pmVec(ids, wO), B = PM.pmVec(ids, R.bObj);
+  return (state.poCmpRes = { ...out, A, ids, lim, sT: PM.pmStats(A, W, B), sO: PM.pmStats(A, O, B), sTO: PM.pmStats(A, W, O) });
+}
+function poSideCmp(c, b, R) {
+  const o = poStore(), p = R.p, q = poCmpPick(o), mine = p.draft ? `${p.name} (with your changes)` : p.name;
+  if (!q) {
+    b.append(el('div', { class: 'empty', text: 'Only one portfolio is saved. Make a second with ＋ New or Duplicate in the bar above, or change this one and press Save as new…; then compare the two here.' }));
+    setCount(c, ''); setNote(c, ''); setSource(c, PO_SRC); return;
+  }
+  state.poCmp = q.id;
+  const sel = el('select', { class: 'mini-select', 'aria-label': 'Compare with' }, ...o.ports.filter(x => x.id !== o.sel).map(x => el('option', { value: x.id, text: x.name })));
+  sel.value = q.id; sel.onchange = () => { state.poCmp = sel.value; c.render(); };
+  b.append(el('div', { class: 'po-what po-cmp-pick' }, el('label', {}, el('b', { class: 'po-cmp-me', text: mine, title: mine }), ' vs ', sel),
+    el('button', { type: 'button', class: 'ghost', text: '⇄ Open it', title: `Open “${q.name}” and compare it with “${p.name}”`, onclick: () => { state.poCmp = o.sel; poMutate(z => { z.sel = q.id; }); } })));
+  const X = poCompare(R, q);
+  if (!X.sT) { b.append(el('div', { class: 'empty', text: X.reason || 'Waiting for data.' })); setCount(c, `vs ${q.name}`); setNote(c, ''); setSource(c, PO_SRC); return; }
+  const { sT, sO, sTO, A } = X, f2 = v => v == null ? '–' : fmtNum(v, 2), d1 = (a, z) => a == null || z == null ? '' : poPts(a - z), d2 = (a, z) => a == null || z == null ? '' : `${a - z > 0.005 ? '+' : a - z < -0.005 ? '−' : ''}${fmtNum(Math.abs(a - z), 2)}`;
+  // the figures, side by side (numbers in plain ink: arithmetic on past returns)
+  const FIG = [['Tracking error', 'te', poPct, d1], ['Return a year', 'retP', poPct, d1], ['Active return', 'activeRet', poPct, d1], ['Volatility', 'volP', poPct, d1],
+    ['Beta to benchmark', 'beta', f2, d2], ['Worst fall', 'ddP', poPct, d1]];
+  const tf = el('tbody');
+  for (const [lab, k, fm, df] of FIG) tf.append(el('tr', { class: 'row' }, el('td', { class: 'l', text: lab }), el('td', { class: 'num strong', text: fm(sT[k]) }), el('td', { class: 'num', text: fm(sO[k]) }), el('td', { class: 'num muted', text: df(sT[k], sO[k]) })));
+  const short = s => s.length > 18 ? s.slice(0, 17) + '…' : s;
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table po-cmp-t' }, el('thead', {}, el('tr', {}, el('th', { class: 'l', text: '' }),
+    el('th', { text: short(p.name), title: mine }), el('th', { text: short(q.name), title: q.name }), el('th', { text: 'Gap', title: 'The open portfolio minus the other, in points' }))), tf)));
+  // the value of each, = 100 at the start of the shared weeks
+  const box = el('div', { class: 'po-curve po-cmp-chart', role: 'img', 'aria-label': `${p.name} and ${q.name}, value since ${monthLab(sT.from)}` }); b.append(box);
+  setTimeout(() => {
+    if (!box.isConnected) return;
+    const ch = echarts.init(box, null, { renderer: 'canvas' }); c.poCh = ch;
+    if (typeof ResizeObserver === 'function') { c.poRo = new ResizeObserver(() => ch.resize()); c.poRo.observe(box); }   // follows the card's width
+    const d = A.dates, o2 = baseOpt(), L = [[mine, sT.cumP, '--s1'], [q.name, sO.cumP, '--s3'], [poBenchName(p), sT.cumB, '--s2']];
+    o2.legend = { ...o2.legend, show: true, top: 0, left: 0, itemWidth: 14, itemHeight: 2, textStyle: { color: tok('--ink-2'), fontSize: 11 }, data: L.map(x => x[0]) };
+    o2.grid = { left: 6, right: 10, top: 26, bottom: 4, containLabel: true };
+    o2.tooltip = { ...o2.tooltip, trigger: 'axis', valueFormatter: v => fmtNum(v, 1) };
+    o2.xAxis = timeAxis({ min: d[0], max: d[d.length - 1] }); o2.yAxis = valAxis(v => fmtNum(v, 0), { scale: true });
+    o2.series = L.map(([name, cv, t]) => ({ name, type: 'line', data: d.map((x, i) => [x, cv[i]]), showSymbol: false, lineStyle: { width: 1.8, color: tok(t) }, itemStyle: { color: tok(t) } }));
+    ch.setOption(o2, true);
+  }, 0);
+  // where they differ: the holdings, largest gap first (five at rest), and the asset classes in one line
+  const sw = poScaled(poWorkRows(p)), so = poScaled(q.rows), hid = [...new Set([...poWorkRows(p).map(r => r[0]), ...q.rows.map(r => r[0])])].filter(id => sw(id) > 0.005 || so(id) > 0.005)
+    .map(id => ({ id, a: sw(id), z: so(id) })).sort((x, y) => Math.abs(y.a - y.z) - Math.abs(x.a - x.z) || y.a - x.a);
+  const th = el('tbody'), x1 = v => v > 0.005 ? fmtNum(v, 1) : '–';
+  for (const r of hid) th.append(el('tr', { class: 'row' }, el('td', { class: 'l', title: poSub(r.id) }, el('span', { class: 'po-nm', text: poLabel(r.id) })),
+    el('td', { class: 'num', text: x1(r.a) }), el('td', { class: 'num', text: x1(r.z) }), el('td', { class: 'num muted', text: Math.abs(r.a - r.z) < 0.05 ? '0' : poPts(r.a - r.z) })));
+  b.append(el('div', { class: 'table-wrap' }, el('table', { class: 'perf asset-table po-cmp-h' }, el('thead', {}, el('tr', {}, ...['Holding, %', short(p.name), short(q.name), 'Gap'].map((h, i) => el('th', { class: i ? '' : 'l', text: h })))), th)));
+  capRows(th, 'po_cmp', 4);
+  const mix = PO_CLASSES.map(cl => [cl, hid.filter(r => poClass(r.id) === cl).reduce((s, r) => s + r.a, 0), hid.filter(r => poClass(r.id) === cl).reduce((s, r) => s + r.z, 0)]).filter(([, a, z]) => a > 0.05 || z > 0.05);
+  b.append(el('p', { class: 'small po-cmp-mix' }, el('b', { text: 'By asset class: ' }), mix.map(([cl, a, z]) => `${cl.toLowerCase()} ${fmtNum(a, 0)}% vs ${fmtNum(z, 0)}%`).join(' · ')));
+  setCount(c, `vs ${q.name}`);
+  c.csv = [['Measure', mine, q.name, 'Gap'], ...FIG.map(([lab, k]) => [lab, sT[k], sO[k], sT[k] != null && sO[k] != null ? sT[k] - sO[k] : '']),
+    ['Tracking error of one against the other %', sTO.te, '', ''], ['Correlation of weekly returns', sTO.corr, '', ''], [],
+    ['Holding', 'Ticker', `${p.name} %`, `${q.name} %`, 'Gap pts'], ...hid.map(r => [poLabel(r.id), poTick(r.id), r.a.toFixed(2), r.z.toFixed(2), (r.a - r.z).toFixed(2)]), [],
+    ['Week to', `${p.name} (= 100 at start)`, `${q.name} (= 100 at start)`, `${poBenchName(p)} (= 100 at start)`], ...A.dates.map((t, i) => [iso(t), sT.cumP[i].toFixed(3), sO.cumP[i].toFixed(3), sT.cumB[i].toFixed(3)])];
+  const own = [q.bench && poBenchName(q) !== poBenchName(p) ? `its own benchmark is ${poBenchName(q)}` : '', q.ccy !== p.ccy ? `it is kept in ${q.ccy}` : ''].filter(Boolean);
+  const dte = sT.te - sO.te;
+  setNote(c, `Between themselves the two differed by ${poPct(sTO.te)} a year (correlation ${f2(sTO.corr)}).`
+    + ` ${mine} had a tracking error of ${poPct(sT.te)} against ${poPct(sO.te)} for ${q.name}${Math.abs(dte) >= 0.05 ? ` (${dte > 0 ? 'higher' : 'lower'} by ${fmtNum(Math.abs(dte), 1)} points)` : ''}; “differed by” is the tracking error of one measured against the other.`
+    + ` Both are measured the same way: weekly returns with dividends in ${p.ccy}, over the ${sT.weeks} weeks they share to ${nice(sT.to)}, against ${poBenchName(p)} (the open portfolio's settings)${own.length ? `; ${q.name} is shown as saved, though ${own.join(' and ')}` : `; ${q.name} is shown as saved`}.`
+    + (X.lim && R.A && A.n < R.A.n ? ` The window is shorter than on the tiles (${R.A.n} weeks) because ${poLabel(X.lim.id)}, held only by ${q.name}, starts in ${monthLab(X.lim.t)}; the figures for ${p.name} here are on the shorter window.` : '')
+    + (X.missing.length ? ` No prices for ${X.missing.map(poTick).join(', ')}: left out.` : '') + poThinNote(X.ids)
+    + ' The chart puts both and the benchmark at 100 at the start; the holdings table lists the largest gaps first. “⇄ Open it” opens the other portfolio and keeps this comparison. History, not a forecast.');
+  setSource(c, PO_SRC); poAsOf(c, sT.to);
 }
 function poOpenSide(tab, bmode) {   // from the bar: open a tab of the card and bring it into view
   state.poSide.tab = tab; if (bmode !== undefined) state.poSide.bmode = bmode;

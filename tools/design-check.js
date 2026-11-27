@@ -93,7 +93,7 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
       const vis = [];
       const read = () => vis.push(...[...document.querySelectorAll('#tab-alloc .card, #tab-alloc .kpis, #tab-alloc .po-bar, #tab-alloc .po-changes')].filter(e => e.offsetParent).map(e => e.textContent));   // textContent: folded notes included
       if (sub === 'Portfolio' && typeof state.poSide === 'object' && typeof cards.po_side === 'object') {
-        for (const t of ['add', 'adjust', 'bench']) { state.poSide.tab = t; cards.po_side.render(); await new Promise(r => setTimeout(r, 300)); read(); }
+        for (const t of ['add', 'adjust', 'bench', 'cmp']) { state.poSide.tab = t; cards.po_side.render(); await new Promise(r => setTimeout(r, 300)); read(); }
         state.poSide.tab = 'add'; cards.po_side.render();
       } else read();
       const T = [...vis, ...(sub === 'Evidence board' ? (state.alRes || []).flatMap(x => Object.values(x.c).map(y => y.txt)) : [])].join(' ').replace(/not a recommendation/gi, '');

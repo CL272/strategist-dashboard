@@ -221,7 +221,8 @@ no table shows more than 16 rows at rest; design check passes.
 
 ## Later, if wanted (not in this plan's steps)
 
-1. **Compare two saved portfolios** side by side (the before → after machinery already does it for a draft).
+1. **Compare two saved portfolios** side by side (the before → after machinery already does it for a draft). **Built 27 Nov
+   2026 (owner's request) as the fourth tab, "Compare", of the right-hand card, now titled "Change or compare"; see `CLAUDE.md`.**
 2. **Mix by region**, which needs each fund's country weights (issuer files; not on Yahoo).
 3. **Currency-hedged twins** where they exist (a few more London share classes).
 

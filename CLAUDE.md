@@ -223,11 +223,19 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   change bar (`#poChanges`) sticks under the sub-tab bar while a draft exists; the picker in the bar marks a portfolio with a
   draft with "•". **Holdings** (`idea_model`): − and + move a weight one point, typing takes one decimal (Enter keeps, Esc
   cancels), "was x" or "added" under the stepper, the benchmark's weight under the active figure, lock, remove; a removed
-  holding stays struck through with "Put back" until the draft is saved. **"Change the portfolio"** (`po_side`, one card, three
+  holding stays struck through with "Put back" until the draft is saved. **"Change or compare"** (`po_side`, one card, four
   tabs, `state.poSide`): *Add a holding* (search, group chips with counts, "Add at x%", eight rows at rest and "Show all n",
   A to Z or by effect on tracking error; each figure uses the weights "＋ Add" would store (`poSetW`), so it equals the Tracking
   error tile after adding; tags thinly traded, short history, index no dividends); *Adjust a weight* (the holding touched last,
-  a slider, the curve of tracking error by that holding's whole weight via `PM.pmCurve(…, locks)`, and the target); *Benchmark*.
+  a slider, the curve of tracking error by that holding's whole weight via `PM.pmCurve(…, locks)`, and the target); *Benchmark*;
+  *Compare* (Design plan 6's "Later" item 1, owner's request 27 Nov 2026: the open portfolio, with its draft as on the tiles,
+  beside another saved portfolio as saved, both in the open portfolio's currency, window and benchmark on the weeks they share
+  (`poCompare`: one `pmAlign` over both portfolios and the benchmark), so the figures are like for like; six figures side by
+  side, how far apart the two are (the tracking error of one against the other, and their correlation), both and the
+  benchmark at 100 on one chart, the holdings by largest gap (four at rest) and the asset classes in one line; "⇄ Open it"
+  swaps them. Which portfolio is compared is kept for the visit (`state.poCmp`), not stored; the note names the other's own
+  benchmark or currency when they differ, and says when its holdings shorten the window). The card's own charts follow
+  their box's width (`ResizeObserver`).
   **Target a tracking error** (owner's request, 26 Nov 2026): each portfolio keeps a target (`target`, 3% until set,
   `PO_TARGET`); `PM.pmTarget(…, locks)` tries every 0.1 point of the holding's whole weight from 0 to 100% and halves the
   interval where the tracking error first crosses the target. The row rounds that weight to 0.1 point on the safe side (up when

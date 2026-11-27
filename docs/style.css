@@ -1286,3 +1286,17 @@ table.po-pick-t .po-acts .ghost { padding: 2px 8px; }
   table.po-pick-t th:nth-child(2) { min-width: 72px; }
   .po-addat button.linkish { text-align: left; }
 }
+/* Compare two saved portfolios (Design plan 6, "Later" item 1): the fourth tab of the right-hand card */
+.po-cmp-pick { justify-content: space-between; }
+.po-cmp-pick label { min-width: 0; }
+.po-cmp-me { display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; color: var(--ink); }
+.po-cmp-pick .mini-select { max-width: 170px; }
+.po-cmp-pick .ghost { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+table.po-cmp-t td, table.po-cmp-h td { padding-top: 5px; padding-bottom: 5px; }
+table.po-cmp-t th { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.po-cmp-chart { height: 150px; margin: 8px 0 4px; }
+.po-cmp-mix { margin: 8px 0 0; color: var(--ink-2); }
+@media (min-width: 641px) {
+  table.po-cmp-h td.l { width: 100%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
