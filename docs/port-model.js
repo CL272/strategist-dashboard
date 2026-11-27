@@ -85,18 +85,53 @@
     for (const id of Object.keys(out)) if (out[id] < 1e-12) out[id] = 0;
     return out;
   }
-  // tracking error for x = xs (default 0, 5, … 50) of fund k added; ids are the columns of A and must include k
-  function pmCurve(A, ids, w, b, k, how = 'all', xs = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]) {
+  // Design plan 6, Step 2: set holding k to `to` percent of the portfolio; the rest makes room or takes up the slack. how =
+  // 'all' (every other unlocked holding in proportion to its weight) or 'cash' (the holding CASH first, created when weight
+  // is given back and there is none; then the rest in proportion). Locked holdings never move. If the others cannot supply
+  // the whole rise, k gets what there is; a fall with nothing else unlocked goes to cash. w: {id: weight}, any scale.
+  // Returns {id: weight %} summing to 100; rounded to 0.01 unless round = false (the remainder to the largest unlocked holding).
+  function pmSet(w, k, to, how = 'all', locked = [], round = true) {
+    const tot = sum(Object.values(w).map(v => Math.max(0, +v || 0))), out = {};
+    for (const [id, v] of Object.entries(w)) out[id] = tot > 0 ? Math.max(0, +v || 0) / tot * 100 : 0;
+    if (!(k in out)) out[k] = 0;
+    const lock = new Set(locked); lock.delete(k);
+    const fixed = sum([...lock].filter(id => id in out).map(id => out[id]));
+    to = Math.max(0, Math.min(+to || 0, 100 - fixed));
+    const free = () => Object.keys(out).filter(id => id !== k && !lock.has(id));
+    let d = to - out[k];
+    if (d > 1e-12) {   // k rises: take from the others
+      if (how === 'cash' && 'CASH' in out && !lock.has('CASH')) { const t = Math.min(out.CASH, d); out.CASH -= t; d -= t; }
+      const F = free().filter(id => out[id] > 0), pool = sum(F.map(id => out[id]));
+      if (d > 1e-12 && pool > 0) { const f = Math.min(1, d / pool); for (const id of F) out[id] -= out[id] * f; d = Math.max(0, d - pool); }
+      out[k] = to - d;
+    } else if (d < -1e-12) {   // k falls: give back
+      const give = -d, F = free().filter(id => out[id] > 0), pool = sum(F.map(id => out[id]));
+      if (how === 'cash' && !lock.has('CASH')) out.CASH = (out.CASH || 0) + give;
+      else if (pool > 0) for (const id of F) out[id] += out[id] / pool * give;
+      else if (!lock.has('CASH')) out.CASH = (out.CASH || 0) + give;
+      else return pmSet(w, k, out[k] + 0, how, locked, round);   // nowhere to put it: nothing changes
+      out[k] = to;
+    }
+    for (const id of Object.keys(out)) if (out[id] < 1e-12) out[id] = 0;
+    if (!round) return out;
+    for (const id of Object.keys(out)) out[id] = Math.round(out[id] * 100) / 100;
+    const rest = Math.round((100 - sum(Object.values(out))) * 100) / 100;
+    if (rest) { const F = free().filter(id => out[id] > 0).sort((a, z) => out[z] - out[a]); const to2 = F[0] || k; out[to2] = Math.round((out[to2] + rest) * 100) / 100; }
+    return out;
+  }
+  // tracking error for x = xs (default 0, 5, … 50) of fund k; ids are the columns of A and must include k. Without `locked`,
+  // x is the weight added (pmAdd, Design plan 4); with `locked` (an array, maybe empty), x is k's whole weight, set with pmSet
+  function pmCurve(A, ids, w, b, k, how = 'all', xs = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50], locked = null) {
     const { C } = pmCov(A.R), B = pmVec(ids, b);
-    return xs.map(x => [x, pmTE(C, pmVec(ids, pmAdd(w, k, x, how)), B)]);
+    return xs.map(x => [x, pmTE(C, pmVec(ids, locked ? pmSet(w, k, x, how, locked, false) : pmAdd(w, k, x, how)), B)]);
   }
   // Target a tracking error: the weight of fund k (0 to xmax points of the whole portfolio, paid for as in pmAdd) at which
   // the tracking error first reaches `target` (% a year). It searches every `step` points from 0, then halves the interval
   // where it first crosses the target, to 1e-7 of a point. From above ('down'), x is the smallest weight that brings the
   // tracking error down to the target; from below ('up'), the largest weight that keeps it within the target. x is null when
   // no weight up to xmax reaches it; lo and hi are the lowest and highest points found ([x, te]); te0 = nothing added.
-  function pmTarget(A, ids, w, b, k, how = 'all', target = 3, xmax = 100, step = 0.1) {
-    const { C } = pmCov(A.R), B = pmVec(ids, b), f = x => pmTE(C, pmVec(ids, pmAdd(w, k, x, how)), B);
+  function pmTarget(A, ids, w, b, k, how = 'all', target = 3, xmax = 100, step = 0.1, locked = null) {   // with `locked`: x = k's whole weight (pmSet)
+    const { C } = pmCov(A.R), B = pmVec(ids, b), f = x => pmTE(C, pmVec(ids, locked ? pmSet(w, k, x, how, locked, false) : pmAdd(w, k, x, how)), B);
     const te0 = f(0), s0 = te0 - target, out = { te0, target, dir: Math.abs(s0) < 1e-9 ? 'at' : s0 > 0 ? 'down' : 'up', x: null };
     if (out.dir === 'at') out.x = 0;
     let lo = [0, te0], hi = [0, te0], px = 0;
@@ -122,7 +157,7 @@
     return out;
   }
 
-  const api = { weekKey, pmAlign, pmCov, pmVec, pmTE, pmStats, pmAdd, pmCurve, pmTarget, pmRolling };
+  const api = { weekKey, pmAlign, pmCov, pmVec, pmTE, pmStats, pmAdd, pmSet, pmCurve, pmTarget, pmRolling };
   g.PM = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : this);

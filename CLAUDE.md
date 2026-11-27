@@ -2,7 +2,7 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_6.md` (approved by the owner 27 Nov 2026, all five decisions as recommended; Step 1 built, Step 2 next): one clearer
+**Open design work:** `DESIGN_PLAN_6.md` (approved by the owner 27 Nov 2026, all five decisions as recommended; Steps 1 and 2 built, Step 3 next): one clearer
 Portfolio workspace on Allocation (changes are a draft with before → after and Save; "Add a fund" folded in; a right-hand
 card to add a holding, adjust a weight or set the benchmark) and 133 more building blocks (regions, countries, US sectors,
 bonds), tested on Yahoo. Mockup: `design/portfolio2.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.

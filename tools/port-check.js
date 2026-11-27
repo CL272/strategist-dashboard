@@ -70,6 +70,28 @@ function fixture(k, n) {   // k price series, n + 1 Fridays, correlated through 
   const lowest = Math.min(...C.map(x => x[1])), none = M.pmTarget(A, ids, w, b, 'e', 'cash', lowest / 2);
   ok(none.x == null && close(none.lo[1], lowest, 1e-9), `out of reach: no weight found, and the lowest point (${none.lo[1].toFixed(4)}% at ${none.lo[0].toFixed(1)}%) is the curve's minimum`);
 }
+{   // Design plan 6, Step 2: changing one weight (pmSet): the total stays 100, locks hold, cash rules
+  const w = { A: 40, B: 30, C: 20, CASH: 10 }, tot = o => Object.values(o).reduce((s, v) => s + v, 0), eq = (o, p, t = 1e-9) => Object.keys({ ...o, ...p }).every(k => close(o[k] || 0, p[k] || 0, t));
+  let allHundred = true;
+  for (const [k, to, how, lk] of [['A', 55, 'all', []], ['A', 10, 'all', []], ['B', 0, 'cash', []], ['NEW', 15, 'all', ['C']], ['C', 35, 'cash', ['A']], ['A', 99, 'all', ['B']], ['CASH', 0, 'all', []]]) {
+    const r = M.pmSet(w, k, to, how, lk); if (!close(tot(r), 100, 1e-9)) allHundred = false; }
+  ok(allHundred, 'the total is 100 after any change (rounded to 0.01)');
+  const L = M.pmSet(w, 'A', 60, 'all', ['B']); ok(L.B === 30 && L.A === 60 && close(L.C + L.CASH, 10, 1e-9), `a locked holding never moves (B stays 30 while A goes 40 → 60: ${JSON.stringify(L)})`);
+  ok(eq(M.pmSet(w, 'B', 30), w), 'setting a holding to its current weight changes nothing');
+  ok(eq(M.pmSet(w, 'NEW', 12, 'all', [], false), M.pmAdd(w, 'NEW', 12, 'all')) && eq(M.pmSet(w, 'A', 52, 'all', [], false), M.pmAdd(w, 'A', 12, 'all')), 'raising by x with “all” equals pmAdd(…, x, “all”)');
+  const c1 = M.pmSet(w, 'NEW', 6, 'cash'), c2 = M.pmSet(w, 'NEW', 25, 'cash');
+  ok(c1.CASH === 4 && c1.A === 40 && c2.CASH === 0 && c2.A < 40 && Object.values(c2).every(v => v >= 0), `cash first: 6 points come out of cash alone; 25 points empty it and take the rest in proportion, never below zero`);
+  const f = M.pmSet(w, 'A', 25, 'all', ['B', 'C']); ok(close(f.CASH, 25, 1e-9) && f.B === 30 && f.C === 20, `a fall with the others locked goes to cash (A 40 → 25, cash 10 → ${f.CASH})`);
+  const f2 = M.pmSet({ A: 70, B: 30 }, 'A', 50, 'all', ['B']); ok(close(f2.CASH, 20, 1e-9) && f2.B === 30, 'with nothing else unlocked, weight given back creates cash');
+  const cap = M.pmSet(w, 'A', 90, 'all', ['B']); ok(cap.A === 70 && cap.B === 30, `a rise beyond what the unlocked holdings hold stops there (A asked 90, gets ${cap.A})`);
+  const backAll = M.pmSet(M.pmSet(w, 'B', 0, 'all', [], false), 'B', 30, 'all', [], false), backCash = M.pmSet(M.pmSet(w, 'B', 0, 'cash'), 'B', 30, 'all');
+  ok(eq(backAll, w, 1e-9) && !eq(backCash, w, 0.005), `removing then re-adding restores the mix only when both moves are “in proportion” (with cash first: ${JSON.stringify(backCash)}): so Undo restores the stored state, never the inverse move`);
+  const A = M.pmAlign(fixture(4, 160)), ids = ['A', 'B', 'C', 'CASH'], bm = { A: 60, B: 40 };
+  const cAdd = M.pmCurve(A, ids, { A: 50, B: 30, CASH: 20 }, bm, 'C', 'all', [0, 10, 20]), cSet = M.pmCurve(A, ids, { A: 50, B: 30, CASH: 20 }, bm, 'C', 'all', [0, 10, 20], []);
+  ok(cAdd.every((q, i) => close(q[1], cSet[i][1], 1e-9)), 'for a holding not yet held, the curve by weight equals the curve by weight added');
+  const cl = M.pmCurve(A, ids, { A: 50, B: 30, CASH: 20 }, bm, 'A', 'all', [30, 50, 70], ['B']), t = M.pmTarget(A, ids, { A: 50, B: 30, CASH: 20 }, bm, 'A', 'all', (cl[0][1] + cl[1][1]) / 2, 70, 0.1, ['B']);
+  ok(cl[1][1] === M.pmCurve(A, ids, { A: 50, B: 30, CASH: 20 }, bm, 'A', 'all', [50], ['B'])[0][1] && t.x != null && t.x > 30 && t.x < 50, `curve and target follow the same rule with a lock (target reached at A = ${t.x && t.x.toFixed(2)}%)`);
+}
 
 // ---------------------------------------------------------------- 2. real data (when on disk)
 const D = path.join(__dirname, '..', 'docs', 'data');
