@@ -6473,7 +6473,7 @@ function renderCalNext(c) {   // Design plan 2: at most six key events in the ne
 const SUBTABS = {
   overview: [['Today', ['#ovLead', 'moved', 'changes', 'ov_signals', 'fragile', 'cal_next', 'headlines', 'points']], ['Where we are', ['where']]],
   liquidity: [['Fed & reserves', ['netliq', 'comp', 'fund', 'scarcity', 'gcb']], ['Credit, money & rates', ['credit', 'nfci', 'm2', 'rates']]],
-  alloc: [['Portfolio', ['#poBar', '#poKpis', 'idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress']]],   // Design plan 4 (was "Model portfolio")
+  alloc: [['Portfolio', ['#poBar', '#poKpis', '#poChanges', 'idea_model', 'po_bench', 'idea_modelchart', 'po_src', 'idea_stress']]],   // Design plan 4 (was "Model portfolio")
   markets: [['Performance', ['rebased', 'yields', '#perfCard']], ['Breadth', ['#brKpis', '#sa_mkt_br', 'br_cross', 'br_ew']], ['Trend', ['#trKpis', 'tr_table', 'rs_table', 'rs_chart']], ['Seasonality', ['sea_chart', 'sea_path', 'sea_table']], ['Commodities', ['#sa_mkt_cm', 'cm_rebased', 'cm_curve', 'cm_table']]],
   cbwatch: [['Policy monitor', ['cb_table', 'cb_rates', 'cb_real']],
     ['Path vs dots', ['fp_path', 'fp_years'], 'Fed'], ['By meeting', ['fp_table', 'fp_bars'], 'Fed'], ['Pricing history', ['fp_hist', 'fp_2y'], 'Fed'],

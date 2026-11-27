@@ -1199,3 +1199,52 @@ tr.po-total td { border-top: 1px solid var(--axis); }
 .po-tin { width: 58px; font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .po-tmsg { flex: 1 1 220px; min-width: 0; }
 .po-target .ghost { font-size: 12px; padding: 2px 9px; border-radius: 7px; }
+/* Design plan 6, Step 3: the portfolio workspace (from design/redesign6.css): the sentence bar, the change bar, the stepper,
+   was → now */
+.po-sentence label { font-size: 13px; }
+.po-was { color: var(--muted); font-weight: 500; text-decoration: line-through; text-decoration-thickness: 1px; }
+.po-arr { color: var(--muted); font-weight: 400; }
+.kpi .k-value .po-was { font-size: .78em; }
+.po-changes { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--sel); border-radius: 10px;
+  background: color-mix(in srgb, var(--sel) 6%, var(--surface)); font-size: 12.5px; color: var(--ink-2); position: sticky; top: var(--filters-h, 0px); z-index: 5; }
+.po-changes:empty { display: none; }
+.po-changes b { color: var(--ink); }
+.po-changes > b { white-space: nowrap; }
+.po-chgs { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; overflow: hidden; }
+.po-changes .po-chg { flex: 0 1 auto; min-width: 70px; padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.po-more { white-space: nowrap; flex: none; }
+.po-changes button { flex: none; }
+.po-changes .ghost, .po-changes .primary { font-size: 12px; padding: 4px 11px; border-radius: 7px; }
+.po-changes .ghost[disabled] { opacity: .45; cursor: default; }
+.po-step { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.po-step button { width: 26px; height: 28px; border: 0; background: transparent; color: var(--ink-2); font-size: 15px; cursor: pointer; }
+.po-step button:hover { background: var(--wash); }
+.po-step input { width: 52px; height: 28px; border: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); text-align: right; padding: 0 7px;
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; background: transparent; color: var(--ink); }
+.po-wascol { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.po-wcell .po-wascol, .po-bw { display: block; font-size: 11px; color: var(--muted); font-weight: 400; line-height: 14px; margin-top: 2px; }
+.po-wcell .po-wascol { text-align: center; }
+.po-bw:empty { display: none; }
+.po-zero { display: inline-block; padding: 5px 34px 5px 0; }
+table.po-hold td.po-tot { padding-right: 36px; }
+tr.po-new td { background: color-mix(in srgb, var(--sel) 5%, transparent); }
+tr.po-gone td.l .po-nm, tr.po-gone td.l .cell-sub { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--muted); }
+tr.po-locked .po-step { background: var(--wash); }
+.po-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--sel); color: #fff; font-size: 10.5px; line-height: 16px; font-weight: 600; }
+.po-acts { white-space: nowrap; text-align: right; }
+.po-acts .ghost { font-size: 12px; padding: 3px 8px; border-radius: 7px; }
+.po-acts .ghost.on { border-color: var(--sel); }
+@media (min-width: 641px) {   /* the fund, ticker, currency and place on one line under each holding */
+  table.po-hold td.l { width: 100%; max-width: 0; }
+  table.po-hold td.l .cell-sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.po-rule { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+.po-rule .mini-select { max-width: 250px; font-size: 13px; padding: 3px 6px; }
+@media (max-width: 640px) {
+  .po-changes { padding: 6px 8px; gap: 5px 6px; }
+  .po-chgs { display: none; }
+  .po-changes > b { flex: 1 1 100%; }
+  .po-step button { width: 22px; }
+  .po-step input { width: 44px; padding: 0 4px; }
+}
