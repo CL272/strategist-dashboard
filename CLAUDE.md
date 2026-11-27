@@ -2,9 +2,11 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_7.md` (approved by the owner 27 Nov 2026, all four decisions as recommended; Step 1 built,
-Step 2 next; one commit each, update this note as steps land): US → Labour leads, factory overtime and the quits rate drawn and tested as a trailing 3-month average (`ma3:` mode
-prefix in `llSeries`), "As published" one click away, the lead measured on what is drawn; the same series on the Leading board.
+**Open design work:** none.
+
+**Design plan 7** (`DESIGN_PLAN_7.md`, approved and built 27 Nov 2026, Steps 1 and 2, one commit each): US → Labour leads,
+factory overtime and the quits rate drawn and tested as a trailing 3-month average, with "As published" one click away; the
+same series on the Leading board and in Correlation → Lead-lag. Its rule is folded into the list below.
 
 **Design plan 6** (`DESIGN_PLAN_6.md`, approved 27 Nov 2026 and built the same day, Steps 1 to 5, one commit each): one clearer
 Portfolio workspace on Allocation (changes are a draft with before → after and Save; "Add a fund" folded in; a right-hand
@@ -132,6 +134,15 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Leading board, its tiles, breadth and the Strategist View / Weekly brief line: add a lead there in one line.
   **Every lead shown carries its measured lead or the word "context"**: figures come live from `ldBestLead` (the
   `leadStats` rule searched over 2 to 18 months, plus at least 12 years of overlap); never type a lead into a note.
+  **Smoothing** (Design plan 7, owner's request 27 Nov 2026): a series published to one decimal, whose single months are
+  mostly rounding, may be drawn and tested as a trailing 3-month average: put `ma3:` in front of its mode (`ma3:level`,
+  `ma3:chg6`, …; `llSeries` averages the month and the two before, then applies the rest of the mode; `llBase` strips the
+  prefix wherever a mode picks a format, label or zero line). The card says so, offers "As published" one click away, and the
+  lead shown is always the one measured on what is drawn (`ldLeadPair` + `ldLeadLabel`, never a typed number). Used for
+  factory overtime (`AWOTMAN`, `ma3:chg6`: 6 months, +0.54) and the quits rate (`QUITS`, `ma3:level`: 10 months, +0.93) on
+  their cards, in `LB_ROWS` and in `LL_PAIRS`. A 6-month average is too much: it turns lead into "moves together". The tiles
+  keep the published levels, and the two quits signal rules in `signals.py` stay on the published figures (changing a rule
+  changes its track record).
   Add publication delays for new series to `PUB_LAG` (app.js) and `lag_of` (signals.py). Tiles for app.js pages are added
   through `EXTRA_HOOKS` (renderTab calls them before `fitTiles`). Old links: hashes carry `v=3`; `SUB_PREV` maps older ones.
 - **Household saving rates** (owner's request, 20 Nov 2026) come from `pipeline/leads.py` (`savings_oecd`: OECD quarterly

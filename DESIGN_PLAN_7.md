@@ -1,7 +1,7 @@
 # Design plan 7: smooth factory overtime and the quits rate (two cards and their board rows)
 
-**Status (27 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end).
-Build Steps 1 and 2 in order, one step per commit.**
+**Status (27 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end)
+and built the same day, Steps 1 and 2, one commit each. See "As built" at the end.**
 Written after the owner asked of US → Economy → Labour leads: "does it make sense to smooth the factory over time and quit
 rates so it doesnt spike too much? Idea is to get a sense. See if the correlation still holds with different lead times."
 `CLAUDE.md` rules still apply.
@@ -98,3 +98,21 @@ Every default in brackets below is approved. The alternatives were not chosen: d
 ## Do not change
 
 The lead test's rule; other cards and rows; the pipeline; the published levels in the tiles.
+
+## As built (27 Nov 2026)
+
+Commits: Step 1 `4f78cc9`, Step 2 (this note). The figures on the built page match the plan: overtime Lead +6m, +0.54
+against +0.19, halves +0.63 / +0.47, usable about 5 months; quits Lead +10m, +0.93 against +0.76, halves +0.96 / +0.88,
+usable about 8 months; "As published" gives +7m, +0.50 and +11m, +0.91 as before. Where the build differs from the plan:
+
+1. **Shorter series names** so the legends stay on one line at 1440: "Overtime hours (3M avg), 6M change" and "Quits rate
+   (3M avg)" (the plan's "(3M average)" pushed the quits legend onto a second line). The board rows and the pair list keep
+   "(3M average)": they have the room.
+2. **The overtime sentence** gives both halves of the history at the lead shown, worked out live: "at 6 months the
+   correlation was +0.62 before 2000 and +0.48 since". **The quits sentence**: "any lead from 6 to 13 months fits almost as
+   well (+0.90 to +0.93)".
+3. **The Leading board now reads quits as flat, not improving**: September's one-month jump from 1.9 to 2.1 no longer
+   counts on its own (the 3-month average is 1.97, where it was three months earlier). So the summary line on the Weekly brief reads "3 of 20
+   tested leads improving" instead of 4. Over the last ten years the board's direction for each row flips less often
+   (overtime 29 → 23 times, quits 22 → 19).
+

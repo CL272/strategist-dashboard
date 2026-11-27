@@ -36,7 +36,7 @@ const ldWhyP = st => ldWhy(st).replace(/^moves/, 'move').replace(/^follows/, 'fo
 const ldMeasured = st => st && st.ok ? `${st.k} m · ${corrF(st.rk)}` : 'context: ' + ldWhy(st);
 
 // ------------------------------------------------------------------ the registry: one row per indicator (WP52)
-// id, mode (level · yoy · chg6 · chg12), name, group, lead: [target id, mode, name, up = a rise in the target is good],
+// id, mode (level · yoy · chg6 · chg12; "ma3:" in front = a trailing 3-month average first, Design plan 7), name, group, lead: [target id, mode, name, up = a rise in the target is good],
 // claim = what strategists say, home = [tab, sub-tab] where the indicator's chart lives, sign = claimed direction of the link
 const LB_GROUPS = ['Growth', 'Jobs', 'Inflation', 'Global & Asia', 'Markets'];
 const PAY = ['PAYEMS', 'yoy', 'payrolls', true], UNR = ['UNRATE', 'chg12', 'unemployment', false], IPY = ['INDPRO', 'yoy', 'industrial output', true];
@@ -57,14 +57,14 @@ const LB_ROWS = [
   { id: 'M2REAL', mode: 'yoy', name: 'Real M2 money', group: 'Growth', lead: IPY, claim: '6–12 m (monetarist)', home: ['us', 'Cycle sequence'] },
   { id: 'UMCSENT', mode: 'chg12', name: 'Consumer sentiment, 12M change', group: 'Growth', lead: ['RETAIL_REAL', 'yoy', 'real retail sales', true], claim: 'spending follows mood', home: ['us', 'Housing & consumer'] },
   // Jobs
-  { id: 'AWOTMAN', mode: 'chg6', name: 'Factory overtime hours, 6M change', group: 'Jobs', lead: PAY, claim: 'firms cut hours before people', home: ['us', 'Labour leads'] },
+  { id: 'AWOTMAN', mode: 'ma3:chg6', name: 'Factory overtime hours, 6M change (3M average)', group: 'Jobs', lead: PAY, claim: 'firms cut hours before people', home: ['us', 'Labour leads'] },
   { id: 'AWHMAN', mode: 'chg6', name: 'Factory weekly hours, 6M change', group: 'Jobs', lead: PAY, claim: '3–6 m', home: ['us', 'Labour leads'] },
   { id: 'CLAIMS', mode: 'yoy', name: 'Initial jobless claims', group: 'Jobs', lead: UNR, sign: 1, claim: 'a 20%+ rise warns of recession', home: ['us', 'Growth & jobs'] },
   { id: 'TEMPHELPS', mode: 'yoy', name: 'Temporary help jobs', group: 'Jobs', lead: PAY, claim: '3–6 m (temps go first)', home: ['us', 'Labour leads'] },
   { id: 'JOLTS', mode: 'yoy', name: 'Job openings (JOLTS)', group: 'Jobs', lead: PAY, claim: 'demand for workers turns first', home: ['us', 'Labour leads'] },
   { id: 'FT_EMP', mode: 'yoy', name: 'Full-time jobs', group: 'Jobs', lead: UNR, sign: -1, claim: 'full-time falls before part-time', home: ['us', 'Labour leads'] },
   { id: 'RES_JOBS', mode: 'yoy', name: 'Residential construction jobs', group: 'Jobs', lead: PAY, claim: 'cyclical jobs go first', home: ['us', 'Cycle sequence'] },
-  { id: 'QUITS', mode: 'level', name: 'Quits rate', group: 'Jobs', lead: ['WAGE_ATL', 'level', 'wage growth', true], claim: 'about 9 m ahead of wages', home: ['us', 'Labour leads'] },
+  { id: 'QUITS', mode: 'ma3:level', name: 'Quits rate (3M average)', group: 'Jobs', lead: ['WAGE_ATL', 'level', 'wage growth', true], claim: 'about 9 m ahead of wages', home: ['us', 'Labour leads'] },
   // Inflation, early to late (stage = position in the pipeline)
   { id: 'WTI_LONG', mode: 'yoy', name: 'Oil (WTI)', group: 'Inflation', stage: 'Early', lead: CPIY, claim: '1–3 m', home: ['markets', 'Commodities'] },
   { id: 'GSCPI', mode: 'level', name: 'Supply-chain pressure (NY Fed)', group: 'Inflation', stage: 'Early', lead: GOODS, claim: '3–6 m into goods prices', home: ['us', 'Inflation pipeline'] },
@@ -884,8 +884,8 @@ function ldEnsure(tab) { ldDerived(); if (!LEADS) loadLeads().then(() => { ldDer
 const EXTRA_HOOKS = { regime: [lbTiles, regLeadTiles], us: [usLeadTiles], asia: [() => ldEnsure('asia'), asiaLeadTiles], my: [myLeadTiles], correlation: [() => ldEnsure('correlation')] };
 // WP61: the new pairs in Correlation → Lead-lag and Asia → What leads (both run the same lead test)
 LL_PAIRS.push(['PERMIT1', 'yoy', 'PAYEMS', 'yoy', 'Single-family permits → payrolls'], ['MSACSR', 'level', 'UNRATE', 'chg', 'Unsold new homes → unemployment'],
-  ['LD_OI_PHI', 'level', 'INDPRO', 'yoy', 'Orders minus inventories → output'], ['AWOTMAN', 'chg6', 'PAYEMS', 'yoy', 'Overtime hours → payrolls'],
-  ['QUITS', 'level', 'WAGE_ATL', 'level', 'Quits → wage growth'], ['PHILLY_PP', 'level', 'CPI', 'yoy', 'Factory prices paid → CPI'], ['ZORI_US', 'yoy', 'CPI_SHELTER', 'yoy', 'Asking rents → CPI shelter'],
+  ['LD_OI_PHI', 'level', 'INDPRO', 'yoy', 'Orders minus inventories → output'], ['AWOTMAN', 'ma3:chg6', 'PAYEMS', 'yoy', 'Overtime hours (3M average) → payrolls'],
+  ['QUITS', 'ma3:level', 'WAGE_ATL', 'level', 'Quits (3M average) → wage growth'], ['PHILLY_PP', 'level', 'CPI', 'yoy', 'Factory prices paid → CPI'], ['ZORI_US', 'yoy', 'CPI_SHELTER', 'yoy', 'Asking rents → CPI shelter'],
   ['GSCPI', 'level', 'CPI_GOODS', 'yoy', 'Supply-chain pressure → goods prices'], ['LD_BASKET_LEAD', 'level', 'LD_BASKET_AGG', 'level', 'Cycle: Leading basket → Aggregate basket'],
   ['LD_CLI_DIFF', 'level', 'BCI_G7', 'level', 'Leading-index breadth → G7 confidence'], ['LD_RNM6', 'level', 'BCI_G7', 'level', 'Global real money → G7 confidence'],
   ['CAN_XHB', 'yoy', 'PAYEMS', 'yoy', 'Homebuilders ÷ S&P 500 → payrolls'], ['CAN_SOX', 'yoy', 'ISM_BAL', 'level', 'Chips ÷ S&P 500 → ISM']);
