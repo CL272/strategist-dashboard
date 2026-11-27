@@ -1,6 +1,7 @@
 # Design plan 7: smooth factory overtime and the quits rate (two cards and their board rows)
 
-**Status (27 Nov 2026): planned, waiting for the owner's go-ahead. Small: two steps, one commit each.**
+**Status (27 Nov 2026): approved by the owner ("go with the defaults": all four decisions as recommended, see the end).
+Build Steps 1 and 2 in order, one step per commit.**
 Written after the owner asked of US → Economy → Labour leads: "does it make sense to smooth the factory over time and quit
 rates so it doesnt spike too much? Idea is to get a sense. See if the correlation still holds with different lead times."
 `CLAUDE.md` rules still apply.
@@ -84,7 +85,9 @@ Before and after pictures (real data, prototype on the live page) were shown to 
 - **Acceptance**: the Leading board shows overtime at 6 m and quits at 10 m, still counted as leads; the Strategist View and
   Weekly brief lines still render; design check passes (the brief stays one A4 page).
 
-## Decisions for the owner (defaults in brackets)
+## Decisions (answered by the owner, 27 Nov 2026: "go with the defaults")
+
+Every default in brackets below is approved. The alternatives were not chosen: do not build them.
 
 1. **Smooth both with a 3-month average, shown by default, with "As published" one click away.** [Yes.]
 2. **Use the same smoothed series on the Leading board and in Correlation → Lead-lag,** so every page quotes one lead. [Yes.]

@@ -2,8 +2,8 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_7.md` (planned 27 Nov 2026, waiting for the owner's go-ahead; two small steps, one commit
-each): US → Labour leads, factory overtime and the quits rate drawn and tested as a trailing 3-month average (`ma3:` mode
+**Open design work:** `DESIGN_PLAN_7.md` (approved by the owner 27 Nov 2026, all four decisions as recommended; not built yet;
+two small steps, one commit each, update this note as steps land): US → Labour leads, factory overtime and the quits rate drawn and tested as a trailing 3-month average (`ma3:` mode
 prefix in `llSeries`), "As published" one click away, the lead measured on what is drawn; the same series on the Leading board.
 
 **Design plan 6** (`DESIGN_PLAN_6.md`, approved 27 Nov 2026 and built the same day, Steps 1 to 5, one commit each): one clearer
