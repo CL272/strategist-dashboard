@@ -3003,14 +3003,14 @@ function cleanAltNote(target, tname) {
   return b ? ` Best lead without share prices: ${b.name} (${b.mode === 'chg6' ? '6-month change' : 'growth'}) has led ${tname} by ${b.st.k} months (correlation ${cF(b.st.rk)} against ${cF(b.st.r0)} in the same month; ${cF(b.st.h1)} / ${cF(b.st.h2)} in each half).`
     : ` No stock-free series tested (US and Korea business confidence, Korea consumer confidence, Korea exports, Taiwan export orders) passes the lead rule for ${tname}.`;
 }
-const llFmtF = mode => v => mode === 'yoy' ? pctF1(v) : mode === 'level' ? fmtNum(v, 1) : sign(v) + fmtNum(Math.abs(v), 2);
-const llAxF = mode => v => fmtNum(v, mode === 'level' ? 0 : 1) + (mode === 'yoy' ? '%' : '');
+const llFmtF = m => { const mode = llBase(m); return v => mode === 'yoy' ? pctF1(v) : mode === 'level' ? fmtNum(v, 1) : sign(v) + fmtNum(Math.abs(v), 2); };
+const llAxF = m => { const mode = llBase(m); return v => fmtNum(v, mode === 'level' ? 0 : 1) + (mode === 'yoy' ? '%' : ''); };
 // a dual-axis lead card with an "As measured / Lead +km" toggle
 function leadCard(key, a, b, k, intro) {   // a, b = [id, mode, name]
   state[key] = String(k);
   return { seg: { key, options: [['0', 'As measured'], [String(k), `Lead +${k}m`]] }, render: c => {
     if (!has(a[0], b[0])) return setEmpty(c, 'Waiting for data.');
-    leadPair(c, a, b, +state[key] || 0, { fmtA: llFmtF(a[1]), fmtB: llFmtF(b[1]), axisA: llAxF(a[1]), axisB: llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
+    leadPair(c, a, b, +state[key] || 0, { fmtA: llFmtF(a[1]), fmtB: llFmtF(b[1]), axisA: llAxF(a[1]), axisB: llAxF(b[1]), zeroA: llBase(a[1]) !== 'level', zeroB: llBase(b[1]) !== 'level' });
     const st = leadStats(a[0], a[1], b[0], b[1], k);
     // Korea: draw the leading index without share prices as a dashed line on the same axis, shifted the same way
     let xspLine = '';
@@ -5068,10 +5068,17 @@ const LL_PAIRS = [
 ];
 const llCache = new Map();
 const llMode = id => S[id].kind === 'price' ? 'yoy' : S[id].kind === 'yield' ? 'chg' : 'level';
+// Design plan 7 (owner's approval, 27 Nov 2026): a mode may start with "ma3:" (ma3:level, ma3:chg6, ma3:yoy, ma3:chg12): the
+// monthly figures are first replaced by their trailing 3-month average (this month and the two before; all three needed),
+// then the rest of the mode applies. For series published to one decimal, whose single months are mostly rounding.
+function llBase(mode) { return String(mode).replace(/^ma3:/, ''); }
 function llSeries(id, mode) {   // Map(month start -> value), gaps of up to 3 months carried forward (quarterly data)
   const key = id + '|' + mode; if (llCache.has(key)) return llCache.get(key);
-  const me = monthEnds(S[id]), ks = [...me.keys()].sort((a, b) => a - b), raw = new Map();
+  const sm = /^ma3:/.test(mode); mode = llBase(mode);
+  const me = monthEnds(S[id]), ks = [...me.keys()].sort((a, b) => a - b);
+  let raw = new Map();
   if (ks.length) { let last = null, gap = 9; for (let t = ks[0]; t <= ks[ks.length - 1]; t = addMonths(t, 1)) { if (me.has(t)) { last = me.get(t); gap = 0; } else gap++; if (last != null && gap <= 3) raw.set(t, last); } }
+  if (sm) { const r3 = new Map(); for (const [t, v] of raw) { const a = raw.get(addMonths(t, -1)), b = raw.get(addMonths(t, -2)); if (a != null && b != null) r3.set(t, (v + a + b) / 3); } raw = r3; }
   let out = raw;
   if (mode !== 'level') { const lag = mode === 'chg6' ? 6 : 12; out = new Map(); for (const [t, v] of raw) { const p = raw.get(addMonths(t, -lag)); if (p != null && (mode !== 'yoy' || p !== 0)) out.set(t, mode === 'yoy' ? (v / p - 1) * 100 : v - p); } }
   llCache.set(key, out); return out;
@@ -5086,8 +5093,8 @@ function llScan(a, ma, b, mb, max = 24) {   // correlation of A(t) with B(t+k), 
   const best = ok.reduce((m, z) => Math.abs(z.r) > Math.abs(m.r) ? z : m), zero = res.find(z => z.k === 0);
   return { res, best, zero };
 }
-const llLabel = (id, mode) => S[id].label + (mode === 'yoy' ? ', YoY %' : mode === 'chg' ? ', 12m change' : mode === 'chg6' ? ', 6m change' : '');
-const llFmt = mode => v => (mode === 'level' ? '' : sign(v)) + fmtNum(mode === 'level' ? v : Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + (mode === 'yoy' ? '%' : mode === 'chg' || mode === 'chg6' ? ' pts' : '');
+const llLabel = (id, m) => { const mode = llBase(m); return S[id].label + (/^ma3:/.test(m) ? ' (3M average)' : '') + (mode === 'yoy' ? ', YoY %' : mode === 'chg' ? ', 12m change' : mode === 'chg6' ? ', 6m change' : ''); };
+const llFmt = m => { const mode = llBase(m); return v => (mode === 'level' ? '' : sign(v)) + fmtNum(mode === 'level' ? v : Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + (mode === 'yoy' ? '%' : mode === 'chg' || mode === 'chg6' ? ' pts' : ''); };
 state.ll = { a: 'LEI_6M', ma: 'level', b: 'REG_GM', mb: 'level', lag: 'best' };
 function llNow() { const L = state.ll; if (!has(L.a, L.b) || L.a === L.b) return null; const sc = llScan(L.a, L.ma, L.b, L.mb); if (!sc) return null;
   return { sc, k: L.lag === 'best' ? sc.best.k : +L.lag }; }

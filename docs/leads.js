@@ -103,7 +103,7 @@ function ldDerived() {   // ratios the board needs that no file holds
 }
 
 // ------------------------------------------------------------------ reading a row: latest value, direction, percentile, verdict
-const ldFmt = (row, v) => v == null || !isFinite(v) ? '–' : row.mode === 'yoy' ? pctF1(v) : row.mode === 'level'
+const ldFmt = (row, v) => v == null || !isFinite(v) ? '–' : llBase(row.mode) === 'yoy' ? pctF1(v) : llBase(row.mode) === 'level'
   ? (v < 0 ? '−' : '') + fmtNum(Math.abs(v), Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2) + ((S[row.id] || {}).unit === '%' ? '%' : '') : sign(v) + fmtNum(Math.abs(v), Math.abs(v) >= 10 ? 1 : 2);
 function ldRead(row, back = 0) {   // back = months earlier (for "turned this month" and the breadth history)
   if (!has(row.id)) return null;
@@ -404,7 +404,7 @@ function ldLeadPair(c, a, b, shift, intro, fm = {}, outro = '') {   // a, b = [i
   // shift = 'best': move it by the best-fitting shift even when that fails the test (the note then says so: context only)
   if (!has(a[0], b[0])) { setEmpty(c, 'Waiting for data.'); return null; }
   const st = ldBestLead(a[0], a[1], b[0], b[1]), k = shift && st && (st.ok || (shift === 'best' && st.k)) ? st.k : 0;
-  leadPair(c, a, b, k, { fmtA: fm.fmtA || llFmtF(a[1]), fmtB: fm.fmtB || llFmtF(b[1]), axisA: fm.axisA || llAxF(a[1]), axisB: fm.axisB || llAxF(b[1]), zeroA: a[1] !== 'level', zeroB: b[1] !== 'level' });
+  leadPair(c, a, b, k, { fmtA: fm.fmtA || llFmtF(a[1]), fmtB: fm.fmtB || llFmtF(b[1]), axisA: fm.axisA || llAxF(a[1]), axisB: fm.axisB || llAxF(b[1]), zeroA: llBase(a[1]) !== 'level', zeroB: llBase(b[1]) !== 'level' });
   const short = s => s.replace(/,.*$/, '');
   const res = !st || st.missing ? '' : st.short ? 'History too short to test a lead.' : st.thin
     ? `On only ${Math.round(st.n / 12)} years of history it passes at ${st.k} months (${corrF(st.rk)} against ${corrF(st.r0)} in the same month), too little to count as a lead.`
@@ -420,6 +420,39 @@ function ldLeadLabel(c, st) {
   const b = c.seg2El && c.seg2El.querySelectorAll('button')[1]; if (!b) return;
   b.textContent = st && st.k ? (st.ok ? `Lead +${st.k}m` : `Best fit +${st.k}m`) : 'Lead';
   b.title = st && st.k ? (st.ok ? 'Draw the first series at its measured lead' : 'Draw it at its best-fitting shift: this link does not pass the dashboard’s lead test') : 'No lead found';
+}
+
+// ------------------------------------------------------------------ Design plan 7: US → Labour leads, factory overtime and quits smoothed
+// Both are published to one decimal, so single months are mostly rounding. Each card draws and tests a trailing 3-month
+// average by default ("ma3:" in llSeries), with "As published" one click away; the lead on the button and in the note is the
+// one measured on what is drawn (ldLeadPair, ldLeadLabel). Figures in the notes are worked out live, never typed.
+state.labHrsSm = 'ma3'; state.labQuitSm = 'ma3'; state.labHrsLead = '1'; state.labQuitLead = '1';
+const LAB_SM = key => ({ key, options: [['ma3', '3M average'], ['raw', 'As published']] });
+const LAB_SM_NOTE = 'Smoothed with a 3-month average: the figure is published to one decimal, so single months jump. The average is about a month old, so the lead is a month shorter than on the monthly figures.';
+function renderLabHours(c) {
+  const sm = state.labHrsSm !== 'raw', a = ['AWOTMAN', sm ? 'ma3:chg6' : 'chg6', sm ? 'Overtime hours (3M avg), 6M change' : 'Factory overtime hours, 6-month change'], b = ['PAYEMS', 'yoy', 'Payrolls, % YoY'];
+  let tail = '';
+  const st0 = has(a[0], b[0]) ? ldBestLead(a[0], a[1], b[0], b[1]) : null;
+  if (st0 && st0.k) {   // decision 4: the link is mostly older history; say so with the figures at the lead shown
+    const A = llSeries(a[0], a[1]), B = llSeries(b[0], b[1]), y2k = Date.UTC(2000, 0, 1), pre = llCorrAt(A, B, st0.k, -Infinity, y2k), post = llCorrAt(A, B, st0.k, y2k);
+    if (pre != null && post != null) tail = `The link has weakened: at ${st0.k} months the correlation was ${corrF(pre)} before 2000 and ${corrF(post)} since.`;
+  }
+  const st = ldLeadPair(c, a, b, state.labHrsLead === '1', 'Firms cut overtime before they cut people, and add it back before they hire.', {}, [tail, sm ? LAB_SM_NOTE : ''].filter(Boolean).join(' '));
+  ldLeadLabel(c, st);
+}
+function renderLabQuits(c) {
+  const sm = state.labQuitSm !== 'raw', a = ['QUITS', sm ? 'ma3:level' : 'level', sm ? 'Quits rate (3M avg)' : 'Quits rate, %'], b = ['WAGE_ATL', 'level', 'Wage growth (Atlanta Fed tracker), %'];
+  let span = '';
+  const st0 = has(a[0], b[0]) ? ldBestLead(a[0], a[1], b[0], b[1]) : null;
+  if (st0 && st0.ok) {   // how sharp the lead is: every lead within 0.03 of the best fits almost as well
+    const A = llSeries(a[0], a[1]), B = llSeries(b[0], b[1]), rs = [];
+    for (let k = 2; k <= 18; k++) { const r = llCorrAt(A, B, k); if (r != null) rs.push([k, r]); }
+    const near = rs.filter(([, r]) => r >= st0.rk - 0.03), lo = Math.min(...near.map(x => x[0])), hi = Math.max(...near.map(x => x[0]));
+    if (near.length > 1) span = `Any lead from ${lo} to ${hi} months fits almost as well (${corrF(Math.min(...near.map(x => x[1])))} to ${corrF(Math.max(...near.map(x => x[1])))}), so read it as about ${lo} to ${hi} months rather than exactly ${st0.k}.`;
+  }
+  const st = ldLeadPair(c, a, b, state.labQuitLead === '1', 'Workers quit when they are confident of a better-paid job, so a falling quits rate means less pressure on pay about a year later.', {},
+    [span, sm ? LAB_SM_NOTE + ' The wage tracker is itself a 3-month average, so the smoothed line compares like with like.' : ''].filter(Boolean).join(' '));
+  ldLeadLabel(c, st);
 }
 
 // ------------------------------------------------------------------ WP56. Global breadth and money (Regime & Leading → Global breadth & money)
@@ -898,11 +931,11 @@ function buildLeads() {
   makeCard(ug, { key: 'cs_freight', title: 'Freight and heavy trucks', defaultRange: '10Y', render: renderCsFreight });
   { const r = cards.cs_table.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard(ug, { key: 'lab_temp', title: 'Temporary and full-time jobs', defaultRange: 'MAX', earliest: Date.UTC(1995, 0, 1), render: renderLabTemp });
-  makeCard(ug, { key: 'lab_hours', title: 'Factory overtime hours', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1),
-    ...leadCard('labHrsLead', ['AWOTMAN', 'chg6', 'Factory overtime hours, 6-month change'], ['PAYEMS', 'yoy', 'Payrolls, % YoY'], 7, 'Firms cut overtime before they cut people, and add it back before they hire.') });
+  makeCard(ug, { key: 'lab_hours', title: 'Factory overtime hours', defaultRange: 'MAX', earliest: Date.UTC(1990, 0, 1), seg: LAB_SM('labHrsSm'),
+    seg2: { key: 'labHrsLead', options: [['0', 'As measured'], ['1', 'Lead']] }, render: renderLabHours });
   makeCard(ug, { key: 'lab_postings', title: 'Job postings vs openings', defaultRange: '5Y', render: renderLabPostings });
-  makeCard(ug, { key: 'lab_quits', title: 'Quits lead wages', defaultRange: 'MAX',
-    ...leadCard('labQuitLead', ['QUITS', 'level', 'Quits rate, %'], ['WAGE_ATL', 'level', 'Wage growth (Atlanta Fed tracker), %'], 11, 'Workers quit when they are confident of a better-paid job, so a falling quits rate means less pressure on pay about a year later.') });
+  makeCard(ug, { key: 'lab_quits', title: 'Quits lead wages', defaultRange: 'MAX', seg: LAB_SM('labQuitSm'),
+    seg2: { key: 'labQuitLead', options: [['0', 'As measured'], ['1', 'Lead']] }, render: renderLabQuits });
   makeCard(ug, { key: 'inf_pipe', title: 'Inflation pipeline', wide: true, range: false, render: renderInfPipe });
   { const r = cards.inf_pipe.root; r.querySelector('[title^="Focus"]').hidden = true; r.querySelector('[title^="Download chart as"]').hidden = true; }
   makeCard(ug, { key: 'inf_rents', title: 'Asking rents vs CPI shelter', defaultRange: 'MAX',
