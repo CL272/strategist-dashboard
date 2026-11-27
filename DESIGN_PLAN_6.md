@@ -1,7 +1,7 @@
 # Design plan 6: a clearer portfolio workspace, and many more building blocks
 
-**Status (27 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end).
-Build Steps 1 to 5 in order, one step per commit.**
+**Status (27 Nov 2026): approved by the owner ("go with the defaults": all five decisions as recommended, see the end)
+and built the same day, Steps 1 to 5, one commit each. See "As built" at the end for where the build differs.**
 Written after the owner said of Allocation → Portfolio: "can you plan to make it more easier to add and see the changes?
 It's abit confusing now", and asked for "more country building blocks, make it as extensive as possible, as well as
 enhanced of the region building blocks. Eg: MSCI USA, SP500, Europe, Japan, MSCI asia ex Japan, MSCI EM and etc".
@@ -262,3 +262,38 @@ Every default in brackets below is approved. The alternatives were not chosen: d
    **Approved as the default.**
 5. **Names.** [Show what a block tracks first ("MSCI Japan"), the fund, ticker, currency and place second, for the
    existing 50 too.] **Approved as the default.**
+
+## As built (27 Nov 2026)
+
+Commits: Step 1 `3e8b6c1`, Step 2 `56ec915`, Step 3 `64c4aa3`, Step 4 `0edd2fa`, Step 5 (this note). Every step passed the
+design check, `port-check.js`, and from Step 3 `vault-check.js` and `vault-sync-check.js`. Where the build differs from the plan:
+
+1. **185 funds, not 183.** The plan counted 50 funds already listed; there were 52, so 52 + 133 = 185 (World 7, Regions 28,
+   United States 19, US sectors 12, Asia Pacific 47, Europe 19, Americas, Middle East and Africa 14, Bonds 32, Gold, cash and
+   property 7), plus the five indices, cash and the watchlist. Two emerging-market dollar bond funds track different indices
+   and are labelled by index (JPM EMBI, Bloomberg). Where an issuer's site could not be read from the cloud, a fund's
+   returns were cross-checked against another fund on the same index.
+2. **`pmSet`, removing and adding back.** Removing a holding and putting it back restores every weight only when both use the
+   proportional rule; `port-check.js` tests that, and Undo (a stored snapshot) restores the state exactly in every case.
+3. **Draft steps** are stored as `{id, from, text}` rather than text alone, so repeated presses on one holding merge into one
+   step ("Gold +2 points"). A draft whose weights come back to the saved ones within 0.02 point (rounding) is dropped.
+4. **Holdings fits half the page at 1280.** "was 35.0" / "added" sits under the stepper and the benchmark's weight under the
+   active figure ("of 60"), rather than in two more columns; the fund line under each name is one line, in full on hover.
+   The note under the bar ("saved in this browser…") moved into the portfolio picker's tooltip.
+5. **The change bar stays on one line on a desktop**: the latest three steps (shortened, in full on hover), "n earlier"
+   before them; on a phone only the count and the four buttons show. While a draft exists the chart's legend reads "With
+   your changes", "As saved" and the benchmark.
+6. **Add a holding shows eight rows at rest** (the plan allowed up to ten): ten put the sub-tab 80px over the height budget
+   at 1280 with a draft. A block already held shows "in the portfolio" and no figure. The plan's search box under Holdings
+   became a "＋ Add a holding" button that opens this tab with the cursor in its search. Search order puts "MSCI Japan" before
+   "… ex Japan".
+7. **Design plan 4's third funding choice ("one holding first") is gone**, as decision 3 implies: the rule is all other
+   holdings in proportion, or cash first. The ranked table at 5/10/20% became the "Add at x%" figure with a sort by effect.
+8. **Benchmark**: a two-part mix or custom rows equal to a preset read as that preset; "One block…" names the block in the
+   bar's picker. Old links: `#tab=alloc&sub=4` (Add a fund) and the label "Add a fund" open Portfolio.
+
+Measured with a three-step draft: Portfolio is 2,141px at 1440 and 2,277px at 1280 (budget 2,300); no sideways scroll at
+390px. Real figures from the built page (default portfolio against 60/40 world, ringgit, three years, to 24 Nov 2026):
+adding 10% of MSCI Japan from every other holding takes the tracking error from 5.50% to 4.88%, the figure the picker row
+showed; with a 5% target, 7.5% of MSCI Japan brings it to 4.99%, and "Use" gives 4.99%.
+

@@ -84,12 +84,18 @@ const allowed = (t, sub, rule) => ALLOW.some(([a, b, r]) => a === t && (b === '*
   if (!menu.heads) problems.push('menu: no group headers (.nav-sec > .nav-head): the tree markup is missing');
   if (menu.scroll > 200) problems.push(`menu: the page list scrolls ${menu.scroll}px at 1440x900 with every group open and the region trees closed (limit 200)`);
   // Design plan 3, Step 3: the Evidence board is a tally of evidence, never advice: no buy, sell, overweight or recommend.
-  // Design plan 4, Step 5: the same rule on the allocator's two sub-tabs (Portfolio, Add a fund), with the fund data loaded
-  for (const sub of ['Evidence board', 'Portfolio', 'Add a fund']) {
+  // Design plan 4, Step 5: the same rule on the allocator, with the fund data loaded. Design plan 6 folded "Add a fund" into
+  // Portfolio: the scan reads Portfolio with each of the three tabs of "Change the portfolio" open
+  for (const sub of ['Evidence board', 'Portfolio']) {
     const advice = await page.evaluate(async sub => { goSub('alloc', sub);
       for (let i = 0; i < 40 && (sub !== 'Evidence board' && typeof FUNDS !== 'undefined' && !FUNDS); i++) await new Promise(r => setTimeout(r, 200));
       await new Promise(r => setTimeout(r, 1200));
-      const vis = [...document.querySelectorAll('#tab-alloc .card, #tab-alloc .kpis, #tab-alloc .po-bar')].filter(e => e.offsetParent).map(e => e.textContent);
+      const vis = [];
+      const read = () => vis.push(...[...document.querySelectorAll('#tab-alloc .card, #tab-alloc .kpis, #tab-alloc .po-bar, #tab-alloc .po-changes')].filter(e => e.offsetParent).map(e => e.textContent));   // textContent: folded notes included
+      if (sub === 'Portfolio' && typeof state.poSide === 'object' && typeof cards.po_side === 'object') {
+        for (const t of ['add', 'adjust', 'bench']) { state.poSide.tab = t; cards.po_side.render(); await new Promise(r => setTimeout(r, 300)); read(); }
+        state.poSide.tab = 'add'; cards.po_side.render();
+      } else read();
       const T = [...vis, ...(sub === 'Evidence board' ? (state.alRes || []).flatMap(x => Object.values(x.c).map(y => y.txt)) : [])].join(' ').replace(/not a recommendation/gi, '');
       return [...new Set((T.match(/\b(buy|buying|sell(?!-off)|selling|overweight|underweight|recommend\w*)\b/gi) || []).map(w => w.toLowerCase()))]; }, sub);
     if (advice.length) problems.push(`alloc › ${sub}: advice words on the page (${advice.join(', ')}); ${sub === 'Evidence board' ? 'the board is a tally of evidence' : 'the allocator is arithmetic on past returns'}, not a recommendation`);

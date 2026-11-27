@@ -2,10 +2,12 @@
 
 The owner cannot edit code; every change is made here and published by GitHub Actions to GitHub Pages.
 
-**Open design work:** `DESIGN_PLAN_6.md` (approved by the owner 27 Nov 2026, all five decisions as recommended; Steps 1 to 4 built, Step 5 next): one clearer
+**Open design work:** none.
+
+**Design plan 6** (`DESIGN_PLAN_6.md`, approved 27 Nov 2026 and built the same day, Steps 1 to 5, one commit each): one clearer
 Portfolio workspace on Allocation (changes are a draft with before → after and Save; "Add a fund" folded in; a right-hand
 card to add a holding, adjust a weight or set the benchmark) and 133 more building blocks (regions, countries, US sectors,
-bonds), tested on Yahoo. Mockup: `design/portfolio2.html`. Build Steps 1 to 5 in order, one step per commit; update this note as steps land.
+bonds), tested on Yahoo. Mockup: `design/portfolio2.html` (not published). Its rules are folded into the list below.
 
 **Design plan 5** (`DESIGN_PLAN_5.md`, approved and built 26 Nov 2026, Steps 1 to 5, one commit each): China → Property from the
 statistics bureau's monthly releases (prices by city tier, sales, building), University of Michigan sentiment by party, the
@@ -160,7 +162,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   Malaysia → Rates & bonds: "MGS yields" (`my_mgs`) and "Rate gap vs USD/MYR" (`my_gap`: US 3Y − MGS 3Y, 10Y − MGS 10Y,
   "2Y (monthly)" = US 2Y at month-end − the bulletin's MGS 2Y (`MY_MGS_2Y_M`), or US 2Y − OPR, with the level correlation
   over the shown range in the note).
-- **Allocation** (Design plan 3, `docs/alloc.js`, loaded after au.js): Evidence board · In ringgit · Drawdowns · Portfolio · Add a fund.
+- **Allocation** (Design plan 3, `docs/alloc.js`, loaded after au.js): Evidence board · In ringgit · Drawdowns · Portfolio (Design plan 6
+  folded "Add a fund" into Portfolio; `SUB_ALIAS` and `OLD_SUBS` send old links there).
   The **Evidence board** is 13 assets × 6 pillars (cycle, valuation, trend, sentiment, policy & liquidity, signals), one mark
   per cell (▲ ● ▼ –) from one registry, `AL_ROWS`; the rules are printed from `AL_RULES` under the board (change both
   together). Every mark reads a card that is already on the dashboard (`valRows`, `stretch`, `trendStats`, `cbStats`, `fedRow`,
@@ -169,34 +172,59 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   **In ringgit**: own-currency return × currency effect = ringgit return (`rgSplit`); hedging cost = ringgit 3M interbank −
   US 3M bill (an estimate, not a quote; from Dec 2023). **Drawdowns**: `events.json` histories since 1990 are spliced in
   front of the dashboard series (`ddSer`). The stress test (`idea_stress`) moved here from the Idea log and sits on Portfolio.
-- **Portfolio allocator** (Design plan 4): Allocation → Portfolio and Add a fund. Data: `pipeline/funds.py` → `funds.json`
-  (`FUNDS`: 52 funds plus every ticker in `watchlist.txt`; Yahoo adjusted closes from 2005, the last trading day of each
+- **Portfolio allocator** (Design plans 4 and 6): Allocation → Portfolio. Data: `pipeline/funds.py` → `funds.json`
+  (`FUNDS`: 185 funds plus every ticker in `watchlist.txt`; Yahoo adjusted closes from 2005, the last trading day of each
   Saturday-to-Friday week, `GBp` ÷ 100 stored as GBP; `thin` = share of unchanged weeks over three years; a fund that fails
-  keeps its history), loaded only when a Portfolio sub-tab opens (`loadFunds`). Maths: `docs/port-model.js` (`PM`, pure, shared
+  keeps its history), loaded only when the Portfolio sub-tab opens (`loadFunds`). Maths: `docs/port-model.js` (`PM`, pure, shared
   with `tools/port-check.js`); page: `docs/port.js` (prefix `po`, never `pb`: the Playbook uses `pb*`).
   **One universe registry**: `poBlocks()` = every fund in `funds.json` + the index series in `PO_INDEX` ("index, no dividends")
   + cash (`PO_CASH_RATE`: OPR, SORA, US 3M bill). A new fund goes into `FUNDS` (or `watchlist.txt`), never into page code.
+  Each `FUNDS` row is `(symbol, what it tracks, class, group, search words)`; the **label says what a block tracks** ("MSCI
+  Japan"), and the line beneath gives the fund, ticker, currency and place of listing (`poSub`; place from the ticker's suffix,
+  `place_of`). Ten groups (`GROUPS`, also in `funds.json` `_meta.groups` and `PO_GROUPS`): World · Regions · United States ·
+  US sectors · Asia Pacific · Europe · Americas, Middle East and Africa · Bonds · Gold, cash and property · Other (the watchlist).
+  **One fund per index per place of listing** (`port-check.js` fails otherwise; the two Singapore STI funds are the allowed
+  pair); the place matters because London and Asia close before New York. `funds.py` refuses a duplicate symbol or an unknown group.
   **The method** (printed in the cards' notes; change both together): weekly returns with dividends, in the portfolio's
   currency at each week's closing rate; both sides held at their weights (rebalanced weekly); tracking error = √(52 · aᵀΣa)
   on the weeks every holding shares (equal to the realised spread of weekly gaps × √52); share of holding i = aᵢ(Σa)ᵢ ÷ aᵀΣa;
   window 1Y · 3Y · 5Y · Max, cut by the shortest history (the card names that fund); under 52 shared weeks, no figure. History,
   not a forecast, before costs and tax. **Thin trading**: `thin` above 0.08 (`PO_THIN`) gives a "thinly traded" tag and the
   figure says it may be understated. **Benchmarks** (`PO_BENCH`): world mixes = ACWI + AGGU.L (USD-hedged aggregate);
-  Malaysia 60/40 = FBM KLCI index + 0800EA.KL; editing a preset makes it "Custom". **Storage**: `sd-ports-v1` in `VAULT_ITEMS`
-  through `pstore()` (`{v, sel, ports: [{id, name, ccy, win, rows, bench: {preset, rows}, updated}]}`); the first visit copies
-  the old model portfolio (`sd-model-v1`, left untouched); a locked vault shows the lock (`poEmpty` clears the card first),
-  never defaults. **Add a fund**: `pmAdd` raises the fund by exactly x points, paid for by all holdings in proportion, cash
-  first, or one holding first (never below zero); the what-if uses the weights rounded as they are saved (`poRound2`), so
-  "after" equals what Apply or Save as new then shows on Portfolio. The ranked table adds every fund at 5/10/20% (eight lowest
-  and six highest at rest). **Target a tracking error** (owner's request, 26 Nov 2026; the plan's "Later" item 1): each
-  portfolio keeps a target (`target` in its record, 3% until set, `PO_TARGET`); `PM.pmTarget` tries every 0.1 point of the
-  chosen fund from 0 to 100%, paid for as chosen, and halves the interval where the tracking error first crosses the target.
-  The row in "What if I add a fund?" rounds that weight to 0.1 point on the safe side (up when bringing it down, down when
-  keeping it within), quotes the figure worked out again at that weight (`poTargetFor`), and "Use" sets the weight; out of
-  reach, it gives the lowest point instead. The curve draws the target as a dashed rule and runs to 100% only when the
-  answer lies beyond 50% (the slider follows). Allocator cards are dated by the last week analysed (`poAsOf`). Wording is arithmetic on past
-  returns: never buy, sell, overweight or recommend (the design check scans both sub-tabs). Run `node tools/port-check.js`
-  after any change to `port-model.js` or the method; it must pass before pushing.
+  Malaysia 60/40 = FBM KLCI index + 0800EA.KL; also One block (any block alone, named after it), a two-part mix (the second
+  percentage follows the first) or custom rows; rows equal to a preset read as that preset (`poPresetOf`), anything else is
+  "custom". A benchmark change, the currency, the window, the rule, the locks and the target are settings: they apply at once.
+  **Storage**: `sd-ports-v1` in `VAULT_ITEMS` through `pstore()` (`{v, sel, ports: [{id, name, ccy, win, rows, bench: {preset,
+  rows}, updated, target?, rule?, locks?, draft?}]}`); the first visit copies the old model portfolio (`sd-model-v1`, left
+  untouched); a locked vault shows the lock (`poEmpty` clears the card first), never defaults. Saved weights that do not add
+  to 100 (amounts typed under the Design plan 4 page) are shown scaled to 100 and change only when a draft is saved.
+  **The workspace** (Design plan 6): a change to the holdings is a **draft** (`draft: {rows, steps: [{id, from, text}]}`),
+  stored with the portfolio (it survives a reload and syncs with the vault) and shown before → after until **Save** (draft
+  rows to `rows`), **Save as new…** (a new portfolio from the draft; the original stays as saved) or **Discard**; **Undo** is a
+  stack kept for the visit (`state.poUndo`). Consecutive changes to one holding are one step. Every change goes through
+  `PM.pmSet` (`poChange`): one holding to a weight, the difference from all other holdings in proportion or cash first
+  (`rule`), locked holdings (`locks`) left alone, **the total always 100**, weights rounded to 0.01. Before → after is worked out
+  on the same weeks (`poCompute` returns `st` for the draft and `st0` as saved, over every holding of either and the
+  benchmark): tiles show saved → now (`.po-was`), the chart draws "As saved" dashed, the sources table shows each share
+  saved → now, the stress test reads the draft; a new holding that shortens the window is named with the weeks lost. The
+  change bar (`#poChanges`) sticks under the sub-tab bar while a draft exists; the picker in the bar marks a portfolio with a
+  draft with "•". **Holdings** (`idea_model`): − and + move a weight one point, typing takes one decimal (Enter keeps, Esc
+  cancels), "was x" or "added" under the stepper, the benchmark's weight under the active figure, lock, remove; a removed
+  holding stays struck through with "Put back" until the draft is saved. **"Change the portfolio"** (`po_side`, one card, three
+  tabs, `state.poSide`): *Add a holding* (search, group chips with counts, "Add at x%", eight rows at rest and "Show all n",
+  A to Z or by effect on tracking error; each figure uses the weights "＋ Add" would store (`poSetW`), so it equals the Tracking
+  error tile after adding; tags thinly traded, short history, index no dividends); *Adjust a weight* (the holding touched last,
+  a slider, the curve of tracking error by that holding's whole weight via `PM.pmCurve(…, locks)`, and the target); *Benchmark*.
+  **Target a tracking error** (owner's request, 26 Nov 2026): each portfolio keeps a target (`target`, 3% until set,
+  `PO_TARGET`); `PM.pmTarget(…, locks)` tries every 0.1 point of the holding's whole weight from 0 to 100% and halves the
+  interval where the tracking error first crosses the target. The row rounds that weight to 0.1 point on the safe side (up when
+  bringing it down, down when keeping it within), quotes the figure worked out again at that weight with the weights a change
+  would store, and "Use" sets the weight in the draft; out of reach, it gives the lowest point instead. The curve draws the
+  target as a dashed rule and runs to 100% only when the answer lies beyond 50% (the slider follows). `PM.pmAdd` (Design plan
+  4's "raise by x points") stays in the model for `port-check.js` and `pmCurve`/`pmTarget` without locks. Allocator cards are
+  dated by the last week analysed (`poAsOf`). Wording is arithmetic on past returns: never buy, sell, overweight or recommend
+  (the design check scans Portfolio with each tab of the right-hand card open). Run `node tools/port-check.js` after any
+  change to `port-model.js`, the method or `FUNDS`; it must pass before pushing.
 - **China → Property** (Design plan 5; `pipeline/cnprop.py` → `cnprop.json`, page code `CNP_SUB` in `docs/more.js`, last on
   China, loaded when the sub-tab opens). Two monthly press releases of the National Bureau of Statistics, listed on
   `www.stats.gov.cn/sj/zxfb/`: "70个大中城市…" (70-city prices, two tables: new and second-hand, index on the month and on the
@@ -257,7 +285,8 @@ Keep the dashboard clean and compact; nobody should have to scroll a long way.
   the Strategist View over 1,350px or the Weekly brief over 1,500px (at 1440 and 1280), and a brief that prints on more than
   one A4 page. Deliberate exceptions are listed in its `ALLOW` table (`first300` for the two pages with a group row).
   Since Design plan 3 it also fails on a menu list that scrolls more than 200px and on advice words on the Evidence board
-  (since Design plan 4 also on Allocation → Portfolio and Add a fund). Model checks run beside it when their code changes:
+  (since Design plan 4 also on Allocation → Portfolio, since Design plan 6 with each tab of its right-hand card open). Model
+  checks run beside it when their code changes:
   `tools/sp-check.js`, `tools/port-check.js`, `tools/cnprop-check.py`.
 - Theme: navy + red tokens in `docs/style.css` (inspired by UOB colours; never use UOB's name or logo; the site is
   public). Chart palette was validated with the dataviz palette checker; keep series colours from the tokens.

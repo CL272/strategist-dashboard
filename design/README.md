@@ -19,4 +19,6 @@ planning prototype: the statistics bureau's releases to October 2026, Michigan's
 
 Design plan 6 (`DESIGN_PLAN_6.md`, 26 Nov 2026) adds `design/portfolio2.html` (the one Portfolio sub-tab with unsaved
 changes: change bar, Holdings, and the right-hand card on its three tabs), with its classes in `design/redesign6.css`
-(already named `po-*`). Its figures are real, from the planning prototype (185 funds read from Yahoo on 26 Nov 2026).
+(already named `po-*`). Its figures are real, from the planning prototype (185 funds read from Yahoo on 26 Nov 2026). Built on 27 Nov 2026
+(see the plan's "As built" list for where the build differs from the mock: the stepper column carries "was x", the
+benchmark weight sits under the active figure, the picker shows eight rows at rest, and the change bar stays on one line).

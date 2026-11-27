@@ -1,4 +1,4 @@
-// Checks the portfolio maths (docs/port-model.js) behind Allocation → Portfolio and Add a fund. Run: node tools/port-check.js
+// Checks the portfolio maths (docs/port-model.js) behind Allocation → Portfolio (with "Add a fund" folded in, Design plan 6). Run: node tools/port-check.js
 // Run it after any change to port-model.js or to how port.js feeds it. Part 1 uses fixtures only (no network, no data);
 // part 2 uses docs/data/funds.json and yahoo.json when they are on disk (copy them from the live site for a local run).
 const fs = require('fs'), path = require('path');
